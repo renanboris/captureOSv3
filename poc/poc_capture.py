@@ -5,8 +5,9 @@ import os
 import datetime
 import logging
 from typing import List, Dict, Any
-from playwright.async_api import async_playwright, Page, Playwright
-import google.generativeai as genai
+from playwright.async_api import async_playwright, Page
+from google import genai
+from google.genai import types as genai_types
 
 from schemas import EventoCapturado, SoMBox
 from cdp_enricher import enriquecer_com_ax
@@ -24,8 +25,8 @@ POC_URL = os.getenv("POC_URL", "https://google.com")
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "")
 POC_OUTPUT_DIR = os.getenv("POC_OUTPUT_DIR", "poc/output")
 
-if GOOGLE_API_KEY:
-    genai.configure(api_key=GOOGLE_API_KEY)
+gemini_client = genai.Client(api_key=GOOGLE_API_KEY) if GOOGLE_API_KEY else None
+MODELO_GEMINI = "gemini-2.5-flash"
 
 # Estado global
 eventos_capturados: List[EventoCapturado] = []
@@ -56,7 +57,6 @@ async def on_evento(source: Dict[str, Any], args: str):
         
         # Obter (x, y) do evento
         pos_str = dados.get("posicao_visual", "")
-        # pos_str format: "x:10,y:20,w:100,h:50"
         pos_dict = {}
         if pos_str:
             parts = pos_str.split(',')
@@ -118,14 +118,12 @@ async def on_evento(source: Dict[str, Any], args: str):
         logger.error(f"Erro em on_evento: {e}")
 
 async def enriquecer_com_gemini(evento: EventoCapturado):
-    """Envia o evento para o Gemini Vision em background"""
-    if not GOOGLE_API_KEY:
+    """Envia o evento para o Gemini Vision em background (async nativo)"""
+    if not gemini_client:
         logger.warning("GOOGLE_API_KEY não configurada. Pulando Gemini.")
         return
         
     try:
-        model = genai.GenerativeModel('gemini-2.0-flash')
-        
         prompt = f"""Você é um analista de UX documentando uso de sistema corporativo.
 
 Contexto da ação:
@@ -148,15 +146,16 @@ Responda com JSON:
 }}"""
 
         img_data = base64.b64decode(evento['screenshot_som_b64'])
-        image_part = {
-            "mime_type": "image/jpeg",
-            "data": img_data
-        }
         
-        response = await asyncio.to_thread(
-            model.generate_content,
-            [prompt, image_part],
-            generation_config={"response_mime_type": "application/json"}
+        response = await gemini_client.aio.models.generate_content(
+            model=MODELO_GEMINI,
+            contents=[
+                genai_types.Part.from_text(text=prompt),
+                genai_types.Part.from_bytes(data=img_data, mime_type="image/jpeg"),
+            ],
+            config=genai_types.GenerateContentConfig(
+                response_mime_type="application/json"
+            )
         )
         
         result = json.loads(response.text)
@@ -173,16 +172,18 @@ Responda com JSON:
         logger.error(f"Erro no Gemini Vision para evento {evento['id_acao']}: {e}")
 
 async def enriquecer_lote():
-    """Enriquece os eventos capturados com o Gemini em paralelo"""
+    """Enriquece os eventos capturados com o Gemini em paralelo com rate-limiting"""
     if not eventos_capturados:
         return
         
     logger.info("Iniciando enriquecimento com Gemini Vision...")
-    batch_size = 6
-    for i in range(0, len(eventos_capturados), batch_size):
-        lote = eventos_capturados[i:i+batch_size]
-        tasks = [enriquecer_com_gemini(e) for e in lote]
-        await asyncio.gather(*tasks)
+    sem = asyncio.Semaphore(3)  # Máximo 3 chamadas simultâneas para evitar 429
+    
+    async def enriquecer_com_limite(e):
+        async with sem:
+            await enriquecer_com_gemini(e)
+    
+    await asyncio.gather(*[enriquecer_com_limite(e) for e in eventos_capturados])
 
 async def injetar_radar(page_or_frame):
     try:

@@ -3,8 +3,6 @@ import asyncio
 import logging
 from playwright.async_api import Page, TimeoutError as PlaywrightTimeoutError
 
-# Configurar logger
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
 
 async def realizar_login_senior(page: Page) -> bool:

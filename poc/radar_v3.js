@@ -36,17 +36,19 @@ const _patchNav = (method) => {
 };
 ['pushState', 'replaceState'].forEach(_patchNav);
 window.addEventListener('popstate', () => {
-    window.capturarElemento(JSON.stringify({
-        acao: 'navegar',
-        tag: 'navigation',
-        texto_encontrado: document.title,
-        seletor: '',
-        posicao_visual: 'x:0,y:0,w:0,h:0',
-        iframe: 'Pagina Principal',
-        html_snapshot: '',
-        url_destino: location.href,
-        url_origem: '',
-    }));
+    if (typeof window.capturarElemento === 'function') {
+        window.capturarElemento(JSON.stringify({
+            acao: 'navegar',
+            tag: 'navigation',
+            texto_encontrado: document.title,
+            seletor: '',
+            posicao_visual: 'x:0,y:0,w:0,h:0',
+            iframe: 'Pagina Principal',
+            html_snapshot: '',
+            url_destino: location.href,
+            url_origem: '',
+        }));
+    }
 });
 
 // Scroll com throttle (lazy-load coverage)
@@ -55,7 +57,7 @@ document.addEventListener('scroll', () => {
     clearTimeout(_scrollTimer);
     _scrollTimer = setTimeout(() => {
         const delta = Math.abs(window.scrollY - _lastScrollY);
-        if (delta > 150) {
+        if (delta > 150 && typeof window.capturarElemento === 'function') {
             window.capturarElemento(JSON.stringify({
                 acao: 'scroll',
                 tag: 'scroll',
@@ -544,17 +546,19 @@ const processarEvento = (target, acao, valor = '') => {
         parentText: (target.parentElement?.innerText || '').trim().substring(0, 60),
     });
     
-    window.capturarElemento(JSON.stringify({
-        tag: target.tagName.toLowerCase(),
-        texto_encontrado: valor || getElementName(target),
-        seletor: _seletor,
-        primeng_component: _pResult ? _pResult.componentType : '',
-        modal_context: modalContext,
-        iframe: getFrameId(), 
-        acao,
-        posicao_visual: `x:${Math.round(rect.x)},y:${Math.round(rect.y)},w:${Math.round(rect.width)},h:${Math.round(rect.height)}`,
-        html_snapshot: htmlHint
-    }));
+    if (typeof window.capturarElemento === 'function') {
+        window.capturarElemento(JSON.stringify({
+            tag: target.tagName.toLowerCase(),
+            texto_encontrado: valor || getElementName(target),
+            seletor: _seletor,
+            primeng_component: _pResult ? _pResult.componentType : '',
+            modal_context: modalContext,
+            iframe: getFrameId(),
+            acao,
+            posicao_visual: `x:${Math.round(rect.x)},y:${Math.round(rect.y)},w:${Math.round(rect.width)},h:${Math.round(rect.height)}`,
+            html_snapshot: htmlHint
+        }));
+    }
 };
 
 let clickTimeout = null;

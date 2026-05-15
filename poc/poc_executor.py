@@ -1,13 +1,15 @@
 import asyncio
 import json
 import os
+import re
 import base64
 import sys
 import datetime
 import logging
 from typing import Tuple, List, Optional
 from playwright.async_api import async_playwright, Page, TimeoutError as PlaywrightTimeoutError, Error as PlaywrightError
-import google.generativeai as genai
+from google import genai
+from google.genai import types as genai_types
 
 from schemas import EventoCapturado, ResultadoExecucao, SoMBox
 from som_annotator import get_som_boxes
@@ -16,33 +18,48 @@ from auth import realizar_login_senior
 from dotenv import load_dotenv
 load_dotenv()
 
-logging.basicConfig(level=logging.INFO, format='%(message)s')
+logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
 logger = logging.getLogger(__name__)
 
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "")
 POC_OUTPUT_DIR = os.getenv("POC_OUTPUT_DIR", "poc/output")
 
-if GOOGLE_API_KEY:
-    genai.configure(api_key=GOOGLE_API_KEY)
+gemini_client = genai.Client(api_key=GOOGLE_API_KEY) if GOOGLE_API_KEY else None
+MODELO_GEMINI = "gemini-2.5-flash"
 
 MAX_TENTATIVAS = 4
 
-import re
-
 def get_locator(page: Page, evento: dict, seletor: str):
+    """Resolve o localizador correto considerando o contexto de iframe do evento."""
     iframe_hint = evento.get('iframe_hint', '')
     if not iframe_hint or iframe_hint == 'Pagina Principal':
         return page.locator(seletor)
-        
-    if iframe_hint.startswith('fp:'):
-        name_match = re.search(r'name=([^,]+)', iframe_hint)
-        id_match = re.search(r'id=([^,]+)', iframe_hint)
-        
-        if name_match:
-            return page.frame_locator(f"iframe[name='{name_match.group(1)}']").locator(seletor)
-        elif id_match:
-            return page.frame_locator(f"iframe[id='{id_match.group(1)}']").locator(seletor)
-            
+
+    # fp:name=<value>
+    name_match = re.search(r'fp:name=([^,]+)', iframe_hint)
+    if name_match:
+        return page.frame_locator(f"iframe[name='{name_match.group(1)}']").locator(seletor)
+
+    # fp:id=<value>
+    id_match = re.search(r'fp:id=([^,]+)', iframe_hint)
+    if id_match:
+        return page.frame_locator(f"iframe[id='{id_match.group(1)}']").locator(seletor)
+
+    # fp:title=<value>
+    title_match = re.search(r'fp:title=([^,]+)', iframe_hint)
+    if title_match:
+        return page.frame_locator(f"iframe[title='{title_match.group(1)}']").locator(seletor)
+
+    # fp:src=<partial path>
+    src_match = re.search(r'fp:src=([^,]+)', iframe_hint)
+    if src_match:
+        return page.frame_locator(f"iframe[src*='{src_match.group(1)}']").locator(seletor)
+
+    # fp:index=<N>
+    idx_match = re.search(r'fp:index=(\d+)', iframe_hint)
+    if idx_match:
+        return page.frame_locator(f"iframe").nth(int(idx_match.group(1))).locator(seletor)
+
     return page.locator(seletor)
 
 async def verificar_pre_condicao(page: Page, evento: dict) -> Tuple[bool, str]:
@@ -59,7 +76,7 @@ async def verificar_pre_condicao(page: Page, evento: dict) -> Tuple[bool, str]:
         except Exception:
             pass
 
-    if not GOOGLE_API_KEY:
+    if not gemini_client:
         return True, "API Key ausente, assumindo pronto"
         
     try:
@@ -79,15 +96,15 @@ Responda APENAS com JSON:
 }}"""
 
         ref_img_data = base64.b64decode(evento['screenshot_raw_b64'])
-        
-        part_ref = {"mime_type": "image/jpeg", "data": ref_img_data}
-        part_atual = {"mime_type": "image/jpeg", "data": base64.b64decode(screenshot_atual)}
-        
-        model = genai.GenerativeModel('gemini-2.0-flash')
-        response = await asyncio.to_thread(
-            model.generate_content,
-            [prompt, part_ref, part_atual],
-            generation_config={"response_mime_type": "application/json"}
+
+        response = await gemini_client.aio.models.generate_content(
+            model=MODELO_GEMINI,
+            contents=[
+                genai_types.Part.from_text(text=prompt),
+                genai_types.Part.from_bytes(data=ref_img_data, mime_type="image/jpeg"),
+                genai_types.Part.from_bytes(data=base64.b64decode(screenshot_atual), mime_type="image/jpeg"),
+            ],
+            config=genai_types.GenerateContentConfig(response_mime_type="application/json")
         )
         
         res_json = json.loads(response.text)
@@ -215,33 +232,36 @@ async def executar_acao(page: Page, evento: dict, estrategias_falhas: set) -> Tu
         estrategia_usada = "coordenada"
         logger.warning(f"  Aviso: usando coordenada absoluta - frágil")
 
+    # Fix: retorna falha explícita se nenhuma estratégia funcionou
+    if not estrategia_usada:
+        logger.warning(f"  Nenhuma estratégia disponível para executar a ação.")
+        return False, ""
+
     # Ações complementares após clique/localização
     if acao in ['preencher_campo', 'digitar_e_enter'] and estrategia_usada:
         valor = evento.get('valor_input', '')
-        # Se usar coord, vai digitar "cego". Com seletor, usa fill.
         if estrategia_usada == "seletor":
             loc = get_locator(page, evento, evento['seletor']).first
             await loc.fill(valor)
-            await loc.press("Tab") # Dispara blur event no Angular
+            await loc.press("Tab")  # Dispara blur event no Angular
             if acao == 'digitar_e_enter':
                 await loc.press("Enter")
         else:
             await page.keyboard.press("Control+A")
             await page.keyboard.press("Backspace")
             await page.keyboard.type(valor, delay=50)
-            await page.keyboard.press("Tab") # Dispara blur event no Angular
+            await page.keyboard.press("Tab")  # Dispara blur event no Angular
             if acao == 'digitar_e_enter':
                 await page.keyboard.press("Enter")
             
     return True, estrategia_usada
 
 async def verificar_pos_condicao(page: Page, evento: dict, screenshot_pre: bytes) -> Tuple[bool, str]:
-    if not GOOGLE_API_KEY:
+    if not gemini_client:
         return True, "API Key ausente, assumindo ok"
         
     try:
         raw_bytes = await page.screenshot(type="jpeg", quality=80)
-        screenshot_pos = base64.b64encode(raw_bytes).decode('utf-8')
         
         texto_esperado = evento.get('valor_input', '')
         acao = evento.get('acao', '')
@@ -275,14 +295,14 @@ Responda APENAS com JSON:
   "erro_visivel": "mensagem de erro na tela se houver, ou null"
 }}"""
 
-        part_antes = {"mime_type": "image/jpeg", "data": screenshot_pre}
-        part_depois = {"mime_type": "image/jpeg", "data": base64.b64decode(screenshot_pos)}
-        
-        model = genai.GenerativeModel('gemini-2.0-flash')
-        response = await asyncio.to_thread(
-            model.generate_content,
-            [prompt, part_antes, part_depois],
-            generation_config={"response_mime_type": "application/json"}
+        response = await gemini_client.aio.models.generate_content(
+            model=MODELO_GEMINI,
+            contents=[
+                genai_types.Part.from_text(text=prompt),
+                genai_types.Part.from_bytes(data=screenshot_pre, mime_type="image/jpeg"),
+                genai_types.Part.from_bytes(data=raw_bytes, mime_type="image/jpeg"),
+            ],
+            config=genai_types.GenerateContentConfig(response_mime_type="application/json")
         )
         
         res_json = json.loads(response.text)
@@ -334,7 +354,7 @@ async def executar_evento(page: Page, evento: dict) -> ResultadoExecucao:
         if not sucesso_acao:
             res["status"] = "falha"
             res["detalhe_erro"] = "Falha em todas as estratégias de ação."
-            break # Falha na ação segue fluxo normal em best-effort, mas aqui paramos o retry
+            break
             
         # PÓS-CONDIÇÃO
         efeito, pos_desc = await verificar_pos_condicao(page, evento, screenshot_pre)
