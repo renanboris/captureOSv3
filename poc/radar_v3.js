@@ -19,17 +19,19 @@ const _patchNav = (method) => {
     const orig = history[method].bind(history);
     history[method] = function(...args) {
         orig(...args);
-        window.capturarElemento(JSON.stringify({
-            acao: 'navegar',
-            tag: 'navigation',
-            texto_encontrado: document.title,
-            seletor: '',
-            posicao_visual: 'x:0,y:0,w:0,h:0',
-            iframe: 'Pagina Principal',
-            html_snapshot: '',
-            url_destino: location.href,
-            url_origem: document.referrer || '',
-        }));
+        if (typeof window.capturarElemento === 'function') {
+            window.capturarElemento(JSON.stringify({
+                acao: 'navegar',
+                tag: 'navigation',
+                texto_encontrado: document.title,
+                seletor: '',
+                posicao_visual: 'x:0,y:0,w:0,h:0',
+                iframe: 'Pagina Principal',
+                html_snapshot: '',
+                url_destino: location.href,
+                url_origem: document.referrer || '',
+            }));
+        }
     };
 };
 ['pushState', 'replaceState'].forEach(_patchNav);

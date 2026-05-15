@@ -105,7 +105,9 @@ async def on_evento(source: Dict[str, Any], args: str):
             "tipo_elemento": "",
             "confianca": "",
             "page_title": await page.title(),
-            "page_url": page.url
+            "page_url": page.url,
+            "url_destino": dados.get("url_destino", ""),
+            "url_origem": dados.get("url_origem", "")
         }
         
         eventos_capturados.append(evento)
@@ -151,7 +153,11 @@ Responda com JSON:
             "data": img_data
         }
         
-        response = model.generate_content([prompt, image_part], generation_config={"response_mime_type": "application/json"})
+        response = await asyncio.to_thread(
+            model.generate_content,
+            [prompt, image_part],
+            generation_config={"response_mime_type": "application/json"}
+        )
         
         result = json.loads(response.text)
         if isinstance(result, list):
@@ -178,13 +184,16 @@ async def enriquecer_lote():
         tasks = [enriquecer_com_gemini(e) for e in lote]
         await asyncio.gather(*tasks)
 
-async def injetar_radar(page: Page):
+async def injetar_radar(page_or_frame):
     try:
         radar_path = os.path.join(os.path.dirname(__file__), "radar_v3.js")
         with open(radar_path, "r", encoding="utf-8") as f:
             script_content = f.read()
-        await page.add_init_script(script_content)
-        await page.evaluate(script_content)
+            
+        if hasattr(page_or_frame, 'add_init_script'):
+            await page_or_frame.add_init_script(script_content)
+            
+        await page_or_frame.evaluate(script_content)
     except Exception as e:
         logger.error(f"Erro ao injetar radar: {e}")
 
@@ -200,8 +209,10 @@ async def main():
         
         await browser_context.expose_binding("capturarElemento", on_evento)
         
-        # Injetar script do radar ao navegar
+        # Injetar script do radar ao navegar e em iframes
         active_page.on('load', lambda page: asyncio.create_task(injetar_radar(page)))
+        active_page.on('frameattached', lambda frame: asyncio.create_task(injetar_radar(frame)))
+        active_page.on('framenavigated', lambda frame: asyncio.create_task(injetar_radar(frame)))
         
         # Carregar página alvo
         logger.info(f"Navegando para {POC_URL}...")

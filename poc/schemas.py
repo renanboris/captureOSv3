@@ -38,6 +38,8 @@ class EventoCapturado(TypedDict):
     confianca: str
     page_title: str
     page_url: str
+    url_destino: Optional[str]
+    url_origem: Optional[str]
 
 class ResultadoExecucao(TypedDict):
     id_acao: int

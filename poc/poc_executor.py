@@ -124,6 +124,17 @@ async def executar_acao(page: Page, evento: dict, estrategias_falhas: set) -> Tu
         await page.evaluate(f"window.scrollTo(0, {y})")
         return True, "javascript"
 
+    if acao == 'selecionar_dropdown':
+        valor = evento.get('valor_input', '')
+        if valor:
+            try:
+                sels = f'.ui-dropdown-item:has-text("{valor}"), .p-dropdown-item:has-text("{valor}")'
+                await get_locator(page, evento, sels).first.click(timeout=3000)
+                return True, "seletor_dropdown"
+            except Exception as e:
+                logger.warning(f"  Falha dropdown: {e}")
+        return False, ""
+
     estrategia_usada = ""
     som_idx = evento.get("som_idx_clicado")
     
@@ -209,7 +220,7 @@ async def executar_acao(page: Page, evento: dict, estrategias_falhas: set) -> Tu
         valor = evento.get('valor_input', '')
         # Se usar coord, vai digitar "cego". Com seletor, usa fill.
         if estrategia_usada == "seletor":
-            loc = page.locator(evento['seletor']).first
+            loc = get_locator(page, evento, evento['seletor']).first
             await loc.fill(valor)
             await loc.press("Tab") # Dispara blur event no Angular
             if acao == 'digitar_e_enter':
@@ -221,18 +232,6 @@ async def executar_acao(page: Page, evento: dict, estrategias_falhas: set) -> Tu
             await page.keyboard.press("Tab") # Dispara blur event no Angular
             if acao == 'digitar_e_enter':
                 await page.keyboard.press("Enter")
-                
-    elif acao == 'selecionar_dropdown':
-        try:
-            # Dropdown PrimeNG (o trigger já foi clicado)
-            # Aguarda overlay e clica no item
-            await get_locator(page, evento, '.ui-dropdown-item, .p-dropdown-item').first.wait_for(state='visible', timeout=3000)
-            valor = evento.get('valor_input', '')
-            if valor:
-                item_loc = get_locator(page, evento, f'.ui-dropdown-item:has-text("{valor}"), .p-dropdown-item:has-text("{valor}")').first
-                await item_loc.click(timeout=2000)
-        except Exception as e:
-            logger.warning(f"  Falha ao selecionar item no dropdown: {e}")
             
     return True, estrategia_usada
 
