@@ -33,8 +33,12 @@ async def get_som_boxes(page: Page) -> List[SoMBox]:
         
         const elements = document.querySelectorAll(SELECTORS.join(', '));
         const boxes = [];
+        const seen = new WeakSet();
         
         elements.forEach(el => {
+            if (seen.has(el)) return;
+            seen.add(el);
+            
             // Check if descendant of aria-hidden
             let cur = el;
             let isHidden = false;
@@ -48,13 +52,17 @@ async def get_som_boxes(page: Page) -> List[SoMBox]:
             if (isHidden) return;
             
             const rect = el.getBoundingClientRect();
-            if (rect.width >= 8 && rect.height >= 8 && rect.x >= 0 && rect.y >= 0 && rect.x + rect.width <= window.innerWidth + 20) {
+            if (rect.width >= 8 && rect.height >= 8 
+                && rect.x >= 0 && rect.y >= 0 
+                && rect.x + rect.width <= window.innerWidth + 20
+                && rect.y + rect.height <= window.innerHeight + 20) {
+                
                 boxes.push({
                     x: Math.round(rect.x),
                     y: Math.round(rect.y),
                     w: Math.round(rect.width),
                     h: Math.round(rect.height),
-                    role: el.tagName.toLowerCase(),
+                    role: el.getAttribute('role') || el.tagName.toLowerCase(),
                     label: (el.getAttribute('aria-label') || el.innerText || '').substring(0, 30).trim()
                 });
             }
@@ -72,7 +80,7 @@ async def get_som_boxes(page: Page) -> List[SoMBox]:
         som_boxes = []
         for idx, b in enumerate(raw_boxes[:80]):
             som_boxes.append({
-                "idx": idx,
+                "idx": idx + 1,
                 "x": b["x"],
                 "y": b["y"],
                 "w": b["w"],
@@ -95,10 +103,20 @@ def anotar_imagem(screenshot_bytes: bytes, boxes: List[SoMBox]) -> bytes:
         draw = ImageDraw.Draw(img)
         
         try:
-            # Fallback for font if default is too small or unavailable
-            font = ImageFont.load_default()
-        except:
+            # Pillow >= 10: load_default accepts size
+            font = ImageFont.load_default(size=14)
+        except TypeError:
+            # Pillow < 10 fallback
+            import os
             font = None
+            for path in ["/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", "C:/Windows/Fonts/arial.ttf"]:
+                if os.path.exists(path):
+                    font = ImageFont.truetype(path, 14)
+                    break
+            if not font:
+                font = ImageFont.load_default()
+        except:
+            font = ImageFont.load_default()
 
         red_color = "#FF3B30"
         
