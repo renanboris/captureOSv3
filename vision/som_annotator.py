@@ -3,7 +3,8 @@ import logging
 from typing import List, Optional
 from PIL import Image, ImageDraw, ImageFont
 from playwright.async_api import Page
-from schemas import SoMBox
+
+SoMBox = dict
 
 logger = logging.getLogger(__name__)
 
@@ -153,6 +154,13 @@ def anotar_imagem(screenshot_bytes: bytes, boxes: List[SoMBox]) -> bytes:
     except Exception as e:
         logger.warning(f"Erro ao anotar imagem: {e}")
         return screenshot_bytes
+
+def anotar_imagem_coordenadas(screenshot_bytes: bytes, boxes: List[dict]) -> bytes:
+    """
+    Desenha bounding boxes baseadas num Dicionario puro (vindo do JSON da extensão)
+    sem usar a tipagem SoMBox atrelada ao Playwright.
+    """
+    return anotar_imagem(screenshot_bytes, boxes)
 
 def identificar_box_clicada(boxes: List[SoMBox], x: int, y: int) -> Optional[int]:
     """
