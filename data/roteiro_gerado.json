@@ -1,0 +1,29 @@
+{
+  "session_id": "sess_1779321970895",
+  "roteiro": [
+    {
+      "passo": 1,
+      "timestamp": 1779321956668,
+      "intencao": {
+        "intencao_detalhada": "Clicar no botão Escalção",
+        "confidence": "high"
+      }
+    },
+    {
+      "passo": 2,
+      "timestamp": 1779321961393,
+      "intencao": {
+        "intencao_detalhada": "Acessar a seção de classificação",
+        "confidence": "high"
+      }
+    },
+    {
+      "passo": 3,
+      "timestamp": 1779321968796,
+      "intencao": {
+        "intencao_detalhada": "Acessar a seção de estatísticas",
+        "confidence": "high"
+      }
+    }
+  ]
+}

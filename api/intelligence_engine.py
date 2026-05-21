@@ -2,12 +2,14 @@ import base64
 import json
 import os
 import logging
+from dotenv import load_dotenv
 from google import genai
 from google.genai import types as genai_types
 
 logger = logging.getLogger(__name__)
 
 async def processar_intencao(image_bytes: bytes, event_data: dict, a11y_tree: list) -> dict:
+    load_dotenv()
     api_key = os.getenv("GOOGLE_API_KEY", "")
     if not api_key:
         return {"intencao": "Configurar GOOGLE_API_KEY", "jargao": "Desconhecido"}

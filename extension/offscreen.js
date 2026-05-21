@@ -1,35 +1,48 @@
 // offscreen.js
 let mediaRecorder = null;
 let recordedChunks = [];
+let videoElement = document.createElement('video');
+videoElement.autoplay = true;
+let canvasElement = document.createElement('canvas');
 
 chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
     if (message.target === 'offscreen') {
         if (message.action === 'start_recording') {
-            await startRecording(message.streamId);
+            await startRecording();
             sendResponse({ status: 'started' });
         } else if (message.action === 'stop_recording') {
             stopRecording();
             sendResponse({ status: 'stopped' });
+        } else if (message.action === 'take_screenshot') {
+            if (videoElement.videoWidth > 0) {
+                canvasElement.width = videoElement.videoWidth;
+                canvasElement.height = videoElement.videoHeight;
+                const ctx = canvasElement.getContext('2d');
+                ctx.drawImage(videoElement, 0, 0, canvasElement.width, canvasElement.height);
+                const dataUrl = canvasElement.toDataURL('image/jpeg', 0.8);
+                sendResponse({ dataUrl: dataUrl });
+            } else {
+                sendResponse({ dataUrl: null });
+            }
         }
     }
+    return true; // Keep message channel open for async response
 });
 
-async function startRecording(streamId) {
+async function startRecording() {
     if (mediaRecorder && mediaRecorder.state === 'recording') {
         return;
     }
     recordedChunks = [];
     
     try {
-        const stream = await navigator.mediaDevices.getUserMedia({
+        const stream = await navigator.mediaDevices.getDisplayMedia({
             audio: false,
-            video: {
-                mandatory: {
-                    chromeMediaSource: 'desktop',
-                    chromeMediaSourceId: streamId
-                }
-            }
+            video: true
         });
+
+        // Conecta o stream no video invisível para podermos extrair os frames
+        videoElement.srcObject = stream;
 
         mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
         

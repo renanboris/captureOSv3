@@ -57,4 +57,12 @@ async def ingest_capture(payload: EventPayload):
             "intencao": resultado
         })
         
+    # Salva localmente para auditoria
+    try:
+        with open("data/roteiro_gerado.json", "w", encoding="utf-8") as f:
+            json.dump({"session_id": payload.session_id, "roteiro": roteiro}, f, ensure_ascii=False, indent=2)
+        logger.info("Roteiro salvo em data/roteiro_gerado.json")
+    except Exception as e:
+        logger.error(f"Erro ao salvar arquivo JSON: {e}")
+
     return {"status": "ok", "roteiro_gerado": roteiro}

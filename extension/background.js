@@ -19,18 +19,29 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         videoBase64 = message.data;
         finalizeUpload();
     }
+    if (message.action === 'get_status') {
+        sendResponse({ isRecording: isRecording });
+        return true;
+    }
+    
     if (message.action === 'user_interaction' && isRecording) {
         // O usuário clicou/digitou. 
-        // 1. Tira print screen no tempo exato
-        chrome.tabs.captureVisibleTab(null, {format: 'jpeg', quality: 80}, (dataUrl) => {
-            const timestamp = Date.now();
-            eventsLog.push({
-                timestamp: timestamp,
-                type: message.type,
-                eventData: message.data,
-                screenshotData: dataUrl
-            });
-            console.log("Evento gravado", message.type);
+        // 1. Tira print screen no tempo exato extraindo o frame da stream de vídeo no Offscreen
+        chrome.runtime.sendMessage({ target: 'offscreen', action: 'take_screenshot' }, (response) => {
+            if (chrome.runtime.lastError) {
+                console.warn("Erro ao pedir frame pro offscreen", chrome.runtime.lastError);
+                return;
+            }
+            if (response && response.dataUrl) {
+                const timestamp = Date.now();
+                eventsLog.push({
+                    timestamp: timestamp,
+                    type: message.type,
+                    eventData: message.data,
+                    screenshotData: response.dataUrl
+                });
+                console.log("Evento gravado", message.type);
+            }
         });
     }
     
@@ -52,19 +63,11 @@ async function startCapture() {
     // Configura offscreen
     await setupOffscreenDocument('offscreen.html');
 
-    // Pega streamId da aba atual
-    chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
-        chrome.desktopCapture.chooseDesktopMedia(['tab'], tabs[0], (streamId) => {
-            if (streamId) {
-                chrome.runtime.sendMessage({
-                    target: 'offscreen',
-                    action: 'start_recording',
-                    streamId: streamId
-                });
-                console.log("Gravação Delegada ao Offscreen");
-            }
-        });
+    chrome.runtime.sendMessage({
+        target: 'offscreen',
+        action: 'start_recording'
     });
+    console.log("Gravação Delegada ao Offscreen via getDisplayMedia nativo");
 }
 
 async function stopCapture() {

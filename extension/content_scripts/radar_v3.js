@@ -10,10 +10,11 @@
         let snapshot = [];
         
         while(currentNode) {
+            const cName = typeof currentNode.className === 'string' ? currentNode.className : '';
             const isInteractive = ['BUTTON', 'A', 'INPUT', 'SELECT', 'TEXTAREA'].includes(currentNode.tagName) || 
                                   currentNode.hasAttribute('role') ||
-                                  currentNode.className.includes('p-button') ||
-                                  currentNode.className.includes('ui-dropdown');
+                                  cName.includes('p-button') ||
+                                  cName.includes('ui-dropdown');
                                   
             if(isInteractive) {
                 const rect = currentNode.getBoundingClientRect();
@@ -69,11 +70,17 @@
             a11y_tree: tree
         };
 
-        chrome.runtime.sendMessage({
-            action: 'user_interaction',
-            type: type,
-            data: payload
-        });
+        try {
+            if (chrome.runtime && chrome.runtime.sendMessage) {
+                chrome.runtime.sendMessage({
+                    action: 'user_interaction',
+                    type: type,
+                    data: payload
+                });
+            }
+        } catch (err) {
+            console.warn("Capture OS v3: Contexto da extensão foi invalidado durante o clique.", err);
+        }
     }
 
     // Bind events
@@ -99,18 +106,24 @@
             if (urlAtual !== window.location.href) {
                 urlAtual = window.location.href;
                 console.log("Capture OS v3 - Navegação SPA Detectada:", urlAtual);
-                chrome.runtime.sendMessage({
-                    action: 'user_interaction',
-                    type: 'navigation',
-                    data: {
-                        action: 'navigation',
-                        url: urlAtual,
-                        click_position: {x: 0, y: 0},
-                        target_tag: 'BODY',
-                        target_text: '',
-                        a11y_tree: getSemanticSnapshot()
+                try {
+                    if (chrome.runtime && chrome.runtime.sendMessage) {
+                        chrome.runtime.sendMessage({
+                            action: 'user_interaction',
+                            type: 'navigation',
+                            data: {
+                                action: 'navigation',
+                                url: urlAtual,
+                                click_position: {x: 0, y: 0},
+                                target_tag: 'BODY',
+                                target_text: '',
+                                a11y_tree: getSemanticSnapshot()
+                            }
+                        });
                     }
-                });
+                } catch (err) {
+                    console.warn("Capture OS v3: Falha ao enviar evento SPA", err);
+                }
             }
         }, 500);
     });
