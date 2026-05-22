@@ -1,52 +1,108 @@
 import os
 import logging
-try:
-    import ffmpeg
-except ImportError:
-    ffmpeg = None
+from moviepy import VideoFileClip, AudioFileClip, CompositeAudioClip, concatenate_videoclips
 
 logger = logging.getLogger(__name__)
 
-def inject_freeze_frame(input_webm: str, click_timestamp_sec: float, freeze_duration_sec: float, output_webm: str):
+def compose_video_with_freeze_frames(input_webm: str, output_mp4: str, timeline_events: list):
     """
-    Corta o vídeo no instante do clique, injeta uma repetição estática (freeze frame) 
-    para expandir a duração e caber o TTS da Aura, e concatena o restante do vídeo.
+    timeline_events = [
+        {"timestamp": 2.5, "audio_path": "audios/passo_1.mp3"},
+        {"timestamp": 5.0, "audio_path": "audios/passo_2.mp3"}
+    ]
     """
-    if not ffmpeg:
-        logger.error("ffmpeg-python não instalado. Rode: pip install ffmpeg-python")
+    if not os.path.exists(input_webm):
+        logger.error("Vídeo de entrada não encontrado.")
         return False
 
-    if not os.path.exists(input_webm):
-        logger.error(f"Vídeo de entrada não encontrado: {input_webm}")
-        return False
-        
     try:
-        # Puxando o input principal
-        in_file = ffmpeg.input(input_webm)
+        print("Abrindo video clip...")
+        video = VideoFileClip(input_webm)
+        print(f"Video aberto com duracao {video.duration}")
+        clips = []
+        audio_clips = []
         
-        # Corta a Parte 1 (do começo até o clique)
-        part1 = in_file.trim(start=0, end=click_timestamp_sec).setpts('PTS-STARTPTS')
+        current_time = 0
+        shifted_time = 0
         
-        # Extrai o frame exato do clique para congelar
-        freeze = (
-            in_file
-            .trim(start=click_timestamp_sec, end=click_timestamp_sec + 0.05) # Pega um frame minimo
-            .filter('loop', loop=-1, size=1) # Faz o frame se repetir infinitamente
-            .trim(duration=freeze_duration_sec) # Limita a duração da repetição ao tempo do áudio TTS
-            .setpts('PTS-STARTPTS')
+        for event in timeline_events:
+            ts = event['timestamp']
+            audio_path = event['audio_path']
+            
+            if not os.path.exists(audio_path):
+                logger.warning(f"Audio não encontrado: {audio_path}")
+                continue
+                
+            audio = AudioFileClip(audio_path)
+            dur = audio.duration
+            
+            # O Segredo Pedagógico: Congelar a tela ANTES do clique acontecer!
+            # Volta 0.8 segundos no tempo (ou trava no zero se for no inicio).
+            freeze_ts = max(0, ts - 0.8)
+            
+            # 1. Adiciona o vídeo normal do ponto atual até o momento do congelamento
+            if freeze_ts > current_time:
+                end_ts = min(freeze_ts, video.duration)
+                clip = video.subclipped(current_time, end_ts)
+                clips.append(clip)
+                shifted_time += clip.duration
+                
+            # 2. Extrai o frame exato 0.8s antes do clique e congela
+            # Aqui a IA vai falar "Clique no botão X" enquanto a tela está estática
+            safe_freeze = min(freeze_ts, video.duration - 0.1)
+            print(f"Gerando frame congelado no tempo {safe_freeze}")
+            freeze = video.to_ImageClip(t=safe_freeze).with_duration(dur)
+            clips.append(freeze)
+            print("Frame congelado adicionado")
+            
+            # 3. Posiciona o áudio exatamente no momento do freeze frame
+            audio = audio.with_start(shifted_time)
+            audio_clips.append(audio)
+            
+            # Atualiza os contadores
+            shifted_time += dur
+            current_time = freeze_ts
+            
+        # 4. Adiciona o restante do vídeo (após o último clique)
+        if current_time < video.duration:
+            clip = video.subclipped(current_time, video.duration)
+            clips.append(clip)
+            
+        # Adiciona um freeze frame final de 3.5 segundos para mostrar o resultado da última ação
+        if video.duration > 0:
+            safe_final_t = max(0, video.duration - 0.1)
+            final_freeze = video.to_ImageClip(t=safe_final_t).with_duration(3.5)
+            clips.append(final_freeze)
+            
+        # 5. Concatena e aplica a trilha de voz
+        if not clips:
+            logger.error("Nenhum clip gerado na timeline.")
+            return False
+            
+        final_video = concatenate_videoclips(clips)
+        
+        if audio_clips:
+            final_video = final_video.with_audio(CompositeAudioClip(audio_clips))
+            
+        # 6. Renderiza
+        logger.info(f"Renderizando MP4 final: {output_mp4}")
+        print("Iniciando write_videofile...")
+        final_video.write_videofile(
+            output_mp4,
+            codec="libx264",
+            audio_codec="aac",
+            fps=30,
+            preset="fast",
+            threads=4,
+            ffmpeg_params=["-crf", "18", "-pix_fmt", "yuv420p"]
         )
         
-        # Corta a Parte 2 (do clique até o fim)
-        part2 = in_file.trim(start=click_timestamp_sec).setpts('PTS-STARTPTS')
-        
-        # Concatena as 3 partes
-        joined = ffmpeg.concat(part1, freeze, part2, v=1, a=0)
-        
-        # Gera o output
-        joined.output(output_webm).run(overwrite_output=True, quiet=True)
-        
-        logger.info(f"Freeze frame de {freeze_duration_sec}s injetado com sucesso no segundo {click_timestamp_sec}")
+        video.close()
+        final_video.close()
+        for a in audio_clips:
+            a.close()
+            
         return True
     except Exception as e:
-        logger.error(f"Erro na injeção de freeze frame via FFmpeg: {e}")
+        logger.error(f"Erro na composição do vídeo (Time Bender): {e}")
         return False

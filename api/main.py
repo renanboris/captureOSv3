@@ -3,66 +3,47 @@ import json
 import logging
 import base64
 from pydantic import BaseModel
-from typing import List, Any
+from typing import List, Any, Dict
 from vision.som_annotator import anotar_imagem_coordenadas
-from api.intelligence_engine import processar_intencao
+from api.export_pipeline import renderizar_exportacao
+from api.status_manager import get_status, update_status
+from fastapi import BackgroundTasks
+from fastapi.staticfiles import StaticFiles
+import os
+import asyncio
 
 app = FastAPI(title="Capture OS v3 Ingestion API")
 logger = logging.getLogger("uvicorn.error")
 
+# Servir os vídeos finalizados como arquivos estáticos (Player)
+os.makedirs("data/videos_gerados", exist_ok=True)
+app.mount("/videos_gerados", StaticFiles(directory="data/videos_gerados"), name="videos_gerados")
+
 class EventPayload(BaseModel):
     session_id: str
-    events: List[Any]
+    recording_start_time: int = 0
+    events: List[Dict[str, Any]] = []
+    video_webm: str = ""
 
 @app.post("/api/v1/capture/ingest")
 async def ingest_capture(payload: EventPayload):
     logger.info(f"Recebido payload da sessão: {payload.session_id}")
     
-    roteiro = []
-    
-    # Processa cada evento isoladamente (mockando comportamento real de pipeline)
-    for idx, ev in enumerate(payload.events):
-        event_data = ev.get('eventData', {})
-        a11y_tree = event_data.get('a11y_tree', [])
-        
-        # O screenshot é base64 jpeg
-        b64_data = ev.get('screenshotData', '').split(',')[-1]
-        raw_bytes = base64.b64decode(b64_data) if b64_data else b""
-        
-        # Pegar as coordenadas da A11y Tree
-        boxes = []
-        for node in a11y_tree:
-            geom = node.get('geometry')
-            if geom:
-                boxes.append({
-                    "idx": node.get("som_id"),
-                    "x": geom["x"],
-                    "y": geom["y"],
-                    "w": geom["w"],
-                    "h": geom["h"]
-                })
-        
-        # 1. Anota a imagem usando PIL
-        if raw_bytes and boxes:
-            annotated_bytes = anotar_imagem_coordenadas(raw_bytes, boxes)
-        else:
-            annotated_bytes = raw_bytes
-            
-        # 2. Motor de Inteligência Semântica
-        resultado = await processar_intencao(annotated_bytes, event_data, a11y_tree)
-        
-        roteiro.append({
-            "passo": idx + 1,
-            "timestamp": ev.get("timestamp"),
-            "intencao": resultado
-        })
-        
-    # Salva localmente para auditoria
-    try:
-        with open("data/roteiro_gerado.json", "w", encoding="utf-8") as f:
-            json.dump({"session_id": payload.session_id, "roteiro": roteiro}, f, ensure_ascii=False, indent=2)
-        logger.info("Roteiro salvo em data/roteiro_gerado.json")
-    except Exception as e:
-        logger.error(f"Erro ao salvar arquivo JSON: {e}")
+    update_status(payload.session_id, "processing", "Recebendo imagens...")
 
-    return {"status": "ok", "roteiro_gerado": roteiro}
+    # Dispara o Pipeline Completo (IA + Vídeo) DESACOPLADO da requisição!
+    payload_dict = payload.model_dump()
+    asyncio.create_task(renderizar_exportacao(payload_dict))
+
+    return {"status": "ok", "session_id": payload.session_id}
+
+@app.get("/api/v1/capture/status/{session_id}")
+async def check_status(session_id: str):
+    status_data = get_status(session_id)
+    if status_data.get("status") == "completed":
+        return {
+            "status": "completed", 
+            "url": f"http://localhost:8000/videos_gerados/{session_id}_final.mp4"
+        }
+        
+    return status_data

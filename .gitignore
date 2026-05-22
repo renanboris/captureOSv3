@@ -15,3 +15,4 @@ __pycache__/
 # Outros
 *.log
 legacy_repos_tmp/
+data/

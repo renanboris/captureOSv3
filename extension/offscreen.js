@@ -38,7 +38,9 @@ async function startRecording() {
     try {
         const stream = await navigator.mediaDevices.getDisplayMedia({
             audio: false,
-            video: true
+            video: {
+                displaySurface: "browser"
+            }
         });
 
         // Conecta o stream no video invisível para podermos extrair os frames
@@ -71,6 +73,9 @@ async function startRecording() {
 
         mediaRecorder.start();
         console.log("Offscreen: Gravação WebM iniciada com sucesso.");
+        
+        // Avisa o background que tudo funcionou e que ele pode iniciar o relógio e widget
+        chrome.runtime.sendMessage({ target: 'background', action: 'recording_started_successfully' });
 
     } catch (err) {
         console.error("Offscreen: Erro ao iniciar getUserMedia", err);
