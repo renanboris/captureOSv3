@@ -1,5 +1,92 @@
 // background.js
 
+let blinkInterval = null;
+let isDotVisible = true;
+
+function drawCameraIcon(ctx, color) {
+    ctx.fillStyle = color;
+    // Corpo da câmera
+    ctx.beginPath();
+    if (ctx.roundRect) {
+        ctx.roundRect(1, 4, 9, 8, 2);
+    } else {
+        ctx.rect(1, 4, 9, 8);
+    }
+    ctx.fill();
+    // Lente (Triângulo)
+    ctx.beginPath();
+    ctx.moveTo(10, 6.5);
+    ctx.lineTo(15, 3.5);
+    ctx.lineTo(15, 12.5);
+    ctx.lineTo(10, 9.5);
+    ctx.fill();
+}
+
+function setStaticIcon() {
+    if (blinkInterval) clearInterval(blinkInterval);
+    const canvas = new OffscreenCanvas(16, 16);
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, 16, 16);
+    
+    drawCameraIcon(ctx, '#0b5ce3'); // Azul Clean
+    
+    chrome.action.setIcon({ imageData: ctx.getImageData(0, 0, 16, 16) });
+}
+
+function startBlinkingBadge() {
+    chrome.action.setBadgeText({ text: "" }); // Remove o texto
+    if (blinkInterval) clearInterval(blinkInterval);
+    
+    blinkInterval = setInterval(() => {
+        isDotVisible = !isDotVisible;
+        const canvas = new OffscreenCanvas(16, 16);
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, 16, 16);
+        
+        // Base da câmera desativada (cinza) para destacar o REC
+        drawCameraIcon(ctx, '#64748b'); 
+        
+        // Notification Badge Pulsante (Canto superior direito)
+        if (isDotVisible) {
+            ctx.fillStyle = '#FF3B30';
+            ctx.beginPath();
+            ctx.arc(13, 3, 3, 0, 2 * Math.PI);
+            ctx.fill();
+            
+            ctx.fillStyle = 'rgba(255, 59, 48, 0.4)';
+            ctx.beginPath();
+            ctx.arc(13, 3, 4.5, 0, 2 * Math.PI);
+            ctx.fill();
+        } else {
+            ctx.fillStyle = 'rgba(255, 59, 48, 0.15)';
+            ctx.beginPath();
+            ctx.arc(13, 3, 3, 0, 2 * Math.PI);
+            ctx.fill();
+        }
+        
+        chrome.action.setIcon({ imageData: ctx.getImageData(0, 0, 16, 16) });
+    }, 600);
+}
+
+// Restaura estado visual do icone ao inicializar o Service Worker
+chrome.storage.local.get(['isRecording'], async (res) => {
+    if (res.isRecording) {
+        // Correção de Bug: Verifica se o processo fantasma (Offscreen) ainda existe
+        // Caso o usuário tenha recarregado a extensão ou a memória tenha se perdido
+        if (chrome.offscreen) {
+            const hasDoc = await chrome.offscreen.hasDocument();
+            if (!hasDoc) {
+                chrome.storage.local.set({ isRecording: false });
+                setStaticIcon();
+                return;
+            }
+        }
+        startBlinkingBadge();
+    } else {
+        setStaticIcon();
+    }
+});
+
 async function setupOffscreenDocument(path) {
     if (await chrome.offscreen.hasDocument()) return;
     await chrome.offscreen.createDocument({
@@ -9,9 +96,20 @@ async function setupOffscreenDocument(path) {
     });
 }
 
+chrome.runtime.onInstalled.addListener((details) => {
+    if (details.reason === 'install' || details.reason === 'update') {
+        chrome.storage.local.set({ needsOnboarding: true });
+    }
+});
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.target === 'background' && message.action === 'recording_ready') {
         const videoBase64 = message.data;
+        
+        // Garante que desligamos o ícone piscante mesmo se ele parou pelo botão nativo do Chrome
+        chrome.storage.local.set({ isRecording: false });
+        setStaticIcon();
+        
         chrome.storage.local.get(['recordingStartTime', 'eventsLog'], (res) => {
             finalizeUpload(videoBase64, res.recordingStartTime || 0, res.eventsLog || []);
         });
@@ -67,9 +165,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             eventsLog: []
         });
         
-        // Define o Badge vermelho piscando de REC no ícone da extensão no topo do Chrome
-        chrome.action.setBadgeText({ text: "REC" });
-        chrome.action.setBadgeBackgroundColor({ color: "#FF3B30" });
+        // Inicia o ponto vermelho pulsante nativo no ícone da extensão
+        startBlinkingBadge();
     }
     
     if (message.action === 'stop_recording') {
@@ -93,7 +190,9 @@ async function startCapture() {
 
 async function stopCapture() {
     chrome.storage.local.set({ isRecording: false });
-    chrome.action.setBadgeText({ text: "" }); // Limpa o Badge
+    chrome.action.setBadgeText({ text: "" }); 
+    setStaticIcon(); // Volta para o ícone azul original
+    
     console.log("Parando gravação. Aguardando vídeo do Offscreen...");
     chrome.runtime.sendMessage({
         target: 'offscreen',
@@ -145,13 +244,17 @@ function finalizeUpload(videoBase64, recordingStartTime, eventsLog) {
                               }
                           } else if(status.status === "completed") {
                               clearInterval(pollInterval);
-                              console.log("Vídeo finalizado! Abrindo player...");
+                              console.log("Vídeo finalizado! Abrindo player modal...");
                               chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
                                   if(tabs[0]) {
-                                      chrome.tabs.sendMessage(tabs[0].id, {action: "show_toast", type: "success"}).catch(()=>{});
+                                      // Dispara o Modal Shadow DOM na página atual
+                                      chrome.tabs.sendMessage(tabs[0].id, {
+                                          action: "show_player_modal",
+                                          url: status.url,
+                                          roteiro: status.roteiro || []
+                                      }).catch(()=>{});
                                   }
                               });
-                              chrome.tabs.create({ url: status.url });
                           }
                       })
                       .catch(e => console.error("Erro no polling", e));

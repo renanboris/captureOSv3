@@ -101,7 +101,8 @@ async def renderizar_exportacao(payload: dict):
         roteiro_enriquecido = roteiro
 
     try:
-        with open("data/roteiro_gerado.json", "w", encoding="utf-8") as f:
+        os.makedirs("data/roteiros", exist_ok=True)
+        with open(f"data/roteiros/{session_id}.json", "w", encoding="utf-8") as f:
             json.dump({"session_id": session_id, "roteiro": roteiro_enriquecido}, f, ensure_ascii=False, indent=2)
     except: pass
     
