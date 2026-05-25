@@ -104,7 +104,12 @@ async def renderizar_exportacao(payload: dict):
         os.makedirs("data/roteiros", exist_ok=True)
         with open(f"data/roteiros/{session_id}.json", "w", encoding="utf-8") as f:
             json.dump({"session_id": session_id, "roteiro": roteiro_enriquecido}, f, ensure_ascii=False, indent=2)
-    except: pass
+            
+        with open(f"data/roteiros/{session_id}.jsonl", "w", encoding="utf-8") as f:
+            for passo in roteiro_enriquecido:
+                f.write(json.dumps(passo, ensure_ascii=False) + "\n")
+    except Exception as e: 
+        logger.error(f"Erro ao salvar JSON/JSONL: {e}")
     
     # --- 3. CONSTRUIR ÁUDIOS ---
     update_status(session_id, "processing", "🎙️ Assistente gravando a locução profissional...")
@@ -124,10 +129,18 @@ async def renderizar_exportacao(payload: dict):
             continue
         
         # O tempo relativo em segundos dentro do vídeo cru:
-        if start_time_ms > 0:
-            rel_sec = (timestamp_ms - start_time_ms) / 1000.0
+        if timestamp_ms == 0 and passo.get("passo") == 0:
+            rel_sec = 3.5  # Introdução começa após o término do contador de 3 segundos
+        elif timestamp_ms == 99999999 or passo.get("passo") == 999:
+            # A conclusão será amarrada ao final do vídeo
+            rel_sec = timeline_events[-1]["timestamp"] + 3.0 if timeline_events else 5.0
+        elif start_time_ms > 0:
+            # COMPENSAÇÃO DE DELAY (600ms): O MediaRecorder tem um pequeno atraso para iniciar,
+            # e a página pode começar a transição imediatamente após o clique.
+            # Subtraímos 0.6s para garantir que o frame congelado seja exatamente ANTES do clique.
+            rel_sec = max(3.5, ((timestamp_ms - start_time_ms) / 1000.0) - 0.6)
         else:
-            # Fallback (começa no segundo 2 caso nao tenha start time para o primeiro evento)
+            # Fallback
             rel_sec = 2.0 + (idx * 3.0) 
             
         # Gera o áudio

@@ -2,6 +2,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Elementos do DOM
     const btnStart = document.getElementById('btn-start');
     const btnStop = document.getElementById('btn-stop');
+    const btnAbort = document.getElementById('btn-abort');
     const pinWarning = document.getElementById('pin-warning');
     
     // Toggles
@@ -73,6 +74,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             
             btnStart.style.display = 'none';
             btnStop.style.display = 'flex';
+            btnAbort.style.display = 'flex';
         }
     });
 
@@ -83,6 +85,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     btnStop.addEventListener('click', () => {
         chrome.runtime.sendMessage({action: 'stop_recording'});
+        window.close();
+    });
+
+    btnAbort.addEventListener('click', () => {
+        chrome.runtime.sendMessage({action: 'abort_recording'});
         window.close();
     });
 });

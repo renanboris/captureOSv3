@@ -48,6 +48,91 @@
         return snapshot;
     }
 
+    // --- RPA: Motor Avançado de Seletores ---
+    function getXPath(element) {
+        if (!element) return '';
+        if (element.id) return `//*[@id="${element.id}"]`;
+        if (element.tagName === 'BODY') return '/html/body';
+
+        let ix = 0;
+        let siblings = element.parentNode ? element.parentNode.childNodes : [];
+        for (let i = 0; i < siblings.length; i++) {
+            let sibling = siblings[i];
+            if (sibling === element) {
+                return getXPath(element.parentNode) + '/' + element.tagName.toLowerCase() + '[' + (ix + 1) + ']';
+            }
+            if (sibling.nodeType === 1 && sibling.tagName === element.tagName) {
+                ix++;
+            }
+        }
+        return '';
+    }
+
+    function getCssSelector(el) {
+        if (!el) return '';
+        if (el.id) return `#${el.id}`;
+        
+        // Se tiver data-testid (padrão react/moderno), usa!
+        if (el.getAttribute('data-testid')) return `[data-testid="${el.getAttribute('data-testid')}"]`;
+        if (el.getAttribute('name')) return `${el.tagName.toLowerCase()}[name="${el.getAttribute('name')}"]`;
+
+        let path = [];
+        while (el.nodeType === Node.ELEMENT_NODE) {
+            let selector = el.nodeName.toLowerCase();
+            if (el.id) {
+                selector += '#' + el.id;
+                path.unshift(selector);
+                break;
+            } else {
+                let sib = el, nth = 1;
+                while (sib = sib.previousElementSibling) {
+                    if (sib.nodeName.toLowerCase() == selector) nth++;
+                }
+                if (nth != 1) selector += ":nth-of-type(" + nth + ")";
+            }
+            path.unshift(selector);
+            el = el.parentNode;
+            if (!el || el.nodeType !== Node.ELEMENT_NODE || el.tagName === 'BODY') break;
+        }
+        return path.join(' > ');
+    }
+
+    function isSensitive(el) {
+        if (!el) return false;
+        if (el.type === 'password') return true;
+        
+        const attributes = [el.name, el.id, el.className, el.placeholder].join(' ').toLowerCase();
+        const keywords = ['senha', 'password', 'pwd', 'credit', 'card', 'cvv', 'cpf', 'ssn', 'secret'];
+        for (let w of keywords) {
+            if (attributes.includes(w)) return true;
+        }
+        return false;
+    }
+
+    function getElementContext(target) {
+        let text = (target.innerText || target.value || target.getAttribute('aria-label') || '').substring(0, 100).trim();
+        
+        if (isSensitive(target)) {
+            text = '*** [DADO SENSÍVEL OCULTO] ***';
+        }
+
+        return {
+            target_tag: target.tagName,
+            target_text: text,
+            xpath: getXPath(target),
+            css_selector: getCssSelector(target),
+            attributes: {
+                id: target.id || null,
+                class: target.className || null,
+                name: target.name || null,
+                type: target.type || null,
+                href: target.href || null,
+                placeholder: target.placeholder || null,
+                value: target.value && !isSensitive(target) ? target.value.substring(0, 100) : null
+            }
+        };
+    }
+
     function interceptEvent(e, type) {
         // Encontra a árvore atual
         const tree = getSemanticSnapshot();
@@ -60,19 +145,23 @@
             return;
         }
 
-        const rect = target.getBoundingClientRect();
         const dpr = window.devicePixelRatio || 1;
         const clickPos = {
             x: Math.round(e.clientX * dpr),
             y: Math.round(e.clientY * dpr)
         };
 
+        const context = getElementContext(target);
+
         const payload = {
             action: type,
             url: window.location.href,
             click_position: clickPos,
-            target_tag: target.tagName,
-            target_text: (target.innerText || '').substring(0, 50),
+            target_tag: context.target_tag,
+            target_text: context.target_text,
+            xpath: context.xpath,
+            css_selector: context.css_selector,
+            target_attributes: context.attributes,
             a11y_tree: tree
         };
 
@@ -91,14 +180,19 @@
 
     // Bind events
     document.addEventListener('click', (e) => interceptEvent(e, 'click'), true);
+    document.addEventListener('dblclick', (e) => interceptEvent(e, 'dblclick'), true);
     
-    // Add simple debounce for input
+    // Add simple debounce for input and change
     let typingTimer;
     document.addEventListener('input', (e) => {
         clearTimeout(typingTimer);
         typingTimer = setTimeout(() => {
             interceptEvent(e, 'input');
-        }, 800);
+        }, 1200); // 1.2s para garantir que o usuário parou de digitar
+    }, true);
+    
+    document.addEventListener('change', (e) => {
+        interceptEvent(e, 'change');
     }, true);
 
     // Observer SPA (Single Page Application) - Macro Compatible
@@ -122,7 +216,10 @@
                                 url: urlAtual,
                                 click_position: {x: 0, y: 0},
                                 target_tag: 'BODY',
-                                target_text: '',
+                                target_text: 'Navegação de Página',
+                                xpath: '/html/body',
+                                css_selector: 'body',
+                                target_attributes: {},
                                 a11y_tree: getSemanticSnapshot()
                             }
                         });
@@ -137,6 +234,10 @@
 
     // --- UX Feedback (Toast & Widget) ---
     chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+        // Bloqueia a renderização de UI dentro de Iframes! O UI deve aparecer apenas na janela principal.
+        const isUIAction = ["show_toast", "update_toast", "show_player_modal", "show_pin_tooltip"].includes(msg.action);
+        if (isUIAction && window !== window.top) return;
+
         if (msg.action === "show_toast") {
             showToast(msg.type);
         } else if (msg.action === "update_toast") {
@@ -167,8 +268,76 @@
             if(toast) toast.remove();
             
             mountPlayerModal(msg.url, msg.roteiro);
-        } else if (msg.action === "show_pin_tooltip") {
-            mountOnboardingTooltip();
+        } else if (msg.action === "show_countdown") {
+            if (window !== window.top) return; // Impede que iframes renderizem contadores duplicados
+            
+            // Remove o overlay antigo se existir
+            let oldOverlay = document.getElementById("capture-os-countdown");
+            if (oldOverlay) oldOverlay.remove();
+            
+            const overlay = document.createElement("div");
+            overlay.id = "capture-os-countdown";
+            overlay.style.cssText = `
+                position: fixed; top: 40px; left: 50%; transform: translateX(-50%);
+                background: rgba(15,23,42,0.9); z-index: 2147483647;
+                display: flex; align-items: center; justify-content: center; gap: 14px;
+                backdrop-filter: blur(16px); border: 1px solid rgba(255,255,255,0.12);
+                border-radius: 100px; padding: 12px 28px;
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+                box-shadow: 0 12px 32px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.05);
+                transition: opacity 0.5s ease, transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+                animation: _capture_slideDown 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+            `;
+            
+            const style = document.createElement('style');
+            style.innerHTML = `
+                @keyframes _capture_slideDown {
+                    from { transform: translate(-50%, -20px); opacity: 0; }
+                    to { transform: translate(-50%, 0); opacity: 1; }
+                }
+                @keyframes _capture_pulse_dot {
+                    0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+                    70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(239, 68, 68, 0); }
+                    100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+                }
+            `;
+            document.head.appendChild(style);
+            
+            const countText = document.createElement("div");
+            countText.style.cssText = `
+                font-size: 22px; font-weight: 700; color: #ef4444;
+                min-width: 20px; text-align: center;
+            `;
+            
+            const hint = document.createElement("div");
+            hint.innerHTML = "Preparando a gravação...";
+            hint.style.cssText = `
+                font-size: 15px; font-weight: 500; color: #f8fafc; letter-spacing: 0.2px;
+            `;
+
+            overlay.appendChild(countText);
+            overlay.appendChild(hint);
+            document.documentElement.appendChild(overlay);
+
+            let counter = 3;
+            countText.innerText = counter;
+
+            const interval = setInterval(() => {
+                counter--;
+                if (counter > 0) {
+                    countText.innerText = counter;
+                } else {
+                    clearInterval(interval);
+                    
+                    // Some imediatamente, sem tela de 'Gravando'
+                    overlay.style.opacity = "0";
+                    overlay.style.transform = "translate(-50%, -20px)";
+                    setTimeout(() => {
+                        overlay.remove();
+                        style.remove();
+                    }, 500);
+                }
+            }, 1000);
         }
     });
 
@@ -219,19 +388,61 @@
         }, 10);
 
         if (type === "processing") {
-            toast.style.background = "rgba(20, 20, 20, 0.8)";
+            toast.style.background = "rgba(20, 20, 20, 0.85)";
             toast.style.border = "1px solid rgba(255, 255, 255, 0.1)";
+            // Adicionada a Progress Bar na base do Toast
+            toast.style.flexDirection = "column";
+            toast.style.alignItems = "stretch";
+            toast.style.gap = "8px";
+            toast.style.padding = "14px 20px 10px 20px";
+            
             toast.innerHTML = `
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#2979ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="capture-spin">
-                    <circle cx="12" cy="12" r="10"></circle>
-                    <path d="M12 2v4"></path>
-                </svg>
-                <span id="capture-os-toast-msg"><b>Capture OS:</b> Enviando capturas para IA...</span>
+                <div style="display: flex; flex-direction: column; width: 100%; gap: 10px;">
+                    <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
+                        <div style="display: flex; align-items: center; gap: 14px;">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2979ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="capture-spin">
+                                <circle cx="12" cy="12" r="10"></circle>
+                                <path d="M12 2v4"></path>
+                            </svg>
+                            <span id="capture-os-toast-msg" style="font-size: 14px;"><b>Capture OS:</b> Processando...</span>
+                        </div>
+                        <button id="capture-os-cancel-btn" style="background: none; border: none; color: #ef4444; font-size: 13px; font-weight: 600; cursor: pointer; padding: 4px 8px; border-radius: 4px;">Cancelar</button>
+                    </div>
+                    <div style="width: 100%; height: 4px; background: rgba(255,255,255,0.1); border-radius: 2px; overflow: hidden;">
+                        <div class="capture-progress-fill"></div>
+                    </div>
+                </div>
             `;
+            
+            setTimeout(() => {
+                const cancelBtn = document.getElementById("capture-os-cancel-btn");
+                if (cancelBtn) {
+                    cancelBtn.onclick = () => {
+                        chrome.runtime.sendMessage({ action: "abort_processing" }).catch(() => {});
+                        fecharToast(toast);
+                    };
+                }
+            }, 100);
             if (!document.getElementById("capture-os-toast-style")) {
                 const style = document.createElement("style");
                 style.id = "capture-os-toast-style";
-                style.innerHTML = "@keyframes capture-spin { 100% { transform: rotate(360deg); } } .capture-spin { animation: capture-spin 1s linear infinite; }";
+                style.innerHTML = `
+                    @keyframes capture-spin { 100% { transform: rotate(360deg); } } 
+                    .capture-spin { animation: capture-spin 1s linear infinite; }
+                    @keyframes capture-progress { 
+                        0% { width: 0%; } 
+                        20% { width: 30%; }
+                        50% { width: 60%; }
+                        80% { width: 85%; }
+                        100% { width: 95%; } 
+                    }
+                    .capture-progress-fill {
+                        height: 100%;
+                        background: #2979ff;
+                        width: 0%;
+                        animation: capture-progress 60s cubic-bezier(0.1, 0.7, 0.1, 1) forwards;
+                    }
+                `;
                 document.head.appendChild(style);
             }
         } else if (type === "success") {
@@ -373,10 +584,17 @@
 
         let stepsHtml = '';
         if (roteiro && roteiro.length > 0) {
-            roteiro.forEach(passo => {
+            roteiro.forEach((passo, index) => {
+                let badge = passo.passo;
+                if (passo.passo === 0) badge = '💡';
+                if (passo.passo === 999) badge = '✅';
+                
+                // Se a IA não retornou o passo 0 ou 999, e quisemos apenas sequenciar:
+                // Mas os guardrails garantem o 0 e o 999.
+                
                 stepsHtml += `
                     <div class="step-item">
-                        <div class="step-num">${passo.passo}</div>
+                        <div class="step-num" style="${passo.passo === 0 || passo.passo === 999 ? 'background: #eff6ff; color: #0b5ce3; font-size: 14px;' : ''}">${badge}</div>
                         <div class="step-text">${passo.intencao_original}</div>
                     </div>
                 `;
@@ -577,15 +795,8 @@
             setTimeout(() => host.remove(), 400);
         });
 
-        const downloadBtn = shadow.getElementById('download-btn');
-        downloadBtn.addEventListener('click', () => {
-            const a = document.createElement('a');
-            a.href = videoUrl;
-            a.download = `tutorial_capture_os_${Date.now()}.mp4`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-        });
+        // Removido o event listener do download-btn que estava quebrando o Javascript
+        // O HTML já possui o a href com o atributo download nativo.
 
         const copyBtn = shadow.getElementById('copy-btn');
         copyBtn.addEventListener('click', () => {

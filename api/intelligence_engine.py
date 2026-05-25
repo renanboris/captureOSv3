@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 from google import genai
 from google.genai import types as genai_types
 from api.status_manager import update_status
+from api.rag_engine import buscar_contexto_multi_namespace
 
 logger = logging.getLogger(__name__)
 
@@ -58,42 +59,69 @@ async def enriquecer_narrativa(roteiro_bruto: list) -> list:
         
     client = genai.Client(api_key=api_key)
     
+    # Extrai o "Objetivo" com base nos primeiros passos gravados (RAG Reverso)
+    resumo_passos = " ".join([p.get('intencao_original', '') for p in roteiro_bruto[:3]])
+    logger.info(f"Deducindo objetivo para RAG a partir de: {resumo_passos}")
+    
+    rag_result = buscar_contexto_multi_namespace(resumo_passos)
+    rag_prompt_section = ""
+    if rag_result and rag_result.get("texto_rag"):
+        logger.info(f"RAG Encontrado no namespace: {rag_result.get('namespace')} (Score: {rag_result.get('score'):.2f})")
+        rag_prompt_section = f"""
+BASE DE CONHECIMENTO CORPORATIVA (MANUAL DO SISTEMA):
+-----------------------------------------------------
+{rag_result.get('texto_rag')}
+-----------------------------------------------------
+RECOMENDAÇÃO: Se as intenções acima tiverem relação com este manual, UTILIZE O JARGÃO TÉCNICO, NOME DE TELAS e o contexto de negócio oficial da Senior descritos nele. Isso dará autoridade e precisão ao seu roteiro.
+"""
+    else:
+        logger.info("Nenhum manual RAG compatível encontrado para os passos iniciais.")
+
     # Prepara o JSON para injetar no prompt
     roteiro_texto = json.dumps(roteiro_bruto, ensure_ascii=False, indent=2)
     
-    prompt = f"""Você é a Aura, uma Arquiteta de Treinamentos de Software.
+    prompt = f"""Você é a Aura, Arquiteta de Conhecimento Sênior da Senior Sistemas.
 Sua missão é ler uma lista de intenções isoladas extraídas de uma sessão de gravação 
 e enriquecê-las para formar um roteiro em formato JSON com ótima pedagogia de ensino.
 
-REGRAS DE OURO DA MONTAGEM:
-1. PEDAGOGIA: O Passo 1 DEVE sempre ter uma "ancora" explicativa e rica. 
-   A "ancora" ensina o POR QUÊ do cenário. A "micro_narracao" ensina o COMO.
-2. ECONOMIA: NUNCA repita a mesma informação na "ancora" e na "micro_narracao". 
-   Deixe a "ancora" vazia se a ação for muito óbvia ou continuação imediata.
-3. ESTILO: Transforme jargões robóticos em uma narração fluida e amigável para o usuário final.
+{rag_prompt_section}
 
-ROTEIRO BRUTO (Jargões Técnicos):
+REGRAS DE OURO DA MONTAGEM (NUNCA VIOLE):
+1. INTEGRIDADE DOS CLIQUES (CRÍTICO): Você DEVE retornar TODOS os passos do roteiro bruto. NUNCA pule, omita ou agrupe os passos num só. Se o usuário clicou em 'Nova Pasta', esse passo tem que existir no JSON de resposta.
+2. A INTRODUÇÃO (PASSO 0): Crie um passo extra OBRIGATÓRIO no início (passo: 0, timestamp: 0) com uma "ancora" rica que faça a introdução do objetivo do vídeo com peso professoral (Peso 3). A "micro_narracao" deste passo deve ser vazia "".
+3. A CONCLUSÃO: Crie um passo extra OBRIGATÓRIO no final (passo: 999, timestamp: 99999999) com "ancora" celebrativa e resumo do que foi aprendido. A "micro_narracao" deve ser vazia "".
+4. PESO NARRATIVO: A âncora explica o POR QUÊ. A micro_narracao explica o COMO. Se o passo é óbvio, deixe a ancora vazia e narre só a micro_narracao.
+5. ANTI-GERÚNDIO: Evite usar sempre "...clicando em X... abrindo Y". Use variações como "...aqui, o menu X...", "...e depois, selecionamos Y...". Fale de forma fluida.
+
+ROTEIRO BRUTO (Intenções Técnicas capturadas):
 {roteiro_texto}
 
-Gere o JSON seguindo EXATAMENTE esta estrutura:
+Gere o JSON seguindo EXATAMENTE esta estrutura de Array:
 [
+  {{
+    "passo": 0,
+    "timestamp": 0,
+    "intencao_original": "Introdução do Objetivo",
+    "ancora": "Hoje vamos aprender a criar uma estrutura de pastas do zero...",
+    "micro_narracao": ""
+  }},
   {{
     "passo": 1,
     "timestamp": 123456789,
-    "intencao_original": "Clicou em Relatório",
-    "ancora": "Vamos aprender a extrair a listagem de clientes.",
-    "micro_narracao": "Para começar, clique no menu de Relatórios."
+    "intencao_original": "Acionar Nova Pasta",
+    "ancora": "Tudo começa criando o diretório raiz.",
+    "micro_narracao": "Para isso, vamos no botão Nova Pasta."
   }},
   {{
-    "passo": 2,
-    "timestamp": 123456799,
-    "intencao_original": "Clicou em PDF",
-    "ancora": "",
-    "micro_narracao": "Em seguida, selecione o formato PDF e pronto."
+    "passo": 999,
+    "timestamp": 99999999,
+    "intencao_original": "Conclusão",
+    "ancora": "Pronto! Em poucos segundos nossa estrutura está pronta para a equipe.",
+    "micro_narracao": ""
   }}
 ]
 
-Responda APENAS com a lista JSON validada, preservando os mesmos timestamps recebidos.
+Responda APENAS com a lista JSON validada, preservando os mesmos timestamps (exceto para intro/conclusão).
 """
 
     try:

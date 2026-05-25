@@ -2,6 +2,7 @@
 
 let blinkInterval = null;
 let isDotVisible = true;
+let activePollInterval = null;
 
 function drawCameraIcon(ctx, color) {
     ctx.fillStyle = color;
@@ -71,16 +72,6 @@ function startBlinkingBadge() {
 // Restaura estado visual do icone ao inicializar o Service Worker
 chrome.storage.local.get(['isRecording'], async (res) => {
     if (res.isRecording) {
-        // Correção de Bug: Verifica se o processo fantasma (Offscreen) ainda existe
-        // Caso o usuário tenha recarregado a extensão ou a memória tenha se perdido
-        if (chrome.offscreen) {
-            const hasDoc = await chrome.offscreen.hasDocument();
-            if (!hasDoc) {
-                chrome.storage.local.set({ isRecording: false });
-                setStaticIcon();
-                return;
-            }
-        }
         startBlinkingBadge();
     } else {
         setStaticIcon();
@@ -130,6 +121,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.action === 'user_interaction') {
         chrome.storage.local.get(['isRecording', 'eventsLog'], (res) => {
             if (res.isRecording) {
+                // GRAVA O TIMESTAMP IMEDIATAMENTE (Não espera o screenshot!)
+                const exact_timestamp = Date.now();
+                
                 // Tira print screen no tempo exato extraindo o frame da stream de vídeo no Offscreen
                 chrome.runtime.sendMessage({ target: 'offscreen', action: 'take_screenshot' }, (response) => {
                     if (chrome.runtime.lastError) {
@@ -137,10 +131,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                         return;
                     }
                     if (response && response.dataUrl) {
-                        const timestamp = Date.now();
                         let logs = res.eventsLog || [];
                         logs.push({
-                            timestamp: timestamp,
+                            timestamp: exact_timestamp,
                             type: message.type,
                             eventData: message.data,
                             screenshotData: response.dataUrl
@@ -167,10 +160,27 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         
         // Inicia o ponto vermelho pulsante nativo no ícone da extensão
         startBlinkingBadge();
+        
+        // MOSTRA O COUNTDOWN!
+        chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
+            if(tabs[0]) chrome.tabs.sendMessage(tabs[0].id, {action: 'show_countdown'}).catch(() => {});
+        });
     }
     
     if (message.action === 'stop_recording') {
         stopCapture();
+    }
+    
+    if (message.action === 'abort_recording') {
+        abortCapture();
+    }
+    
+    if (message.action === 'abort_processing') {
+        if (activePollInterval) {
+            clearInterval(activePollInterval);
+            activePollInterval = null;
+            console.log("Processamento abortado pelo usuário.");
+        }
     }
 });
 
@@ -201,6 +211,18 @@ async function stopCapture() {
     // finalizeUpload() será chamado quando o offscreen devolver o videoBase64.
 }
 
+async function abortCapture() {
+    chrome.storage.local.set({ isRecording: false, eventsLog: [], recordingStartTime: 0 });
+    chrome.action.setBadgeText({ text: "" }); 
+    setStaticIcon(); 
+    
+    console.log("Gravação abortada pelo usuário.");
+    chrome.runtime.sendMessage({
+        target: 'offscreen',
+        action: 'abort_recording'
+    });
+}
+
 function finalizeUpload(videoBase64, recordingStartTime, eventsLog) {
     console.log("Montando Payload Final...");
     const payload = {
@@ -229,7 +251,8 @@ function finalizeUpload(videoBase64, recordingStartTime, eventsLog) {
           
           // Inicia o Relógio (Polling) para aguardar a renderização do Vídeo e atualizar Status
           if(data.session_id) {
-              let pollInterval = setInterval(() => {
+              if (activePollInterval) clearInterval(activePollInterval);
+              activePollInterval = setInterval(() => {
                   fetch(`http://localhost:8000/api/v1/capture/status/${data.session_id}`)
                       .then(r => r.json())
                       .then(status => {
@@ -243,7 +266,8 @@ function finalizeUpload(videoBase64, recordingStartTime, eventsLog) {
                                   });
                               }
                           } else if(status.status === "completed") {
-                              clearInterval(pollInterval);
+                              clearInterval(activePollInterval);
+                              activePollInterval = null;
                               console.log("Vídeo finalizado! Abrindo player modal...");
                               chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
                                   if(tabs[0]) {

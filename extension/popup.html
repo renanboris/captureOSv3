@@ -134,6 +134,20 @@
       background: #1e293b; 
       box-shadow: 0 6px 16px rgba(15, 23, 42, 0.3);
     }
+    
+    .btn-abort {
+      background: #ffffff;
+      color: #64748b;
+      border: 1px solid #e2e8f0;
+      box-shadow: none;
+      display: none;
+      margin-top: 8px;
+    }
+    .btn-abort:hover {
+      background: #f8fafc;
+      color: #ef4444;
+      border-color: #fca5a5;
+    }
   </style>
 </head>
 <body>
@@ -227,6 +241,9 @@
     </button>
     <button id="btn-stop" class="btn-record btn-stop">
       ⏹ Finalizar Gravação
+    </button>
+    <button id="btn-abort" class="btn-record btn-abort">
+      🗑️ Descartar Gravação
     </button>
   </div>
 

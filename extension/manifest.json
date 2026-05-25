@@ -24,12 +24,14 @@
     {
       "matches": ["<all_urls>"],
       "js": ["content_scripts/shield.js"],
-      "run_at": "document_start"
+      "run_at": "document_start",
+      "all_frames": true
     },
     {
       "matches": ["<all_urls>"],
       "js": ["content_scripts/radar_v3.js"],
-      "run_at": "document_end"
+      "run_at": "document_end",
+      "all_frames": true
     }
   ],
   "action": {

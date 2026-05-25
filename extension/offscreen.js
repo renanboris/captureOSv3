@@ -13,6 +13,9 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
         } else if (message.action === 'stop_recording') {
             stopRecording();
             sendResponse({ status: 'stopped' });
+        } else if (message.action === 'abort_recording') {
+            abortRecording();
+            sendResponse({ status: 'aborted' });
         } else if (message.action === 'take_screenshot') {
             if (videoElement.videoWidth > 0) {
                 canvasElement.width = videoElement.videoWidth;
@@ -86,5 +89,19 @@ function stopRecording() {
     if (mediaRecorder && mediaRecorder.state === 'recording') {
         mediaRecorder.stop();
         console.log("Offscreen: Gravação WebM parada.");
+    }
+}
+
+function abortRecording() {
+    if (mediaRecorder && mediaRecorder.state === 'recording') {
+        // Remove the onstop listener so it doesn't send the payload to background
+        mediaRecorder.onstop = () => {
+            const stream = videoElement.srcObject;
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+            }
+            console.log("Offscreen: Gravação descartada com sucesso.");
+        };
+        mediaRecorder.stop();
     }
 }
