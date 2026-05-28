@@ -46,7 +46,7 @@ Responda apenas com JSON:
         logger.error(f"Erro no Gemini Engine: {e}")
         return {"erro": str(e)}
 
-async def enriquecer_narrativa(roteiro_bruto: list) -> list:
+async def enriquecer_narrativa(roteiro_bruto: list, transcricao_instrutor: str = None) -> list:
     """
     Passo 2 (Enriquecimento Semântico): 
     Olha o cenário completo de cliques e gera a âncora (Big Picture) e a micro narração (Instrução exata).
@@ -80,11 +80,23 @@ RECOMENDAÇÃO: Se as intenções acima tiverem relação com este manual, UTILI
     # Prepara o JSON para injetar no prompt
     roteiro_texto = json.dumps(roteiro_bruto, ensure_ascii=False, indent=2)
     
+    transcricao_section = ""
+    if transcricao_instrutor:
+        transcricao_section = f"""
+TRANSCRIÇÃO DA EXPLICAÇÃO DO INSTRUTOR (use como contexto para enriquecer o roteiro):
+---------------------------------------------------------------------------------------
+{transcricao_instrutor[:3000]}
+---------------------------------------------------------------------------------------
+O instrutor explicou o processo com suas próprias palavras acima. Use o raciocínio e
+o contexto que ele trouxe para tornar o roteiro mais rico e preciso.
+"""
+    
     prompt = f"""Você é a Aura, Arquiteta de Conhecimento Sênior da Senior Sistemas.
 Sua missão é ler uma lista de intenções isoladas extraídas de uma sessão de gravação 
 e enriquecê-las para formar um roteiro em formato JSON com ótima pedagogia de ensino.
 
 {rag_prompt_section}
+{transcricao_section}
 
 REGRAS DE OURO DA MONTAGEM (NUNCA VIOLE):
 1. INTEGRIDADE DOS CLIQUES (CRÍTICO): Você DEVE retornar TODOS os passos do roteiro bruto. NUNCA pule, omita ou agrupe os passos num só. Se o usuário clicou em 'Nova Pasta', esse passo tem que existir no JSON de resposta.

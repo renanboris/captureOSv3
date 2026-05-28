@@ -1,5 +1,7 @@
 // background.js
 
+const BACKEND_URL = "http://localhost:8000"; // Substituir no build de produção
+
 let blinkInterval = null;
 let isDotVisible = true;
 let activePollInterval = null;
@@ -239,7 +241,7 @@ function finalizeUpload(videoBase64, recordingStartTime, eventsLog) {
         }
     });
     
-    fetch('http://localhost:8000/api/v1/capture/ingest', {
+    fetch(`${BACKEND_URL}/api/v1/capture/ingest`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json'
@@ -253,7 +255,7 @@ function finalizeUpload(videoBase64, recordingStartTime, eventsLog) {
           if(data.session_id) {
               if (activePollInterval) clearInterval(activePollInterval);
               activePollInterval = setInterval(() => {
-                  fetch(`http://localhost:8000/api/v1/capture/status/${data.session_id}`)
+                  fetch(`${BACKEND_URL}/api/v1/capture/status/${data.session_id}`)
                       .then(r => r.json())
                       .then(status => {
                           if(status.status === "processing") {
@@ -265,6 +267,11 @@ function finalizeUpload(videoBase64, recordingStartTime, eventsLog) {
                                       }
                                   });
                               }
+                          } else if(status.status === "roteiro_pronto") {
+                              clearInterval(activePollInterval);
+                              activePollInterval = null;
+                              console.log("Roteiro pronto! Abrindo editor...");
+                              chrome.tabs.create({ url: `${BACKEND_URL}/editor?session=${data.session_id}` });
                           } else if(status.status === "completed") {
                               clearInterval(activePollInterval);
                               activePollInterval = null;

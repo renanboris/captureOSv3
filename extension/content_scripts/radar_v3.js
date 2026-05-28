@@ -2,7 +2,21 @@
 (function() {
     console.log("Capture OS v3 - Radar Injetado");
 
+    console.log("Capture OS v3 - Radar Injetado");
+
     let eventCounter = 1;
+    let isSandboxMode = false;
+    let sandboxSessionId = null;
+
+    chrome.storage.local.get(['sandboxMode', 'sandboxSessionId'], (res) => {
+        isSandboxMode = res.sandboxMode || false;
+        sandboxSessionId = res.sandboxSessionId || null;
+    });
+
+    chrome.storage.onChanged.addListener((changes) => {
+        if (changes.sandboxMode) isSandboxMode = changes.sandboxMode.newValue;
+        if (changes.sandboxSessionId) sandboxSessionId = changes.sandboxSessionId.newValue;
+    });
 
     function getSemanticSnapshot() {
         const iterators = document.createTreeWalker(document.body, NodeFilter.SHOW_ELEMENT);
@@ -140,6 +154,11 @@
         // Pega elemento clicado
         const target = e.target;
         
+        if (isSandboxMode) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+        
         // Impede que a IA narre cliques nos nossos próprios componentes do Capture OS
         if (target.closest && (target.closest('#capture-os-widget') || target.closest('#capture-os-toast'))) {
             return;
@@ -164,6 +183,29 @@
             target_attributes: context.attributes,
             a11y_tree: tree
         };
+
+        if (isSandboxMode && type === 'click') {
+            fetch(`http://localhost:8000/api/v1/sandbox/evaluate`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    session_id: sandboxSessionId,
+                    url: window.location.href,
+                    action_data: payload
+                })
+            })
+            .then(r => r.json())
+            .then(data => {
+                if(data.is_correct) {
+                    showToast("success", "Ação correta!");
+                    // Pode liberar o clique simulando de novo ou apenas indicando acerto
+                } else {
+                    showToast("error", `Ação Incorreta. Dica: ${data.hint}`);
+                }
+            })
+            .catch(err => console.error("Erro no árbitro:", err));
+            return;
+        }
 
         try {
             if (chrome.runtime && chrome.runtime.sendMessage) {
@@ -467,6 +509,11 @@
                 <span><b>Erro:</b> Falha na comunicação com o servidor.</span>
             `;
             setTimeout(() => fecharToast(toast), 6000);
+        } else if (type === "success_arbitro") {
+            toast.style.background = "rgba(0, 200, 83, 0.85)";
+            toast.style.border = "1px solid rgba(0, 200, 83, 0.3)";
+            toast.innerHTML = `<span id="capture-os-toast-msg"><b>Capture OS Sandbox:</b> Correto!</span>`;
+            setTimeout(() => fecharToast(toast), 3000);
         }
     }
 
