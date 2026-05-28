@@ -16,6 +16,81 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     let isPinned = true;
 
+    // --- Lógica de Abas ---
+    const tabs = document.querySelectorAll('.tab');
+    const tabContents = document.querySelectorAll('.tab-content');
+
+    tabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+            tabs.forEach(t => t.classList.remove('active'));
+            tabContents.forEach(c => c.classList.remove('active'));
+
+            tab.classList.add('active');
+            const targetId = tab.getAttribute('data-tab');
+            document.getElementById(targetId).classList.add('active');
+
+            if (targetId === 'tab-practice') {
+                carregarModulosPratica();
+            }
+        });
+    });
+
+    // --- Lógica do Modo Prática ---
+    async function carregarModulosPratica() {
+        const container = document.getElementById('practice-modules-container');
+        container.innerHTML = '<p style="font-size: 12px; color: #64748b;">Buscando módulos...</p>';
+
+        try {
+            // Descobrir domínio da aba ativa
+            const tabsChrome = await chrome.tabs.query({ active: true, currentWindow: true });
+            let dominio = "";
+            if (tabsChrome[0] && tabsChrome[0].url) {
+                const url = new URL(tabsChrome[0].url);
+                dominio = url.hostname;
+            }
+
+            const resStorage = await chrome.storage.local.get(['backendUrl']);
+            const backendUrl = resStorage.backendUrl || "http://localhost:8000";
+
+            const res = await fetch(`${backendUrl}/api/v1/modulos?dominio=${dominio}`);
+            if (!res.ok) throw new Error("Falha ao buscar módulos");
+            const data = await res.json();
+
+            if (data.total === 0) {
+                container.innerHTML = '<p style="font-size: 12px; color: #64748b;">Nenhum módulo encontrado para este site.</p>';
+                return;
+            }
+
+            container.innerHTML = '';
+            data.modulos.forEach(mod => {
+                const div = document.createElement('div');
+                div.className = 'module-item';
+                div.innerHTML = `
+                    <div class="module-title">${mod.titulo}</div>
+                    <div class="module-meta">${mod.total_passos} passos • ${mod.xp_max} XP max</div>
+                `;
+                div.onclick = () => iniciarPratica(mod.modulo_id, tabsChrome[0].id);
+                container.appendChild(div);
+            });
+        } catch (e) {
+            container.innerHTML = `<p style="font-size: 12px; color: #ef4444;">Erro: ${e.message}</p>`;
+        }
+    }
+
+    function iniciarPratica(moduloId, tabId) {
+        chrome.runtime.sendMessage({
+            action: 'INICIAR_SESSAO_ARBITRO',
+            moduloId: moduloId,
+            tabId: tabId
+        }, (response) => {
+            if (response && response.ok) {
+                window.close();
+            } else {
+                alert("Erro ao iniciar sessão de prática.");
+            }
+        });
+    }
+
     // --- Lógica Visual dos Toggles ---
     function updateTogglesUI() {
         if (toggleMic.checked) {

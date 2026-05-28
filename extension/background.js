@@ -1,6 +1,7 @@
 // background.js
 
 const BACKEND_URL = "http://localhost:8000"; // Substituir no build de produção
+chrome.storage.local.set({ backendUrl: BACKEND_URL });
 
 let blinkInterval = null;
 let isDotVisible = true;
@@ -104,7 +105,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         setStaticIcon();
         
         chrome.storage.local.get(['recordingStartTime', 'eventsLog'], (res) => {
-            finalizeUpload(videoBase64, res.recordingStartTime || 0, res.eventsLog || []);
+            finalizeUpload(videoBase64, res.recordingStartTime || 0, res.eventsLog || [], message.micAudioBase64 || "");
         });
     }
     
@@ -184,6 +185,73 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             console.log("Processamento abortado pelo usuário.");
         }
     }
+
+    // ─── MODO ÁRBITRO: iniciar sessão de prática ───
+    if (message.action === "INICIAR_SESSAO_ARBITRO") {
+        const { moduloId, tabId } = message;
+        const backendUrl = BACKEND_URL;
+
+        fetch(`${backendUrl}/api/v1/simlink/${moduloId}`)
+            .then(r => r.json())
+            .then(modulo => {
+                chrome.storage.local.set({
+                    sandboxMode: true,
+                    sandboxSessionId: moduloId,
+                    sandboxTotalPassos: modulo.total_passos,
+                    sandboxPassoAtual: 0
+                });
+
+                // Resetar estado do sandbox no backend
+                fetch(`${backendUrl}/api/v1/sandbox/reset`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ session_id: moduloId })
+                }).catch(() => {});
+
+                // Notificar content script da aba alvo
+                chrome.tabs.sendMessage(tabId, {
+                    action: "update_toast",
+                    msg: `🎯 Modo Prática iniciado — ${modulo.total_passos} passos`
+                }).catch(() => {});
+
+                sendResponse({ ok: true, total_passos: modulo.total_passos });
+            })
+            .catch(err => {
+                console.error("Erro ao iniciar árbitro:", err);
+                sendResponse({ ok: false, error: err.message });
+            });
+        return true; // async response
+    }
+
+    // ─── MODO ÁRBITRO: passo concluído ───
+    if (message.type === "ARBITRO_PASSO_OK") {
+        const pct = Math.round((message.passo / message.total) * 100);
+
+        chrome.action.setBadgeText({ text: `${pct}%` });
+        chrome.action.setBadgeBackgroundColor({ color: '#1D9E75' });
+
+        if (message.concluido) {
+            chrome.action.setBadgeText({ text: '✓' });
+            chrome.action.setBadgeBackgroundColor({ color: '#1D9E75' });
+
+            // Reportar conclusão ao backend
+            fetch(`${BACKEND_URL}/api/v1/simlink/${message.session_id || ''}/conclusao`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    xp: message.xp,
+                    modo: 'sandbox_real',
+                    completado: true
+                })
+            }).catch(() => {});
+
+            // Resetar badge após 5s
+            setTimeout(() => {
+                chrome.action.setBadgeText({ text: '' });
+                setStaticIcon();
+            }, 5000);
+        }
+    }
 });
 
 async function startCapture() {
@@ -225,14 +293,22 @@ async function abortCapture() {
     });
 }
 
-function finalizeUpload(videoBase64, recordingStartTime, eventsLog) {
+function finalizeUpload(videoBase64, recordingStartTime, eventsLog, micAudioBase64 = "") {
     console.log("Montando Payload Final...");
-    const payload = {
-        session_id: "sess_" + Date.now(),
-        recording_start_time: recordingStartTime,
-        events: eventsLog,
-        video_webm: videoBase64 // Aqui mandamos o WebM em Base64
-    };
+    
+    // Ler configurações salvas pelo popup
+    chrome.storage.local.get(['useMic', 'useAi'], (res) => {
+        let modoInput = "A"; // padrão: só tela, IA pura
+        if (res.useMic && micAudioBase64) modoInput = "B"; // tela + voz do instrutor
+
+        const payload = {
+            session_id: "sess_" + Date.now(),
+            recording_start_time: recordingStartTime,
+            events: eventsLog,
+            video_webm: videoBase64,
+            audio_instrutor_webm: micAudioBase64,  // vazio se Modo A
+            modo_input: modoInput
+        };
     
     // Avisa a aba ativa que o upload começou
     chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
@@ -260,6 +336,14 @@ function finalizeUpload(videoBase64, recordingStartTime, eventsLog) {
                       .then(status => {
                           if(status.status === "processing") {
                               // Atualiza o texto do Toast com a mensagem do backend
+                              if(status.message) {
+                                  chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
+                                      if(tabs[0]) {
+                                          chrome.tabs.sendMessage(tabs[0].id, {action: "update_toast", msg: status.message}).catch(()=>{});
+                                      }
+                                  });
+                              }
+                          } else if(status.status === "rendering_final") {
                               if(status.message) {
                                   chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
                                       if(tabs[0]) {

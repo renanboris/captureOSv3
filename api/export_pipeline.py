@@ -107,10 +107,11 @@ async def renderizar_exportacao(payload: dict):
                     "intencao_original": resultado.get("intencao_detalhada", "") if isinstance(resultado, dict) else str(resultado),
                     "_simlink": {
                         "xpath": event_data.get("xpath", ""),
-                        "selector": event_data.get("cssSelector", ""),
-                        "coordinates": event_data.get("coordinates", {}),
+                        "selector": event_data.get("css_selector", ""),
+                        "coordinates": event_data.get("target_geometry", {}),
                         "target_text": event_data.get("target_text", ""),
                         "action": event_data.get("action", "click"),
+                        "url": event_data.get("url", ""),
                         "screenshot_path": screenshot_path
                     }
                 }
@@ -141,7 +142,11 @@ async def renderizar_exportacao(payload: dict):
     try:
         os.makedirs("data/roteiros", exist_ok=True)
         with open(f"data/roteiros/{session_id}.json", "w", encoding="utf-8") as f:
-            json.dump({"session_id": session_id, "roteiro": roteiro_enriquecido}, f, ensure_ascii=False, indent=2)
+            json.dump({
+                "session_id": session_id,
+                "recording_start_time": start_time_ms,
+                "roteiro": roteiro_enriquecido
+            }, f, ensure_ascii=False, indent=2)
             
         with open(f"data/roteiros/{session_id}.jsonl", "w", encoding="utf-8") as f:
             for passo in roteiro_enriquecido:

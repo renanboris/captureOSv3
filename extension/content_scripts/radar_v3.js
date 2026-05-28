@@ -7,15 +7,21 @@
     let eventCounter = 1;
     let isSandboxMode = false;
     let sandboxSessionId = null;
+    let sandboxTotalPassos = 0;
+    let sandboxPassoAtual = 0;
 
-    chrome.storage.local.get(['sandboxMode', 'sandboxSessionId'], (res) => {
+    chrome.storage.local.get(['sandboxMode', 'sandboxSessionId', 'sandboxTotalPassos', 'sandboxPassoAtual'], (res) => {
         isSandboxMode = res.sandboxMode || false;
         sandboxSessionId = res.sandboxSessionId || null;
+        sandboxTotalPassos = res.sandboxTotalPassos || 0;
+        sandboxPassoAtual = res.sandboxPassoAtual || 0;
     });
 
     chrome.storage.onChanged.addListener((changes) => {
         if (changes.sandboxMode) isSandboxMode = changes.sandboxMode.newValue;
         if (changes.sandboxSessionId) sandboxSessionId = changes.sandboxSessionId.newValue;
+        if (changes.sandboxTotalPassos) sandboxTotalPassos = changes.sandboxTotalPassos.newValue;
+        if (changes.sandboxPassoAtual) sandboxPassoAtual = changes.sandboxPassoAtual.newValue;
     });
 
     function getSemanticSnapshot() {
@@ -170,12 +176,22 @@
             y: Math.round(e.clientY * dpr)
         };
 
+        // NOVO: captura a geometria do elemento clicado (não do ponto de clique)
+        const targetRect = target.getBoundingClientRect();
+        const target_geometry = {
+            x: Math.round(targetRect.x * dpr),
+            y: Math.round(targetRect.y * dpr),
+            w: Math.round(targetRect.width * dpr),
+            h: Math.round(targetRect.height * dpr)
+        };
+
         const context = getElementContext(target);
 
         const payload = {
             action: type,
             url: window.location.href,
             click_position: clickPos,
+            target_geometry: target_geometry,
             target_tag: context.target_tag,
             target_text: context.target_text,
             xpath: context.xpath,
@@ -185,25 +201,47 @@
         };
 
         if (isSandboxMode && type === 'click') {
-            fetch(`http://localhost:8000/api/v1/sandbox/evaluate`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    session_id: sandboxSessionId,
-                    url: window.location.href,
-                    action_data: payload
+            chrome.storage.local.get(['backendUrl'], (res) => {
+                const backendUrl = res.backendUrl || "http://localhost:8000";
+                fetch(`${backendUrl}/api/v1/sandbox/evaluate`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        session_id: sandboxSessionId,
+                        url: window.location.href,
+                        action_data: payload
+                    })
                 })
-            })
-            .then(r => r.json())
-            .then(data => {
-                if(data.is_correct) {
-                    showToast("success", "Ação correta!");
-                    // Pode liberar o clique simulando de novo ou apenas indicando acerto
-                } else {
-                    showToast("error", `Ação Incorreta. Dica: ${data.hint}`);
-                }
-            })
-            .catch(err => console.error("Erro no árbitro:", err));
+                .then(r => r.json())
+                .then(data => {
+                    if(data.is_correct) {
+                        showToast("success_arbitro");
+                        sandboxPassoAtual += 1;
+                        chrome.storage.local.set({ sandboxPassoAtual: sandboxPassoAtual });
+                        
+                        const concluido = sandboxPassoAtual >= sandboxTotalPassos;
+                        
+                        chrome.runtime.sendMessage({
+                            type: 'ARBITRO_PASSO_OK',
+                            passo: sandboxPassoAtual,
+                            total: sandboxTotalPassos,
+                            concluido: concluido,
+                            session_id: sandboxSessionId,
+                            xp: sandboxTotalPassos * 10
+                        });
+                        
+                        if (concluido) {
+                            showToast("success", "Prática Concluída! Muito bem!");
+                            chrome.storage.local.set({ sandboxMode: false });
+                        }
+                    } else {
+                        showToast("error");
+                        let span = document.getElementById("capture-os-toast-msg");
+                        if (span) span.innerHTML = `<b>Dica:</b> ${data.hint}`;
+                    }
+                })
+                .catch(err => console.error("Erro no árbitro:", err));
+            });
             return;
         }
 

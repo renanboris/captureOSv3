@@ -21,6 +21,18 @@ async def rerenderizar_com_roteiro_aprovado(session_id: str, roteiro_aprovado: l
         update_status(session_id, "error", "Vídeo original não encontrado para re-renderização")
         return
 
+    # NOVO: ler start_time_ms do roteiro salvo originalmente
+    import json
+    start_time_ms = 0
+    roteiro_path = f"data/roteiros/{session_id}.json"
+    if os.path.exists(roteiro_path):
+        try:
+            with open(roteiro_path) as f:
+                saved = json.load(f)
+                start_time_ms = saved.get("recording_start_time", 0)
+        except Exception as e:
+            logger.warning(f"Não foi possível ler start_time_ms: {e}")
+
     # --- 3. CONSTRUIR ÁUDIOS ---
     update_status(session_id, "rendering_final", "🎙️ Gravando a locução final...")
     os.makedirs(f"data/audios/{session_id}", exist_ok=True)
@@ -41,7 +53,10 @@ async def rerenderizar_com_roteiro_aprovado(session_id: str, roteiro_aprovado: l
         elif timestamp_ms == 99999999 or passo.get("passo") == 999:
             rel_sec = timeline_events[-1]["timestamp"] + 3.0 if timeline_events else 5.0
         else:
-            rel_sec = max(3.5, (timestamp_ms / 1000.0) - 0.6)
+            if start_time_ms > 0:
+                rel_sec = max(3.5, ((timestamp_ms - start_time_ms) / 1000.0) - 0.6)
+            else:
+                rel_sec = max(3.5, (timestamp_ms / 1000.0) - 0.6)
             
         audio_path = f"data/audios/{session_id}/passo_{idx+1}_final.mp3"
         sucesso_tts = await gerar_audio(intencao_combinada, audio_path)
@@ -66,7 +81,9 @@ async def rerenderizar_com_roteiro_aprovado(session_id: str, roteiro_aprovado: l
     try:
         from simlink_eng.simlink_builder import construir_modulo_simlink
         import json
-        video_url = f"http://localhost:8000/videos_gerados/{session_id}_final.mp4"
+        from config.settings import get_settings
+        settings = get_settings()
+        video_url = f"{settings.backend_url}/videos_gerados/{session_id}_final.mp4"
         simlink_modulo = construir_modulo_simlink(roteiro_aprovado, session_id, video_url)
         os.makedirs("data/simlink", exist_ok=True)
         with open(f"data/simlink/{session_id}.json", "w", encoding="utf-8") as f:

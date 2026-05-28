@@ -18,6 +18,24 @@ async def avaliar_acao_sandbox(roteiro: list, passo_esperado: int, action_data: 
     settings = get_settings()
     if not settings.google_api_key:
         return {"is_correct": True, "hint": "Sem API Key para avaliar"}
+
+    simlink_data = passo_atual_dados.get('_simlink', {})
+    expected_text = simlink_data.get('target_text', '')
+    expected_selector = simlink_data.get('selector', '')
+    expected_xpath = simlink_data.get('xpath', '')
+    
+    actual_text = action_data.get('target_text', '')
+    actual_selector = action_data.get('css_selector', '')
+    actual_xpath = action_data.get('xpath', '')
+
+    # Validação Primária (Rápida)
+    match_text = expected_text and actual_text and (expected_text.lower() in actual_text.lower() or actual_text.lower() in expected_text.lower())
+    match_selector = expected_selector and actual_selector and expected_selector == actual_selector
+    match_xpath = expected_xpath and actual_xpath and expected_xpath == actual_xpath
+
+    if match_selector or match_xpath or (match_text and len(expected_text) > 3):
+        return {"is_correct": True, "hint": ""}
+
         
     prompt = f"""Você é um Árbitro de Sandbox (RPA Evaluation).
 O usuário deve realizar o passo {passo_esperado} de um tutorial.

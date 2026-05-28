@@ -33,51 +33,83 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
 });
 
 async function startRecording() {
-    if (mediaRecorder && mediaRecorder.state === 'recording') {
-        return;
-    }
+    if (mediaRecorder && mediaRecorder.state === 'recording') return;
     recordedChunks = [];
-    
+
+    // Verificar se modo microfone está ativo
+    const { useMic } = await chrome.storage.local.get(['useMic']);
+
     try {
-        const stream = await navigator.mediaDevices.getDisplayMedia({
+        // Stream de tela (sempre)
+        const displayStream = await navigator.mediaDevices.getDisplayMedia({
             audio: false,
-            video: {
-                displaySurface: "browser"
-            }
+            video: { displaySurface: "browser" }
         });
 
-        // Conecta o stream no video invisível para podermos extrair os frames
-        videoElement.srcObject = stream;
+        videoElement.srcObject = displayStream;
 
-        mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
-        
-        mediaRecorder.ondataavailable = (event) => {
-            if (event.data.size > 0) {
-                recordedChunks.push(event.data);
+        let micStream = null;
+        let micRecorder = null;
+        let micChunks = [];
+
+        // Stream de microfone (somente Modo B)
+        if (useMic) {
+            try {
+                micStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+
+                micRecorder = new MediaRecorder(micStream, { mimeType: 'audio/webm' });
+                micRecorder.ondataavailable = (ev) => {
+                    if (ev.data.size > 0) micChunks.push(ev.data);
+                };
+                micRecorder.start();
+                console.log("Offscreen: Microfone capturado para Modo B.");
+            } catch (micErr) {
+                console.warn("Offscreen: Permissão de microfone negada, continuando sem áudio.", micErr);
             }
+        }
+
+        mediaRecorder = new MediaRecorder(displayStream, { mimeType: 'video/webm' });
+
+        mediaRecorder.ondataavailable = (event) => {
+            if (event.data.size > 0) recordedChunks.push(event.data);
         };
 
         mediaRecorder.onstop = async () => {
-            const blob = new Blob(recordedChunks, { type: 'video/webm' });
-            // Converte Blob para DataURL para passar para o Background (ou enviar direto daqui via fetch)
-            const reader = new FileReader();
-            reader.readAsDataURL(blob);
-            reader.onloadend = function() {
-                const base64data = reader.result;
+            // Parar microfone se ativo
+            if (micRecorder && micRecorder.state === 'recording') {
+                micRecorder.stop();
+            }
+            if (micStream) micStream.getTracks().forEach(t => t.stop());
+
+            const videoBlob = new Blob(recordedChunks, { type: 'video/webm' });
+            const videoReader = new FileReader();
+            videoReader.readAsDataURL(videoBlob);
+            videoReader.onloadend = async () => {
+                const videoBase64 = videoReader.result;
+
+                // Aguardar o micRecorder terminar se necessário
+                let micBase64 = "";
+                if (micChunks.length > 0) {
+                    const micBlob = new Blob(micChunks, { type: 'audio/webm' });
+                    micBase64 = await new Promise((resolve) => {
+                        const r = new FileReader();
+                        r.readAsDataURL(micBlob);
+                        r.onloadend = () => resolve(r.result);
+                    });
+                }
+
                 chrome.runtime.sendMessage({
                     target: 'background',
                     action: 'recording_ready',
-                    data: base64data
+                    data: videoBase64,
+                    micAudioBase64: micBase64  // NOVO: áudio do microfone
                 });
-            }
-            // Stop tracks
-            stream.getTracks().forEach(track => track.stop());
+            };
+            displayStream.getTracks().forEach(track => track.stop());
         };
 
         mediaRecorder.start();
         console.log("Offscreen: Gravação WebM iniciada com sucesso.");
-        
-        // Avisa o background que tudo funcionou e que ele pode iniciar o relógio e widget
         chrome.runtime.sendMessage({ target: 'background', action: 'recording_started_successfully' });
 
     } catch (err) {

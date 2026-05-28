@@ -29,17 +29,30 @@ def construir_modulo_simlink(roteiro_enriquecido: list, session_id: str, video_u
             coordinates=simlink_data.get("coordinates", {}),
             target_text=simlink_data.get("target_text", ""),
             action=simlink_data.get("action", "click"),
+            url=simlink_data.get("url", ""),
             screenshot_path=simlink_data.get("screenshot_path", ""),
             ancora=passo.get("ancora", ""),
             micro_narracao=passo.get("micro_narracao", "")
         ))
 
     xp_max = len(hotspots) * 10 + 20  # +20 = bônus sequência perfeita
+    
+    # Descobrir domínio baseado no primeiro url útil
+    dominio = ""
+    for h in hotspots:
+        if h.url:
+            try:
+                from urllib.parse import urlparse
+                dominio = urlparse(h.url).netloc
+                break
+            except:
+                pass
 
     modulo = SimlinkModulo(
         modulo_id=str(uuid.uuid4()),
         session_id=session_id,
         titulo=titulo or f"Tutorial — {session_id[:8]}",
+        dominio=dominio,
         total_passos=len(hotspots),
         hotspots=hotspots,
         video_url=video_url,

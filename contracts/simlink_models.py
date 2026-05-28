@@ -9,6 +9,7 @@ class SimlinkHotspot(BaseModel):
     coordinates: Dict[str, float]  # {x, y, w, h} — relativo ao screenshot
     target_text: str
     action: str  # "click" | "input" | "select"
+    url: str = "" # URL onde o clique ocorreu
     screenshot_path: str  # mudamos de b64 para path
     ancora: str  # texto narrado ao acertar
     micro_narracao: str  # dica exibida ao errar
@@ -18,6 +19,7 @@ class SimlinkModulo(BaseModel):
     modulo_id: str
     session_id: str
     titulo: str
+    dominio: str = "" # Dominio para filtragem (ex: painel.senior.com.br)
     total_passos: int
     hotspots: List[SimlinkHotspot]
     video_url: str

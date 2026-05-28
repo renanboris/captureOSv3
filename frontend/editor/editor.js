@@ -50,6 +50,7 @@ function renderizarPassos() {
             </div>
             <div class="actions">
                 <button class="btn-secondary" onclick="previewTTS(${index})">🔊 Preview</button>
+                <button class="btn-secondary" id="btn-regerar-${index}" onclick="regerarPassoIA(${index}, ${passo.passo})">✨ Regerar com IA</button>
             </div>
         `;
         container.appendChild(card);
@@ -65,6 +66,41 @@ function previewTTS(index) {
     const msg = new SpeechSynthesisUtterance(texto);
     msg.lang = 'pt-BR';
     window.speechSynthesis.speak(msg);
+}
+
+async function regerarPassoIA(indexArray, passoNum) {
+    const btn = document.getElementById(`btn-regerar-${indexArray}`);
+    const originalText = btn.innerText;
+    btn.disabled = true;
+    btn.innerText = "⏳ Gerando...";
+
+    try {
+        const res = await fetch(`/api/v1/session/${sessionId}/passo/${passoNum}/regerar`, {
+            method: 'POST'
+        });
+        
+        if (!res.ok) throw new Error('Falha ao regerar o passo.');
+        
+        const data = await res.json();
+        const passoAtualizado = data.passo;
+        
+        document.getElementById(`ancora-${indexArray}`).value = passoAtualizado.ancora || '';
+        document.getElementById(`micro-${indexArray}`).value = passoAtualizado.micro_narracao || '';
+        
+        // Atualiza a memória local também
+        roteiroAtual[indexArray].ancora = passoAtualizado.ancora;
+        roteiroAtual[indexArray].micro_narracao = passoAtualizado.micro_narracao;
+        
+        btn.innerText = "✨ Sucesso!";
+        setTimeout(() => {
+            btn.innerText = originalText;
+            btn.disabled = false;
+        }, 2000);
+    } catch (e) {
+        alert(e.message);
+        btn.innerText = originalText;
+        btn.disabled = false;
+    }
 }
 
 document.getElementById('btn-render').addEventListener('click', async () => {

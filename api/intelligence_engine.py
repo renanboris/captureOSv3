@@ -151,3 +151,54 @@ Responda APENAS com a lista JSON validada, preservando os mesmos timestamps (exc
         logger.error(f"Erro no Enriquecimento Semântico: {e}")
         # Retorna o bruto se falhar para não quebrar a compilação do vídeo
         return roteiro_bruto
+
+async def regerar_passo_isolado(passo_alvo: dict, passo_anterior: dict = None, passo_seguinte: dict = None) -> dict:
+    """
+    Regera a âncora e a micro narração de um passo específico,
+    levando em consideração o contexto dos passos adjacentes.
+    """
+    load_dotenv()
+    api_key = os.getenv("GOOGLE_API_KEY", "")
+    if not api_key:
+        return passo_alvo
+
+    client = genai.Client(api_key=api_key)
+
+    contexto = ""
+    if passo_anterior:
+        contexto += f"Passo Anterior:\n- Intenção: {passo_anterior.get('intencao_original')}\n- Âncora: {passo_anterior.get('ancora')}\n- Micro: {passo_anterior.get('micro_narracao')}\n\n"
+    
+    contexto += f"PASSO A SER REGERADO:\n- Intenção Original: {passo_alvo.get('intencao_original')}\n- Elemento: {passo_alvo.get('_simlink', {}).get('target_text', '')}\n\n"
+    
+    if passo_seguinte:
+        contexto += f"Passo Seguinte:\n- Intenção: {passo_seguinte.get('intencao_original')}\n- Âncora: {passo_seguinte.get('ancora')}\n- Micro: {passo_seguinte.get('micro_narracao')}\n"
+
+    prompt = f"""Você é a Aura, Arquiteta de Conhecimento.
+Sua missão é reescrever a narração do "PASSO A SER REGERADO" para que flua melhor.
+
+Contexto dos cliques adjacentes:
+{contexto}
+
+Reescreva a "ancora" (o porquê/contexto) e a "micro_narracao" (a ação/o como) para este passo alvo, tornando-o mais didático e sem repetir palavras do passo anterior.
+Responda APENAS com um objeto JSON:
+{{
+    "ancora": "sua nova âncora aqui",
+    "micro_narracao": "sua nova micro narração aqui"
+}}"""
+
+    try:
+        response = await client.aio.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt,
+            config=genai_types.GenerateContentConfig(
+                response_mime_type="application/json",
+                temperature=0.7
+            )
+        )
+        resultado = json.loads(response.text)
+        passo_alvo["ancora"] = resultado.get("ancora", "")
+        passo_alvo["micro_narracao"] = resultado.get("micro_narracao", "")
+        return passo_alvo
+    except Exception as e:
+        logger.error(f"Erro ao regerar passo isolado: {e}")
+        return passo_alvo

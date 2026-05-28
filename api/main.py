@@ -12,6 +12,8 @@ from fastapi import BackgroundTasks
 from fastapi.staticfiles import StaticFiles
 import os
 import asyncio
+from config.settings import get_settings
+settings = get_settings()
 
 app = FastAPI(title="Capture OS v3 Ingestion API")
 logger = logging.getLogger("uvicorn.error")
@@ -24,7 +26,9 @@ app.mount("/videos_gerados", StaticFiles(directory="data/videos_gerados"), name=
 os.makedirs("frontend/editor", exist_ok=True)
 app.mount("/editor", StaticFiles(directory="frontend/editor", html=True), name="editor")
 
-# Servir screenshots
+os.makedirs("data/artifacts", exist_ok=True)
+app.mount("/artifacts", StaticFiles(directory="data/artifacts"), name="artifacts")
+
 # Servir screenshots
 os.makedirs("data/simlink_screenshots", exist_ok=True)
 app.mount("/screenshots", StaticFiles(directory="data/simlink_screenshots"), name="screenshots")
@@ -80,7 +84,7 @@ async def check_status(session_id: str):
 
         return {
             "status": "completed", 
-            "url": f"http://localhost:8000/videos_gerados/{session_id}_final.mp4",
+            "url": f"{settings.backend_url}/videos_gerados/{session_id}_final.mp4",
             "roteiro": roteiro_data
         }
         
@@ -107,6 +111,77 @@ async def save_roteiro(session_id: str, payload: RoteiroEditadoPayload):
         
     return {"status": "ok"}
 
+@app.post("/api/v1/session/{session_id}/passo/{passo_num}/regerar")
+async def regerar_passo(session_id: str, passo_num: int):
+    """
+    Rechama a Aura para regeração de um único passo, com contexto dos vizinhos.
+    Retorna o passo atualizado sem salvar — o editor decide se aceita.
+    """
+    roteiro_path = f"data/roteiros/{session_id}.json"
+    if not os.path.exists(roteiro_path):
+        raise HTTPException(status_code=404, detail="Roteiro não encontrado")
+
+    with open(roteiro_path) as f:
+        data = json.load(f)
+    roteiro = data.get("roteiro", [])
+
+    # Encontrar o passo e seus vizinhos para contexto
+    passo_alvo = next((p for p in roteiro if p.get("passo") == passo_num), None)
+    if not passo_alvo:
+        raise HTTPException(status_code=404, detail=f"Passo {passo_num} não encontrado")
+
+    passo_anterior = next((p for p in roteiro if p.get("passo") == passo_num - 1), None)
+    passo_seguinte = next((p for p in roteiro if p.get("passo") == passo_num + 1), None)
+
+    from api.intelligence_engine import regerar_passo_isolado
+    passo_atualizado = await regerar_passo_isolado(passo_alvo, passo_anterior, passo_seguinte)
+
+    return {"passo": passo_atualizado}
+
+@app.get("/api/v1/session/{session_id}/artifacts")
+async def get_artifacts(session_id: str):
+    """Retorna URLs de todos os artefatos gerados para uma sessão."""
+    base = settings.backend_url
+    art_dir = f"data/artifacts/{session_id}"
+    sim_dir = f"data/simlink"
+
+    def url_if_exists(local_path: str, public_url: str) -> str | None:
+        return public_url if os.path.exists(local_path) else None
+
+    # Buscar modulo_id do simlink
+    simlink_url = None
+    simlink_path = f"{sim_dir}/{session_id}.json"
+    if os.path.exists(simlink_path):
+        try:
+            with open(simlink_path) as f:
+                mod = json.load(f)
+                simlink_url = f"{base}/simlink?modulo={mod.get('modulo_id', '')}"
+        except:
+            pass
+
+    # Ler quiz se existir
+    quiz_data = []
+    quiz_path = f"{art_dir}/quiz.json"
+    if os.path.exists(quiz_path):
+        try:
+            with open(quiz_path) as f:
+                quiz_data = json.load(f)
+        except:
+            pass
+
+    return {
+        "session_id": session_id,
+        "video_url":       url_if_exists(f"data/videos_gerados/{session_id}_final.mp4",
+                                         f"{base}/videos_gerados/{session_id}_final.mp4"),
+        "pdf_url":         url_if_exists(f"{art_dir}/apostila.pdf",
+                                         f"{base}/artifacts/{session_id}/apostila.pdf"),
+        "transcript_url":  url_if_exists(f"{art_dir}/transcricao.txt",
+                                         f"{base}/artifacts/{session_id}/transcricao.txt"),
+        "quiz":            quiz_data,
+        "simlink_url":     simlink_url,
+        "status":          get_status(session_id).get("status", "unknown")
+    }
+
 @app.get("/api/v1/simlink/{modulo_id}")
 async def get_simlink_modulo(modulo_id: str):
     # Procura pelo módulo
@@ -120,6 +195,44 @@ async def get_simlink_modulo(modulo_id: str):
         except:
             pass
     raise HTTPException(status_code=404, detail="Módulo Simlink não encontrado")
+
+@app.get("/api/v1/modulos")
+async def listar_modulos(dominio: str = ""):
+    """
+    Lista módulos Simlink disponíveis, filtrados opcionalmente por domínio.
+    Usado pelo popup para descobrir módulos disponíveis para a aba atual.
+    """
+    import glob
+    modulos = []
+
+    for filepath in glob.glob("data/simlink/*.json"):
+        # Ignorar arquivos _resultado.json
+        if filepath.endswith("_resultado.json"):
+            continue
+        try:
+            with open(filepath) as f:
+                mod = json.load(f)
+
+            # Filtrar por domínio se fornecido
+            mod_dominio = mod.get("dominio", "")
+            if dominio and mod_dominio and dominio not in mod_dominio and mod_dominio not in dominio:
+                continue
+
+            modulos.append({
+                "modulo_id":    mod.get("modulo_id"),
+                "titulo":       mod.get("titulo"),
+                "total_passos": mod.get("total_passos"),
+                "xp_max":       mod.get("xp_max"),
+                "dominio":      mod_dominio,
+                "criado_em":    mod.get("criado_em"),
+                "session_id":   mod.get("session_id")
+            })
+        except Exception as e:
+            logger.warning(f"Erro ao ler módulo {filepath}: {e}")
+
+    # Ordenar por data de criação (mais recente primeiro)
+    modulos.sort(key=lambda m: m.get("criado_em", ""), reverse=True)
+    return {"modulos": modulos, "total": len(modulos)}
 
 @app.post("/api/v1/simlink/{modulo_id}/conclusao")
 async def registrar_conclusao_simlink(modulo_id: str, payload: dict):
@@ -167,10 +280,22 @@ async def configurar_simlink(session_id: str, payload: dict):
     with open(filepath, "w", encoding="utf-8") as f:
         json.dump(mod, f, ensure_ascii=False, indent=2)
         
-    # BACKEND_URL real viria do settings, mas usando hardcode por enquanto para simplificar
-    return {"simlink_url": f"http://localhost:8000/simlink?modulo={mod['modulo_id']}"}
+    return {"simlink_url": f"{settings.backend_url}/simlink?modulo={mod['modulo_id']}"}
 
-sandbox_states = {}
+def get_sandbox_state(session_id: str) -> int:
+    path = f"data/status/sandbox_{session_id}.json"
+    if os.path.exists(path):
+        try:
+            with open(path) as f:
+                return json.load(f).get("passo", 1)
+        except:
+            pass
+    return 1
+
+def set_sandbox_state(session_id: str, passo: int):
+    os.makedirs("data/status", exist_ok=True)
+    with open(f"data/status/sandbox_{session_id}.json", "w") as f:
+        json.dump({"passo": passo}, f)
 
 class SandboxActionPayload(BaseModel):
     session_id: str
@@ -182,10 +307,7 @@ async def evaluate_sandbox(payload: SandboxActionPayload):
     from sandbox_eng.arbitro_engine import avaliar_acao_sandbox
     
     session_id = payload.session_id
-    if session_id not in sandbox_states:
-        sandbox_states[session_id] = 1 # começa no passo 1
-        
-    passo_esperado = sandbox_states[session_id]
+    passo_esperado = get_sandbox_state(session_id)
     
     roteiro_path = f"data/roteiros/{session_id}.json"
     if not os.path.exists(roteiro_path):
@@ -200,6 +322,16 @@ async def evaluate_sandbox(payload: SandboxActionPayload):
     result = await avaliar_acao_sandbox(roteiro_filtrado, passo_esperado, payload.action_data)
     
     if result.get("is_correct"):
-        sandbox_states[session_id] += 1
+        set_sandbox_state(session_id, passo_esperado + 1)
         
     return result
+
+@app.post("/api/v1/sandbox/reset")
+async def reset_sandbox(payload: dict):
+    """Reseta o estado do sandbox para uma sessão (usado ao iniciar nova prática)."""
+    session_id = payload.get("session_id", "")
+    if session_id:
+        path = f"data/status/sandbox_{session_id}.json"
+        if os.path.exists(path):
+            os.remove(path)
+    return {"status": "ok"}

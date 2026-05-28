@@ -74,22 +74,29 @@ document.getElementById('overlay-cliques').addEventListener('click', (e) => {
 
     const imgEl = document.getElementById('imagem-bg');
     const rect = imgEl.getBoundingClientRect();
-    
-    const clickX = (e.clientX - rect.left) / rect.width;
-    const clickY = (e.clientY - rect.top) / rect.height;
-    
-    // Como a imagem pode ter sido redimensionada, os bounds originais devem ser comparados percentualmente.
-    // O radar_v3 salvou em pixels em relation to the original screen size.
-    // Assumimos que coordinates={x,y,w,h} em % ou usamos tolerância genérica.
-    // Vamos usar a tolerância sugerida.
-    
-    // A coord atual está em absolute pixels originais. Precisamos da largura original.
-    // Se não tivermos a largura original, podemos assumir uma aproximação baseada nos bounds
-    // (A Spec não forneceu a normalização no _simlink, então usamos tolerância frouxa ou validamos)
-    // Para o MVP, validaremos um clique se cair na mesma região (usando a lógica da Spec).
-    
-    const acertou = true; // TODO: Implementar lógica de porcentagem quando original size estiver disponível no backend
-    
+
+    // Coordenadas do clique como percentual da imagem renderizada
+    const clickXPct = (e.clientX - rect.left) / rect.width;
+    const clickYPct = (e.clientY - rect.top) / rect.height;
+
+    // Coordenadas do hotspot salvas em pixels originais da tela capturada
+    // naturalWidth/naturalHeight são os pixels reais da imagem (resolução original)
+    const natW = imgEl.naturalWidth || 1920;
+    const natH = imgEl.naturalHeight || 1080;
+    const c = hotspot.coordinates; // {x, y, w, h} em pixels originais
+
+    // Tolerância de 4% para compensar imprecisão de DPR e redimensionamento
+    const TOL = 0.04;
+
+    // Verificação por percentual normalizado
+    const acertou = (
+        Object.keys(c).length > 0 &&  // garante que coordinates não é {}
+        clickXPct >= (c.x / natW - TOL) &&
+        clickXPct <= ((c.x + c.w) / natW + TOL) &&
+        clickYPct >= (c.y / natH - TOL) &&
+        clickYPct <= ((c.y + c.h) / natH + TOL)
+    );
+
     if (acertou) {
         onAcerto(hotspot);
     } else {
@@ -102,7 +109,7 @@ function onAcerto(hotspot) {
     state.xpTotal += xpGanho;
     state.historico.push({ passo: hotspot.passo_num, tentativas: state.tentativasNoPasso + 1, xp: xpGanho });
     
-    mostrarHighlight('success'); // mockup
+    mostrarHighlight('success', hotspot); // mockup
     narrar(hotspot.micro_narracao || "Muito bem!");
     
     setTimeout(() => {
@@ -118,10 +125,10 @@ function onErro(hotspot) {
     if (state.tentativasNoPasso === 1) {
         mostrarFeedback(`Dica: procure por "${hotspot.target_text}"`);
     } else if (state.tentativasNoPasso === 2) {
-        mostrarHighlight('hint');
+        mostrarHighlight('hint', hotspot);
         narrar("Está aqui. Vamos tentar!");
     } else {
-        mostrarHighlight('reveal');
+        mostrarHighlight('reveal', hotspot);
         narrar(hotspot.micro_narracao);
         setTimeout(() => {
             state.passoAtual++;
@@ -144,12 +151,59 @@ function mostrarFeedback(msg) {
     setTimeout(() => fbox.classList.add('hidden'), 3000);
 }
 
-function mostrarHighlight(classeCSS) {
-    // Adiciona div temporária sobre a imagem (mock)
+function mostrarHighlight(classeCSS, hotspot) {
+    // Remover highlights existentes primeiro
+    limparHighlights();
+
+    if (!hotspot || !hotspot.coordinates || Object.keys(hotspot.coordinates).length === 0) return;
+
+    const imgEl = document.getElementById('imagem-bg');
+    const simulacaoEl = document.getElementById('simulacao-container');
+    const rect = imgEl.getBoundingClientRect();
+
+    const natW = imgEl.naturalWidth || 1920;
+    const natH = imgEl.naturalHeight || 1080;
+    const c = hotspot.coordinates;
+
+    // Converter pixels originais para pixels renderizados
+    const scaleX = rect.width / natW;
+    const scaleY = rect.height / natH;
+
+    const box = document.createElement('div');
+    box.className = `highlight-box ${classeCSS}`;
+    box.style.position = 'absolute';
+    box.style.left   = `${c.x * scaleX}px`;
+    box.style.top    = `${c.y * scaleY}px`;
+    box.style.width  = `${c.w * scaleX}px`;
+    box.style.height = `${c.h * scaleY}px`;
+    box.style.pointerEvents = 'none';
+    box.style.zIndex = '15';
+    box.style.transition = 'all 0.3s ease';
+
+    // Para 'reveal', adicionar um label com o texto do alvo
+    if (classeCSS === 'reveal' && hotspot.target_text) {
+        const label = document.createElement('div');
+        label.style.cssText = `
+            position: absolute; top: -24px; left: 0;
+            background: rgba(231,76,60,0.9); color: white;
+            font-size: 11px; padding: 2px 6px; border-radius: 4px;
+            white-space: nowrap;
+        `;
+        label.textContent = hotspot.target_text;
+        box.appendChild(label);
+    }
+
+    simulacaoEl.appendChild(box);
+
+    // Auto-remover highlights de dica após 3s
+    if (classeCSS !== 'reveal') {
+        setTimeout(() => box.remove(), 3000);
+    }
 }
 
 function limparHighlights() {
-    // Remove divs de highlight
+    const simulacaoEl = document.getElementById('simulacao-container');
+    simulacaoEl.querySelectorAll('.highlight-box').forEach(el => el.remove());
 }
 
 async function concluirModulo() {
