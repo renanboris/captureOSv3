@@ -21,13 +21,18 @@ async def processar_intencao(image_bytes: bytes, event_data: dict, a11y_tree: li
         update_status(session_id, "processing", "Analisando intenção do usuário com IA...")
         
     client = genai.Client(api_key=api_key)
-    
+    action_value_str = f"Conteúdo da ação (texto/tecla): '{event_data.get('action_value')}'" if event_data.get('action_value') else ""
+
     prompt = f"""Você é o Motor de Inteligência do Capture OS v3.
 O usuário executou uma ação do tipo '{event_data.get('action')}' no elemento da tela.
 Abaixo está o log semântico extraído:
 Alvo: {event_data.get('target_tag')} - Texto: {event_data.get('target_text')}
+{action_value_str}
 
 A imagem anexa já possui o Set-of-Marks desenhado.
+Se o action_value for uma tecla como 'Enter' ou texto digitado, use isso para compor a intenção. Exemplo: "Pesquisar por 'X'", "Preencher 'Y' com 'Z'", "Confirmar modal de Nova Pasta apertando Enter".
+Se a tag for INPUT e houver action_value, significa que o usuário preencheu aquele campo.
+
 Responda com o jargão corporativo exato de negócio para esta intenção.
 Exemplo: "Clicar no botão Relatórios de Pagamento".
 Responda apenas com JSON:
@@ -42,10 +47,18 @@ Responda apenas com JSON:
             ],
             config=genai_types.GenerateContentConfig(response_mime_type="application/json")
         )
-        return json.loads(response.text)
+        res_json = json.loads(response.text)
+        if "intencao_detalhada" not in res_json:
+            for k, v in res_json.items():
+                if isinstance(v, str) and k != "confidence":
+                    res_json["intencao_detalhada"] = v
+                    break
+        if "intencao_detalhada" not in res_json or not res_json["intencao_detalhada"]:
+            res_json["intencao_detalhada"] = "Interagir com a tela"
+        return res_json
     except Exception as e:
         logger.error(f"Erro no Gemini Engine: {e}")
-        return {"erro": str(e)}
+        return {"intencao_detalhada": "Interagir com o sistema"}
 
 async def enriquecer_narrativa(roteiro_bruto: list, transcricao_instrutor: str = None) -> list:
     """
@@ -149,16 +162,32 @@ Responda APENAS com a lista JSON validada, preservando os mesmos timestamps (exc
         roteiro_enriquecido_ai = json.loads(response.text)
         
         # Fazer o merge da resposta da IA de volta no roteiro_bruto para preservar a propriedade _simlink (hotspots de tela)
+        roteiro_final = []
+        
+        # 1. Adicionar Passo 0 (Introdução) se a IA gerou
         for ai_passo in roteiro_enriquecido_ai:
-            for bruto_passo in roteiro_bruto:
-                if str(ai_passo.get("passo")) == str(bruto_passo.get("passo")):
-                    bruto_passo["ancora"] = ai_passo.get("ancora", "")
-                    bruto_passo["micro_narracao"] = ai_passo.get("micro_narracao", "")
-                    if ai_passo.get("intencao_original"):
-                        bruto_passo["intencao_original"] = ai_passo.get("intencao_original")
-                    break
-                    
-        return roteiro_bruto
+            if str(ai_passo.get("passo")) == "0":
+                roteiro_final.append(ai_passo)
+                
+        # 2. Fazer o merge dos passos intermediários
+        for bruto_passo in roteiro_bruto:
+            ai_correspondente = next((a for a in roteiro_enriquecido_ai if str(a.get("passo")) == str(bruto_passo.get("passo"))), None)
+            if ai_correspondente:
+                bruto_passo["ancora"] = ai_correspondente.get("ancora", "")
+                bruto_passo["micro_narracao"] = ai_correspondente.get("micro_narracao", "")
+                if ai_correspondente.get("intencao_original"):
+                    bruto_passo["intencao_original"] = ai_correspondente.get("intencao_original")
+            else:
+                bruto_passo["ancora"] = bruto_passo.get("intencao_original", "")
+                bruto_passo["micro_narracao"] = ""
+            roteiro_final.append(bruto_passo)
+            
+        # 3. Adicionar Passo 999 (Conclusão) se a IA gerou
+        for ai_passo in roteiro_enriquecido_ai:
+            if str(ai_passo.get("passo")) == "999":
+                roteiro_final.append(ai_passo)
+                
+        return roteiro_final
     except Exception as e:
         logger.error(f"Erro no Enriquecimento Semântico (Gemini): {e}. Tentando OpenAI Fallback...")
         openai_key = os.getenv("OPENAI_API_KEY", "")

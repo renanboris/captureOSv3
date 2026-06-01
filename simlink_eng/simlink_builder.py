@@ -12,7 +12,7 @@ def construir_modulo_simlink(roteiro_enriquecido: list, session_id: str, video_u
     """
     hotspots = []
 
-    for passo in roteiro_enriquecido:
+    for idx, passo in enumerate(roteiro_enriquecido):
         num = passo.get("passo", 0)
         if num in (0, 999):
             continue  # Intro e conclusão não têm hotspot
@@ -21,6 +21,8 @@ def construir_modulo_simlink(roteiro_enriquecido: list, session_id: str, video_u
         if not simlink_data.get("xpath") and not simlink_data.get("coordinates"):
             logger.warning(f"Passo {num} sem dados de hotspot — pulando")
             continue
+            
+        audio_path = f"data/audios/{session_id}/passo_{idx+1}_final.mp3"
 
         hotspots.append(SimlinkHotspot(
             passo_num=num,
@@ -32,7 +34,8 @@ def construir_modulo_simlink(roteiro_enriquecido: list, session_id: str, video_u
             url=simlink_data.get("url", ""),
             screenshot_path=simlink_data.get("screenshot_path", ""),
             ancora=passo.get("ancora", ""),
-            micro_narracao=passo.get("micro_narracao", "")
+            micro_narracao=passo.get("micro_narracao", ""),
+            audio_path=audio_path
         ))
 
     xp_max = len(hotspots) * 10 + 20  # +20 = bônus sequência perfeita

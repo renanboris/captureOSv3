@@ -52,6 +52,18 @@ app.mount("/simlink", StaticFiles(directory="frontend/simlink", html=True), name
 # Pasta para dados do simlink
 os.makedirs("data/simlink", exist_ok=True)
 
+# Servir SCORMs gerados
+os.makedirs("data/scorm", exist_ok=True)
+app.mount("/scorm", StaticFiles(directory="data/scorm"), name="scorm")
+
+# Servir Áudios gerados
+os.makedirs("data/audios", exist_ok=True)
+app.mount("/audios", StaticFiles(directory="data/audios"), name="audios")
+
+# Servir Player Standalone do SCORM usando os mesmos templates do pacote
+os.makedirs("scorm_eng/templates", exist_ok=True)
+app.mount("/scorm-player", StaticFiles(directory="scorm_eng/templates", html=True), name="scorm_player")
+
 class EventPayload(BaseModel):
     session_id: str
     recording_start_time: int = 0
@@ -240,6 +252,8 @@ async def get_artifacts(session_id: str):
                                          f"{base}/artifacts/{session_id}/transcricao.txt"),
         "quiz":            quiz_data,
         "simlink_url":     simlink_url,
+        "scorm_download_url": url_if_exists(f"data/scorm/{session_id}.zip", f"{base}/scorm/{session_id}.zip"),
+        "scorm_player_url": f"{base}/scorm-player?modulo={mod.get('modulo_id', '')}" if simlink_url else None,
         "status":          get_status(session_id).get("status", "unknown")
     }
 

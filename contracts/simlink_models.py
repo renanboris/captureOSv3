@@ -13,6 +13,7 @@ class SimlinkHotspot(BaseModel):
     screenshot_path: str  # mudamos de b64 para path
     ancora: str  # texto narrado ao acertar
     micro_narracao: str  # dica exibida ao errar
+    audio_path: Optional[str] = None  # caminho para o áudio gerado
 
 class SimlinkModulo(BaseModel):
     """Módulo completo de simulação — gerado a partir de uma sessão CaptureOS."""

@@ -136,8 +136,15 @@ async def rerenderizar_com_roteiro_aprovado(session_id: str, roteiro_aprovado: l
         with open(f"data/simlink/{session_id}.json", "w", encoding="utf-8") as f:
             import json
             json.dump(simlink_modulo.model_dump(), f, ensure_ascii=False, indent=2)
+            
+        # NOVO: Gerar pacote SCORM (TRY mode) automaticamente
+        from scorm_eng.scorm_builder import gerar_scorm
+        titulo = f"Tutorial — Sessão {session_id}"
+        scorm_path = gerar_scorm(simlink_modulo, session_id, titulo)
+        logger.info(f"Pacote SCORM gerado em: {scorm_path}")
+        
     except Exception as e:
-        logger.error(f"Erro ao atualizar Simlink no rerender: {e}")
+        logger.error(f"Erro ao atualizar Simlink/SCORM no rerender: {e}")
 
     logger.info(f"Re-renderização Concluída! Veja: {final_mp4_path}")
     update_status(session_id, "completed", "Vídeo 100% Finalizado!")
