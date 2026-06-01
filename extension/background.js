@@ -85,7 +85,7 @@ async function setupOffscreenDocument(path) {
     if (await chrome.offscreen.hasDocument()) return;
     await chrome.offscreen.createDocument({
         url: path,
-        reasons: ['USER_MEDIA'],
+        reasons: ['USER_MEDIA', 'DISPLAY_MEDIA'],
         justification: 'Gravação contínua da aba de navegação'
     });
 }
@@ -164,7 +164,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         chrome.storage.local.set({
             isRecording: true,
             recordingStartTime: startTime,
-            eventsLog: []
+            eventsLog: [],
+            sandboxMode: false
         });
         chrome.runtime.sendMessage({ target: 'offscreen', action: 'start_recording_now' }).catch(() => {});
     }
@@ -184,6 +185,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         }
         chrome.storage.local.set({ isProcessing: false });
         console.log("Processamento abortado pelo usuário.");
+        
+        chrome.storage.local.get(['currentSessionId'], (res) => {
+            if (res.currentSessionId) {
+                fetch(`${BACKEND_URL}/api/v1/capture/abort/${res.currentSessionId}`, { method: 'POST' })
+                .catch(() => console.error('Falha ao abortar no backend'));
+            }
+        });
     }
     
     if (message.action === 'stop_processing') {
@@ -258,6 +266,25 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         }
     }
     
+    if (message.action === 'evaluate_sandbox') {
+        fetch(`${BACKEND_URL}/api/v1/sandbox/evaluate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                session_id: message.session_id,
+                url: message.url,
+                action_data: message.payload
+            })
+        })
+        .then(r => r.json())
+        .then(data => sendResponse(data))
+        .catch(err => {
+            console.error("Erro arbitro back:", err);
+            sendResponse({is_correct: false, hint: "Erro no servidor (verifique os logs)"});
+        });
+        return true; // async response
+    }
+    
     if (message.action === 'resume_polling') {
         startPolling(message.session_id);
     }
@@ -323,7 +350,7 @@ function startPolling(sessionId) {
 }
 
 async function startCapture() {
-    chrome.storage.local.set({ eventsLog: [], recordingStartTime: 0, isRecording: false });
+    chrome.storage.local.set({ eventsLog: [], recordingStartTime: 0, isRecording: false, sandboxMode: false });
     
     // Configura offscreen
     await setupOffscreenDocument('offscreen.html');
@@ -402,6 +429,7 @@ function finalizeUpload(videoBase64, recordingStartTime, eventsLog, micAudioBase
             chrome.storage.local.set({ isProcessing: true });
             
             if (data.session_id) {
+                chrome.storage.local.set({ currentSessionId: data.session_id });
                 startPolling(data.session_id);
             }
         })

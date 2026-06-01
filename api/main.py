@@ -16,6 +16,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from config.settings import get_settings
 settings = get_settings()
 
+active_tasks: Dict[str, asyncio.Task] = {}
+
 app = FastAPI(title="Capture OS v3 Ingestion API")
 
 app.add_middleware(
@@ -77,9 +79,23 @@ async def ingest_capture(payload: EventPayload):
 
     # Dispara o Pipeline Completo (IA + Vídeo) DESACOPLADO da requisição!
     payload_dict = payload.model_dump()
-    asyncio.create_task(renderizar_exportacao(payload_dict))
+    task = asyncio.create_task(renderizar_exportacao(payload_dict))
+    active_tasks[payload.session_id] = task
+    task.add_done_callback(lambda t: active_tasks.pop(payload.session_id, None))
 
     return {"status": "ok", "session_id": payload.session_id}
+
+@app.post("/api/v1/capture/abort/{session_id}")
+async def abort_capture(session_id: str):
+    logger.info(f"Recebido pedido de abort para sessão: {session_id}")
+    update_status(session_id, "failed", "Processamento cancelado pelo usuário.")
+    if session_id in active_tasks:
+        task = active_tasks[session_id]
+        if not task.done():
+            task.cancel()
+            logger.info(f"Task cancelada para a sessão {session_id}")
+        active_tasks.pop(session_id, None)
+    return {"status": "ok"}
 
 @app.get("/api/v1/capture/status/{session_id}")
 async def check_status(session_id: str):
@@ -135,7 +151,9 @@ async def save_roteiro(session_id: str, payload: RoteiroEditadoPayload):
             return {"status": "ok", "message": "Já está renderizando"}
         
         update_status(session_id, "rendering_final", "Renderizando vídeo final com roteiro aprovado...")
-        asyncio.create_task(rerenderizar_com_roteiro_aprovado(session_id, payload.roteiro))
+        task = asyncio.create_task(rerenderizar_com_roteiro_aprovado(session_id, payload.roteiro))
+        active_tasks[session_id] = task
+        task.add_done_callback(lambda t: active_tasks.pop(session_id, None))
         
     return {"status": "ok"}
 
@@ -349,8 +367,16 @@ class SandboxActionPayload(BaseModel):
 async def evaluate_sandbox(payload: SandboxActionPayload):
     from sandbox_eng.arbitro_engine import avaliar_acao_sandbox
     
-    session_id = payload.session_id
-    passo_esperado = get_sandbox_state(session_id)
+    modulo_id = payload.session_id
+    session_id = modulo_id
+    
+    simlink_path = f"data/simlink/{modulo_id}.json"
+    if os.path.exists(simlink_path):
+        with open(simlink_path, "r", encoding="utf-8") as f:
+            mod = json.load(f)
+            session_id = mod.get("session_id", modulo_id)
+
+    passo_esperado = get_sandbox_state(modulo_id)
     
     roteiro_path = f"data/roteiros/{session_id}.json"
     if not os.path.exists(roteiro_path):
@@ -365,7 +391,7 @@ async def evaluate_sandbox(payload: SandboxActionPayload):
     result = await avaliar_acao_sandbox(roteiro_filtrado, passo_esperado, payload.action_data)
     
     if result.get("is_correct"):
-        set_sandbox_state(session_id, passo_esperado + 1)
+        set_sandbox_state(modulo_id, passo_esperado + 1)
         
     return result
 

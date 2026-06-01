@@ -209,49 +209,47 @@
         };
 
         if (isSandboxMode && type === 'click') {
-            chrome.storage.local.get(['backendUrl'], (res) => {
-                const backendUrl = res.backendUrl || "http://localhost:8000";
-                fetch(`${backendUrl}/api/v1/sandbox/evaluate`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        session_id: sandboxSessionId,
-                        url: window.location.href,
-                        action_data: payload
-                    })
-                })
-                .then(r => r.json())
-                .then(data => {
-                    if(data.is_correct) {
-                        sandboxXP += 10;
-                        chrome.storage.local.set({ sandboxXP });
+            chrome.runtime.sendMessage({
+                action: 'evaluate_sandbox',
+                session_id: sandboxSessionId,
+                url: window.location.href,
+                payload: payload
+            }, (response) => {
+                if (chrome.runtime.lastError) {
+                    console.error("Erro comunicação:", chrome.runtime.lastError);
+                    return;
+                }
+                const data = response;
+                if(data.is_correct) {
+                    sandboxXP += 10;
+                    chrome.storage.local.set({ sandboxXP });
 
-                        sandboxPassoAtual += 1;
-                        chrome.storage.local.set({ sandboxPassoAtual: sandboxPassoAtual });
-                        
-                        const concluido = sandboxPassoAtual >= sandboxTotalPassos;
-                        
-                        chrome.runtime.sendMessage({
-                            type: 'ARBITRO_PASSO_OK',
-                            session_id: sandboxSessionId,
-                            passo: sandboxPassoAtual,
-                            total: sandboxTotalPassos,
-                            xp: sandboxXP,
-                            concluido: concluido
-                        });
-                        
-                        showToast("success_arbitro");
-                        if (concluido) {
-                            showToast("success", "Prática Concluída! Muito bem!");
-                            chrome.storage.local.set({ sandboxMode: false });
-                        }
-                    } else {
-                        showToast("error");
+                    sandboxPassoAtual += 1;
+                    chrome.storage.local.set({ sandboxPassoAtual: sandboxPassoAtual });
+                    
+                    const concluido = sandboxPassoAtual >= sandboxTotalPassos;
+                    
+                    chrome.runtime.sendMessage({
+                        type: 'ARBITRO_PASSO_OK',
+                        session_id: sandboxSessionId,
+                        passo: sandboxPassoAtual,
+                        total: sandboxTotalPassos,
+                        xp: sandboxXP,
+                        concluido: concluido
+                    });
+                    
+                    showToast("success_arbitro");
+                    if (concluido) {
+                        showToast("success", "Prática Concluída! Muito bem!");
+                        chrome.storage.local.set({ sandboxMode: false });
+                    }
+                } else {
+                    showToast("error");
+                    setTimeout(() => {
                         let span = document.getElementById("capture-os-toast-msg");
                         if (span) span.innerHTML = `<b>Dica:</b> ${data.hint}`;
-                    }
-                })
-                .catch(err => console.error("Erro no árbitro:", err));
+                    }, 50); // delay to ensure toast is in DOM
+                }
             });
             return;
         }
@@ -601,7 +599,7 @@
                     <line x1="15" y1="9" x2="9" y2="15"></line>
                     <line x1="9" y1="9" x2="15" y2="15"></line>
                 </svg>
-                <span><b>Erro:</b> Falha na comunicação com o servidor.</span>
+                <span id="capture-os-toast-msg"><b>Erro:</b> Falha na comunicação com o servidor.</span>
             `;
             setTimeout(() => fecharToast(toast), 6000);
         } else if (type === "success_arbitro") {

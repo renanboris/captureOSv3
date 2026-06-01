@@ -38,6 +38,10 @@ async def rerenderizar_com_roteiro_aprovado(session_id: str, roteiro_aprovado: l
     os.makedirs(f"data/audios/{session_id}", exist_ok=True)
     timeline_events = []
     
+    # Pré-computar todas as tarefas de TTS (texto, caminho, timestamp) sequencialmente
+    tts_tasks = []
+    last_computed_ts = 5.0  # fallback para passo final se não houver eventos anteriores
+
     for idx, passo in enumerate(roteiro_aprovado):
         timestamp_ms = passo.get("timestamp", 0)
         ancora = passo.get("ancora", "").strip()
@@ -51,20 +55,38 @@ async def rerenderizar_com_roteiro_aprovado(session_id: str, roteiro_aprovado: l
         if timestamp_ms == 0 and passo.get("passo") == 0:
             rel_sec = 3.5
         elif timestamp_ms == 99999999 or passo.get("passo") == 999:
-            rel_sec = timeline_events[-1]["timestamp"] + 3.0 if timeline_events else 5.0
+            rel_sec = last_computed_ts + 3.0
         else:
             if start_time_ms > 0:
                 rel_sec = max(3.5, ((timestamp_ms - start_time_ms) / 1000.0) - 0.6)
             else:
                 rel_sec = max(3.5, (timestamp_ms / 1000.0) - 0.6)
-            
+
         audio_path = f"data/audios/{session_id}/passo_{idx+1}_final.mp3"
-        sucesso_tts = await gerar_audio(intencao_combinada, audio_path)
-        
+        tts_tasks.append({
+            "texto": intencao_combinada,
+            "audio_path": audio_path,
+            "rel_sec": rel_sec
+        })
+        last_computed_ts = rel_sec
+
+    # Gerar TTS em paralelo com semáforo para limitar concorrência
+    sem = asyncio.Semaphore(5)
+
+    async def _gerar_com_semaforo(texto, audio_path):
+        async with sem:
+            return await gerar_audio(texto, audio_path)
+
+    resultados = await asyncio.gather(
+        *[_gerar_com_semaforo(t["texto"], t["audio_path"]) for t in tts_tasks]
+    )
+
+    # Montar timeline_events na ordem original, apenas com TTS bem-sucedidos
+    for task_info, sucesso_tts in zip(tts_tasks, resultados):
         if sucesso_tts:
             timeline_events.append({
-                "timestamp": rel_sec,
-                "audio_path": audio_path
+                "timestamp": task_info["rel_sec"],
+                "audio_path": task_info["audio_path"]
             })
             
     # --- 4. RENDERIZAÇÃO DE VÍDEO ---
