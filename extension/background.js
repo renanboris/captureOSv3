@@ -90,11 +90,7 @@ async function setupOffscreenDocument(path) {
     });
 }
 
-chrome.runtime.onInstalled.addListener((details) => {
-    if (details.reason === 'install' || details.reason === 'update') {
-        chrome.storage.local.set({ needsOnboarding: true });
-    }
-});
+
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.target === 'background' && message.action === 'recording_ready') {
@@ -153,14 +149,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         startCapture();
     }
     
-    if (message.target === 'background' && message.action === 'recording_started_successfully') {
-        const startTime = Date.now();
-        chrome.storage.local.set({
-            isRecording: true,
-            recordingStartTime: startTime,
-            eventsLog: []
-        });
-        
+    if (message.target === 'background' && message.action === 'stream_ready') {
         // Inicia o ponto vermelho pulsante nativo no ícone da extensão
         startBlinkingBadge();
         
@@ -168,6 +157,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
             if(tabs[0]) chrome.tabs.sendMessage(tabs[0].id, {action: 'show_countdown'}).catch(() => {});
         });
+    }
+
+    if (message.action === 'start_recording_now') {
+        const startTime = Date.now();
+        chrome.storage.local.set({
+            isRecording: true,
+            recordingStartTime: startTime,
+            eventsLog: []
+        });
+        chrome.runtime.sendMessage({ target: 'offscreen', action: 'start_recording_now' }).catch(() => {});
     }
     
     if (message.action === 'stop_recording') {
@@ -182,8 +181,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         if (activePollInterval) {
             clearInterval(activePollInterval);
             activePollInterval = null;
-            console.log("Processamento abortado pelo usuário.");
         }
+        chrome.storage.local.set({ isProcessing: false });
+        console.log("Processamento abortado pelo usuário.");
+    }
+    
+    if (message.action === 'stop_processing') {
+        chrome.storage.local.set({ isProcessing: false });
+        console.log("Processamento finalizado com sucesso.");
     }
 
     // ─── MODO ÁRBITRO: iniciar sessão de prática ───
@@ -252,7 +257,70 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             }, 5000);
         }
     }
+    
+    if (message.action === 'resume_polling') {
+        startPolling(message.session_id);
+    }
 });
+
+function startPolling(sessionId) {
+    if (activePollInterval) clearInterval(activePollInterval);
+    chrome.storage.local.set({ isProcessing: true });
+    
+    activePollInterval = setInterval(() => {
+        fetch(`${BACKEND_URL}/api/v1/capture/status/${sessionId}`)
+            .then(r => r.json())
+            .then(status => {
+                if (status.status === "processing" || status.status === "rendering_final") {
+                    if (status.message) {
+                        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+                            if (tabs[0]) {
+                                chrome.tabs.sendMessage(tabs[0].id, {
+                                    action: "update_toast", msg: status.message
+                                }).catch(() => {});
+                            }
+                        });
+                    }
+                } else if (status.status === "roteiro_pronto") {
+                    if (activePollInterval !== null) {
+                        clearInterval(activePollInterval);
+                        activePollInterval = null;
+                        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+                            if (tabs[0]) {
+                                chrome.tabs.sendMessage(tabs[0].id, {
+                                    action: "show_editor_modal",
+                                    session_id: sessionId,
+                                    backendUrl: BACKEND_URL
+                                }).catch(() => {});
+                            }
+                        });
+                    }
+                } else if (status.status === "completed") {
+                    if (activePollInterval !== null) {
+                        clearInterval(activePollInterval);
+                        activePollInterval = null;
+                        chrome.storage.local.set({ isProcessing: false });
+                        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+                            if (tabs[0]) {
+                                chrome.tabs.sendMessage(tabs[0].id, {
+                                    action: "show_player_modal",
+                                    url: status.url,
+                                    roteiro: status.roteiro || []
+                                }).catch(() => {});
+                            }
+                        });
+                    }
+                } else if (status.status === "error" || status.status === "failed") {
+                    if (activePollInterval !== null) {
+                        clearInterval(activePollInterval);
+                        activePollInterval = null;
+                        chrome.storage.local.set({ isProcessing: false });
+                    }
+                }
+            })
+            .catch(e => console.error("Erro no polling", e));
+    }, 3000);
+}
 
 async function startCapture() {
     chrome.storage.local.set({ eventsLog: [], recordingStartTime: 0, isRecording: false });
@@ -261,9 +329,12 @@ async function startCapture() {
     await setupOffscreenDocument('offscreen.html');
 
     // Gravação delegada ao Picker nativo
-    chrome.runtime.sendMessage({
-        target: 'offscreen',
-        action: 'start_recording'
+    chrome.storage.local.get(['useMic'], (res) => {
+        chrome.runtime.sendMessage({
+            target: 'offscreen',
+            action: 'start_recording',
+            useMic: res.useMic || false
+        }).catch(err => console.error("Erro ao iniciar gravação no offscreen:", err));
     });
     console.log("Gravação Delegada ao Offscreen via getDisplayMedia nativo");
 }
@@ -295,93 +366,56 @@ async function abortCapture() {
 
 function finalizeUpload(videoBase64, recordingStartTime, eventsLog, micAudioBase64 = "") {
     console.log("Montando Payload Final...");
-    
-    // Ler configurações salvas pelo popup
+
     chrome.storage.local.get(['useMic', 'useAi'], (res) => {
-        let modoInput = "A"; // padrão: só tela, IA pura
-        if (res.useMic && micAudioBase64) modoInput = "B"; // tela + voz do instrutor
+        // --- tudo abaixo está DENTRO do callback ---
+
+        let modoInput = "A";
+        if (res.useMic && micAudioBase64) modoInput = "B";
 
         const payload = {
             session_id: "sess_" + Date.now(),
             recording_start_time: recordingStartTime,
             events: eventsLog,
             video_webm: videoBase64,
-            audio_instrutor_webm: micAudioBase64,  // vazio se Modo A
+            audio_instrutor_webm: micAudioBase64,
             modo_input: modoInput
         };
-    
-    // Avisa a aba ativa que o upload começou
-    chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
-        if(tabs[0]) {
-            chrome.tabs.sendMessage(tabs[0].id, {action: "show_toast", type: "processing"}).catch(()=>{});
-        }
-    });
-    
-    fetch(`${BACKEND_URL}/api/v1/capture/ingest`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(payload)
-    }).then(res => res.json())
-      .then(data => {
-          console.log('Upload recebido pelo servidor, aguardando pipeline background...', data);
-          
-          // Inicia o Relógio (Polling) para aguardar a renderização do Vídeo e atualizar Status
-          if(data.session_id) {
-              if (activePollInterval) clearInterval(activePollInterval);
-              activePollInterval = setInterval(() => {
-                  fetch(`${BACKEND_URL}/api/v1/capture/status/${data.session_id}`)
-                      .then(r => r.json())
-                      .then(status => {
-                          if(status.status === "processing") {
-                              // Atualiza o texto do Toast com a mensagem do backend
-                              if(status.message) {
-                                  chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
-                                      if(tabs[0]) {
-                                          chrome.tabs.sendMessage(tabs[0].id, {action: "update_toast", msg: status.message}).catch(()=>{});
-                                      }
-                                  });
-                              }
-                          } else if(status.status === "rendering_final") {
-                              if(status.message) {
-                                  chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
-                                      if(tabs[0]) {
-                                          chrome.tabs.sendMessage(tabs[0].id, {action: "update_toast", msg: status.message}).catch(()=>{});
-                                      }
-                                  });
-                              }
-                          } else if(status.status === "roteiro_pronto") {
-                              clearInterval(activePollInterval);
-                              activePollInterval = null;
-                              console.log("Roteiro pronto! Abrindo editor...");
-                              chrome.tabs.create({ url: `${BACKEND_URL}/editor?session=${data.session_id}` });
-                          } else if(status.status === "completed") {
-                              clearInterval(activePollInterval);
-                              activePollInterval = null;
-                              console.log("Vídeo finalizado! Abrindo player modal...");
-                              chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
-                                  if(tabs[0]) {
-                                      // Dispara o Modal Shadow DOM na página atual
-                                      chrome.tabs.sendMessage(tabs[0].id, {
-                                          action: "show_player_modal",
-                                          url: status.url,
-                                          roteiro: status.roteiro || []
-                                      }).catch(()=>{});
-                                  }
-                              });
-                          }
-                      })
-                      .catch(e => console.error("Erro no polling", e));
-              }, 3000); // Pinga a cada 3 segundos
-          }
-      })
-      .catch(err => {
-          console.error('Erro no upload', err);
-          chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
-              if(tabs[0]) {
-                  chrome.tabs.sendMessage(tabs[0].id, {action: "show_toast", type: "error"}).catch(()=>{});
-              }
-          });
-      });
+
+        // Avisa a aba ativa que o upload começou
+        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+            if (tabs[0]) {
+                chrome.tabs.sendMessage(tabs[0].id, {
+                    action: "show_toast", type: "processing"
+                }).catch(() => {});
+            }
+        });
+
+        fetch(`${BACKEND_URL}/api/v1/capture/ingest`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        })
+        .then(res => res.json())
+        .then(data => {
+            console.log('Upload recebido pelo servidor, aguardando pipeline...', data);
+            chrome.storage.local.set({ isProcessing: true });
+            
+            if (data.session_id) {
+                startPolling(data.session_id);
+            }
+        })
+        .catch(err => {
+            console.error('Erro no upload', err);
+            chrome.storage.local.set({ isProcessing: false });
+            chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+                if (tabs[0]) {
+                    chrome.tabs.sendMessage(tabs[0].id, {
+                        action: "show_toast", type: "error"
+                    }).catch(() => {});
+                }
+            });
+        });
+
+    }); // ← storage callback fecha AQUI — depois do fetch
 }

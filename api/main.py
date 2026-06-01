@@ -12,10 +12,20 @@ from fastapi import BackgroundTasks
 from fastapi.staticfiles import StaticFiles
 import os
 import asyncio
+from fastapi.middleware.cors import CORSMiddleware
 from config.settings import get_settings
 settings = get_settings()
 
 app = FastAPI(title="Capture OS v3 Ingestion API")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 logger = logging.getLogger("uvicorn.error")
 
 # Servir os vídeos finalizados como arquivos estáticos (Player)
@@ -53,6 +63,9 @@ class RoteiroEditadoPayload(BaseModel):
     roteiro: List[Dict[str, Any]]
     modo_input: str = "A"
     aprovado: bool = False
+
+class TTSPreviewPayload(BaseModel):
+    texto: str
 
 from fastapi import HTTPException
 
@@ -102,10 +115,25 @@ async def get_roteiro(session_id: str):
 async def save_roteiro(session_id: str, payload: RoteiroEditadoPayload):
     roteiro_path = f"data/roteiros/{session_id}.json"
     
+    existing_data = {}
+    if os.path.exists(roteiro_path):
+        with open(roteiro_path, "r", encoding="utf-8") as f:
+            try:
+                existing_data = json.load(f)
+            except:
+                pass
+                
+    existing_data["session_id"] = session_id
+    existing_data["roteiro"] = payload.roteiro
+    
     with open(roteiro_path, "w", encoding="utf-8") as f:
-        json.dump({"session_id": session_id, "roteiro": payload.roteiro}, f, ensure_ascii=False, indent=2)
+        json.dump(existing_data, f, ensure_ascii=False, indent=2)
         
     if payload.aprovado:
+        status_data = get_status(session_id)
+        if status_data.get("status") == "rendering_final":
+            return {"status": "ok", "message": "Já está renderizando"}
+        
         update_status(session_id, "rendering_final", "Renderizando vídeo final com roteiro aprovado...")
         asyncio.create_task(rerenderizar_com_roteiro_aprovado(session_id, payload.roteiro))
         
@@ -137,6 +165,21 @@ async def regerar_passo(session_id: str, passo_num: int):
     passo_atualizado = await regerar_passo_isolado(passo_alvo, passo_anterior, passo_seguinte)
 
     return {"passo": passo_atualizado}
+
+@app.post("/api/v1/tts/preview")
+async def tts_preview(payload: TTSPreviewPayload):
+    from video_eng.tts_generator import gerar_audio
+    import uuid
+    os.makedirs("data/artifacts/previews", exist_ok=True)
+    filename = f"preview_{uuid.uuid4().hex}.mp3"
+    filepath = f"data/artifacts/previews/{filename}"
+    sucesso = await gerar_audio(payload.texto, filepath)
+    if not sucesso:
+        raise HTTPException(status_code=500, detail="Falha ao gerar TTS")
+    
+    base = settings.backend_url
+    url = f"{base}/artifacts/previews/{filename}"
+    return {"audio_url": url}
 
 @app.get("/api/v1/session/{session_id}/artifacts")
 async def get_artifacts(session_id: str):

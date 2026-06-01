@@ -9,12 +9,14 @@
     let sandboxSessionId = null;
     let sandboxTotalPassos = 0;
     let sandboxPassoAtual = 0;
+    let sandboxXP = 0;
 
-    chrome.storage.local.get(['sandboxMode', 'sandboxSessionId', 'sandboxTotalPassos', 'sandboxPassoAtual'], (res) => {
+    chrome.storage.local.get(['sandboxMode', 'sandboxSessionId', 'sandboxTotalPassos', 'sandboxPassoAtual', 'sandboxXP'], (res) => {
         isSandboxMode = res.sandboxMode || false;
         sandboxSessionId = res.sandboxSessionId || null;
         sandboxTotalPassos = res.sandboxTotalPassos || 0;
         sandboxPassoAtual = res.sandboxPassoAtual || 0;
+        sandboxXP = res.sandboxXP || 0;
     });
 
     chrome.storage.onChanged.addListener((changes) => {
@@ -22,6 +24,12 @@
         if (changes.sandboxSessionId) sandboxSessionId = changes.sandboxSessionId.newValue;
         if (changes.sandboxTotalPassos) sandboxTotalPassos = changes.sandboxTotalPassos.newValue;
         if (changes.sandboxPassoAtual) sandboxPassoAtual = changes.sandboxPassoAtual.newValue;
+        if (changes.sandboxXP) sandboxXP = changes.sandboxXP.newValue;
+
+        // Resetar XP quando nova sessão começa (sandboxMode ativado)
+        if (changes.sandboxMode && changes.sandboxMode.newValue === true) {
+            sandboxXP = 0;
+        }
     });
 
     function getSemanticSnapshot() {
@@ -215,7 +223,9 @@
                 .then(r => r.json())
                 .then(data => {
                     if(data.is_correct) {
-                        showToast("success_arbitro");
+                        sandboxXP += 10;
+                        chrome.storage.local.set({ sandboxXP });
+
                         sandboxPassoAtual += 1;
                         chrome.storage.local.set({ sandboxPassoAtual: sandboxPassoAtual });
                         
@@ -223,13 +233,14 @@
                         
                         chrome.runtime.sendMessage({
                             type: 'ARBITRO_PASSO_OK',
+                            session_id: sandboxSessionId,
                             passo: sandboxPassoAtual,
                             total: sandboxTotalPassos,
-                            concluido: concluido,
-                            session_id: sandboxSessionId,
-                            xp: sandboxTotalPassos * 10
+                            xp: sandboxXP,
+                            concluido: concluido
                         });
                         
+                        showToast("success_arbitro");
                         if (concluido) {
                             showToast("success", "Prática Concluída! Muito bem!");
                             chrome.storage.local.set({ sandboxMode: false });
@@ -246,16 +257,55 @@
         }
 
         try {
+            if (!chrome.runtime?.id) return;
             if (chrome.runtime && chrome.runtime.sendMessage) {
                 chrome.runtime.sendMessage({
                     action: 'user_interaction',
                     type: type,
                     data: payload
+                }).catch(err => {
+                    if (err.message && err.message.includes("Extension context invalidated")) {
+                        showContextInvalidatedWarning();
+                    }
                 });
             }
         } catch (err) {
-            console.warn("Capture OS v3: Contexto da extensão foi invalidado durante o clique.", err);
+            if (err.message && err.message.includes("Extension context invalidated")) {
+                showContextInvalidatedWarning();
+            }
         }
+    }
+
+    let hasShownInvalidated = false;
+    function showContextInvalidatedWarning() {
+        if (hasShownInvalidated) return;
+        hasShownInvalidated = true;
+        
+        const banner = document.createElement("div");
+        banner.style.cssText = `
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #ef4444;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-family: sans-serif;
+            font-size: 14px;
+            font-weight: 600;
+            z-index: 2147483647;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        `;
+        banner.innerHTML = `
+            <span>🚨 O Capture OS foi atualizado. Para voltar a gravar, você <b>precisa recarregar esta página (F5)</b>.</span>
+            <button onclick="window.top.location.reload(true)" style="background: white; color: #ef4444; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-weight: bold;">Recarregar Agora</button>
+            <button onclick="this.parentElement.remove()" style="background: transparent; color: white; border: none; cursor: pointer; font-size: 16px;">×</button>
+        `;
+        document.body.appendChild(banner);
     }
 
     // Bind events
@@ -287,6 +337,7 @@
                 urlAtual = window.location.href;
                 console.log("Capture OS v3 - Navegação SPA Detectada:", urlAtual);
                 try {
+                    if (!chrome.runtime?.id) return;
                     if (chrome.runtime && chrome.runtime.sendMessage) {
                         chrome.runtime.sendMessage({
                             action: 'user_interaction',
@@ -302,10 +353,9 @@
                                 target_attributes: {},
                                 a11y_tree: getSemanticSnapshot()
                             }
-                        });
+                        }).catch(()=>{});
                     }
                 } catch (err) {
-                    console.warn("Capture OS v3: Falha ao enviar evento SPA", err);
                 }
             }
         }, 500);
@@ -315,7 +365,7 @@
     // --- UX Feedback (Toast & Widget) ---
     chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         // Bloqueia a renderização de UI dentro de Iframes! O UI deve aparecer apenas na janela principal.
-        const isUIAction = ["show_toast", "update_toast", "show_player_modal", "show_pin_tooltip"].includes(msg.action);
+        const isUIAction = ["show_toast", "update_toast", "show_player_modal", "show_pin_tooltip", "show_editor_modal", "show_countdown"].includes(msg.action);
         if (isUIAction && window !== window.top) return;
 
         if (msg.action === "show_toast") {
@@ -343,11 +393,15 @@
                 document.body.appendChild(toast);
             }
         } else if (msg.action === "show_player_modal") {
-            // Força a destruição imediata de qualquer Toast remanescente na tela
             let toast = document.getElementById("capture-os-toast");
             if(toast) toast.remove();
             
             mountPlayerModal(msg.url, msg.roteiro);
+        } else if (msg.action === "show_editor_modal") {
+            let toast = document.getElementById("capture-os-toast");
+            if(toast) toast.remove();
+            
+            mountEditorModal(msg.backendUrl, msg.session_id);
         } else if (msg.action === "show_countdown") {
             if (window !== window.top) return; // Impede que iframes renderizem contadores duplicados
             
@@ -415,6 +469,9 @@
                     setTimeout(() => {
                         overlay.remove();
                         style.remove();
+                        if (chrome.runtime && chrome.runtime.sendMessage) {
+                            chrome.runtime.sendMessage({ action: 'start_recording_now' }).catch(() => {});
+                        }
                     }, 500);
                 }
             }, 1000);
@@ -563,85 +620,23 @@
         }, 400);
     }
 
-    // --- Onboarding (Pin Extension Tooltip) ---
-    chrome.storage.local.get(['needsOnboarding'], (res) => {
-        if (res.needsOnboarding) {
-            mountOnboardingTooltip();
-            chrome.storage.local.set({ needsOnboarding: false });
-        }
-    });
 
-    function mountOnboardingTooltip() {
-        const tooltip = document.createElement('div');
-        tooltip.id = 'capture-os-onboarding';
-        tooltip.style.cssText = `
-            position: fixed;
-            top: 24px;
-            right: 120px;
-            background: rgba(255, 255, 255, 0.85);
-            backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
-            color: #0f172a;
-            font-family: 'Inter', -apple-system, sans-serif;
-            padding: 16px 20px;
-            border-radius: 16px;
-            box-shadow: 0 10px 40px rgba(11, 92, 227, 0.15), 0 0 0 1px rgba(255,255,255,0.5) inset;
-            border: 1px solid rgba(11, 92, 227, 0.1);
-            z-index: 2147483647;
-            width: 280px;
-            opacity: 0;
-            transform: translateY(-10px) scale(0.95);
-            transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
-            pointer-events: none;
-        `;
-        
-        tooltip.innerHTML = `
-            <div style="display: flex; gap: 14px; align-items: flex-start;">
-                <div style="font-size: 24px; animation: bouncePin 2s infinite; display: inline-block; transform-origin: bottom center;">📌</div>
-                <div>
-                    <h3 style="margin: 0 0 4px 0; font-size: 15px; font-weight: 700; color: #1e293b;">Fixe a Extensão</h3>
-                    <p style="margin: 0; font-size: 13px; color: #64748b; line-height: 1.5;">
-                        Para habilitar os atalhos e controles rápidos, clique no ícone de <b>Quebra-cabeça</b> do Chrome (acima) e fixe o Capture OS.
-                    </p>
-                </div>
-            </div>
-            <!-- Setinha apontando pra cima (Light) -->
-            <div style="
-                position: absolute;
-                top: -8px;
-                right: 40px;
-                width: 0; 
-                height: 0; 
-                border-left: 8px solid transparent;
-                border-right: 8px solid transparent;
-                border-bottom: 8px solid rgba(255, 255, 255, 0.95);
-                filter: drop-shadow(0 -2px 2px rgba(11, 92, 227, 0.05));
-            "></div>
-            <style>
-                @keyframes bouncePin {
-                    0%, 100% { transform: translateY(0) rotate(0deg); }
-                    50% { transform: translateY(-4px) rotate(5deg); }
-                }
-            </style>
-        `;
-        
-        document.body.appendChild(tooltip);
-        
-        requestAnimationFrame(() => {
-            tooltip.style.opacity = '1';
-            tooltip.style.transform = 'translateY(0) scale(1)';
-        });
-        
-        // Remove automaticamente após 12 segundos
-        setTimeout(() => {
-            tooltip.style.opacity = '0';
-            tooltip.style.transform = 'translateY(-10px) scale(0.95)';
-            setTimeout(() => { if (tooltip.parentNode) tooltip.parentNode.removeChild(tooltip); }, 500);
-        }, 12000);
-    }
 
     // --- Player Modal (Vimeo Record Aesthetic) ---
     function mountPlayerModal(videoUrl, roteiro) {
+        // Extrai session_id da URL (ex: sess_1780090948221)
+        const match = videoUrl.match(/(sess_\d+)/);
+        const session_id = match ? match[1] : '';
+
+        // Extrai o backendUrl do videoUrl
+        let backendUrl = '';
+        try {
+            const urlObj = new URL(videoUrl);
+            backendUrl = urlObj.origin;
+        } catch (e) {
+            backendUrl = 'http://127.0.0.1:8000';
+        }
+
         // Se já existir, remove
         let existing = document.getElementById('capture-os-player-host');
         if (existing) existing.remove();
@@ -860,14 +855,30 @@
                     </div>
                     
                     <div class="script-footer">
-                        <a href="${videoUrl}" target="_blank" download="tutorial_capture_os_${Date.now()}.mp4" class="btn btn-primary">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2-2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-                            Baixar Vídeo (MP4)
-                        </a>
-                        <button class="btn btn-secondary" id="copy-btn">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-                            Copiar Texto do Roteiro
-                        </button>
+                        <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+                            <a href="${videoUrl}" target="_blank" download="tutorial_capture_os_${Date.now()}.mp4" class="btn btn-primary" style="flex: 1; min-width: 200px;">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2-2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                                Baixar Vídeo (MP4)
+                            </a>
+                            <button class="btn btn-secondary" id="copy-btn" style="flex: 1; min-width: 200px;">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                                Copiar Roteiro
+                            </button>
+                        </div>
+                        <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+                            <a href="${backendUrl}/artifacts/${session_id}/apostila.pdf" target="_blank" download="apostila_capture_os_${Date.now()}.pdf" class="btn btn-secondary" style="flex: 1; min-width: 140px; font-size: 13px;">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                                Baixar PDF
+                            </a>
+                            <a href="${backendUrl}/artifacts/${session_id}/transcricao.txt" target="_blank" download="transcricao_capture_os_${Date.now()}.txt" class="btn btn-secondary" style="flex: 1; min-width: 140px; font-size: 13px;">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                                Transcrição
+                            </a>
+                            <a href="${backendUrl}/artifacts/${session_id}/quiz.json" target="_blank" download="quiz_capture_os_${Date.now()}.json" class="btn btn-secondary" style="flex: 1; min-width: 140px; font-size: 13px;">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+                                JSON do Quiz
+                            </a>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -905,6 +916,107 @@
             host.style.opacity = '1';
             shadow.getElementById('modal').style.transform = 'translateY(0) scale(1)';
         });
+    }
+
+    // --- Editor Modal Injetado ---
+    function mountEditorModal(backendUrl, sessionId) {
+        let existing = document.getElementById('capture-os-editor-host');
+        if (existing) existing.remove();
+
+        const host = document.createElement('div');
+        host.id = 'capture-os-editor-host';
+        host.style.cssText = `
+            position: fixed;
+            top: 0; left: 0; width: 100vw; height: 100vh;
+            z-index: 2147483647;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            background: rgba(15, 23, 42, 0.4);
+            opacity: 0;
+            transition: opacity 0.4s ease;
+        `;
+        
+        document.body.appendChild(host);
+        const shadow = host.attachShadow({mode: 'open'});
+        
+        shadow.innerHTML = `
+            <style>
+                .modal-container {
+                    width: 700px;
+                    max-width: 95vw;
+                    height: 85vh;
+                    background: transparent;
+                    border-radius: 16px;
+                    display: flex;
+                    flex-direction: column;
+                    transform: translateY(20px) scale(0.98);
+                    transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+                    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+                    overflow: hidden;
+                }
+                iframe {
+                    width: 100%;
+                    height: 100%;
+                    border: none;
+                    background: transparent;
+                }
+            </style>
+            <div class="modal-container" id="editor-modal">
+                <iframe src="${backendUrl}/editor?session=${sessionId}&embedded=true"></iframe>
+            </div>
+        `;
+
+        requestAnimationFrame(() => {
+            host.style.opacity = '1';
+            shadow.getElementById('editor-modal').style.transform = 'translateY(0) scale(1)';
+        });
+
+        // Ouve mensagens do iframe para fechar o modal
+        const messageHandler = (e) => {
+            if (e.data && (e.data.action === "close_editor_modal" || e.data.action === "close_editor_modal_and_resume" || e.data.action === "cancel_editor_modal")) {
+                host.style.opacity = '0';
+                shadow.getElementById('editor-modal').style.transform = 'translateY(20px) scale(0.98)';
+                setTimeout(() => {
+                    host.remove();
+                    window.removeEventListener("message", messageHandler);
+                }, 400);
+
+                if (e.data.action === "close_editor_modal_and_resume") {
+                    showToast("processing", "Renderizando vídeo final...");
+                    
+                    // Polling local para fugir do bug de suspensão do Service Worker do MV3
+                    let localPollInterval = setInterval(() => {
+                        fetch(`${backendUrl}/api/v1/capture/status/${e.data.session_id}`)
+                            .then(r => r.json())
+                            .then(status => {
+                                if (status.status === "processing" || status.status === "rendering_final") {
+                                    if (status.message) showToast("processing", status.message);
+                                } else if (status.status === "completed") {
+                                    clearInterval(localPollInterval);
+                                    if (chrome.runtime && chrome.runtime.sendMessage) chrome.runtime.sendMessage({ action: 'stop_processing' }).catch(()=>{});
+                                    const toast = document.getElementById("capture-os-toast");
+                                    if (toast) toast.remove();
+                                    mountPlayerModal(status.url, status.roteiro || []);
+                                } else if (status.status === "error" || status.status === "failed") {
+                                    clearInterval(localPollInterval);
+                                    if (chrome.runtime && chrome.runtime.sendMessage) chrome.runtime.sendMessage({ action: 'stop_processing' }).catch(()=>{});
+                                    showToast("error");
+                                }
+                            })
+                            .catch(err => console.error("Erro no polling local", err));
+                    }, 3000);
+                    
+                } else if (e.data.action === "cancel_editor_modal") {
+                    if (chrome.runtime && chrome.runtime.sendMessage) {
+                        chrome.runtime.sendMessage({ action: "abort_processing" }).catch(() => {});
+                    }
+                }
+            }
+        };
+        window.addEventListener("message", messageHandler);
     }
 
 })();

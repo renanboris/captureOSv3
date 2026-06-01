@@ -77,16 +77,42 @@ async def rerenderizar_com_roteiro_aprovado(session_id: str, roteiro_aprovado: l
         timeline_events
     )
     
+    # --- 5. GERAÇÃO DE ARTEFATOS PARALELOS ---
+    update_status(session_id, "rendering_final", "📄 Gerando materiais de apoio...")
+
+    os.makedirs(f"data/artifacts/{session_id}", exist_ok=True)
+    pdf_path = f"data/artifacts/{session_id}/apostila.pdf"
+    transcript_path = f"data/artifacts/{session_id}/transcricao.txt"
+
+    from pdf_eng.manual_builder import gerar_pdf
+    from artifacts.transcript_builder import gerar_transcricao
+    from artifacts.quiz_generator import gerar_quiz
+    from config.settings import get_settings
+    from simlink_eng.simlink_builder import construir_modulo_simlink
+
+    settings = get_settings()
+
+    # Rodar PDF e transcrição em paralelo
+    await asyncio.gather(
+        asyncio.to_thread(gerar_pdf, roteiro_aprovado, pdf_path, f"Tutorial — Sessão {session_id}"),
+        asyncio.to_thread(gerar_transcricao, roteiro_aprovado, transcript_path)
+    )
+
+    # Quiz
+    quiz_data = await gerar_quiz(roteiro_aprovado, settings.google_api_key)
+    quiz_path = f"data/artifacts/{session_id}/quiz.json"
+    if quiz_data:
+        with open(quiz_path, "w", encoding="utf-8") as f:
+            import json
+            json.dump(quiz_data, f, ensure_ascii=False, indent=2)
+
     # Atualizar Módulo Simlink com o roteiro aprovado
     try:
-        from simlink_eng.simlink_builder import construir_modulo_simlink
-        import json
-        from config.settings import get_settings
-        settings = get_settings()
         video_url = f"{settings.backend_url}/videos_gerados/{session_id}_final.mp4"
         simlink_modulo = construir_modulo_simlink(roteiro_aprovado, session_id, video_url)
         os.makedirs("data/simlink", exist_ok=True)
         with open(f"data/simlink/{session_id}.json", "w", encoding="utf-8") as f:
+            import json
             json.dump(simlink_modulo.model_dump(), f, ensure_ascii=False, indent=2)
     except Exception as e:
         logger.error(f"Erro ao atualizar Simlink no rerender: {e}")

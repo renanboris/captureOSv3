@@ -141,6 +141,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         updateTogglesUI();
     });
 
+    const btnForceStop = document.getElementById('btn-force-stop');
+
     // Recupera o estado real ao abrir o popup
     chrome.runtime.sendMessage({action: 'get_status'}, (response) => {
         if (response && response.isRecording) {
@@ -150,6 +152,29 @@ document.addEventListener('DOMContentLoaded', async () => {
             btnStart.style.display = 'none';
             btnStop.style.display = 'flex';
             btnAbort.style.display = 'flex';
+            btnForceStop.style.display = 'none';
+        }
+    });
+
+    // Bloqueia se estiver processando
+    chrome.storage.local.get(['isProcessing'], (res) => {
+        if (res.isProcessing) {
+            btnStart.disabled = true;
+            btnStart.innerHTML = `<span class="capture-spin" style="display:inline-block; margin-right:8px; width:14px; height:14px; border:2px solid #fff; border-top-color:transparent; border-radius:50%; vertical-align:middle; animation: capture-spin 1s linear infinite;"></span> Processando vídeo anterior...`;
+            btnStart.style.opacity = '0.7';
+            btnStart.style.cursor = 'not-allowed';
+            
+            toggleMic.disabled = true;
+            toggleAi.disabled = true;
+            toggleCam.disabled = true;
+            
+            btnForceStop.style.display = 'flex'; // Exibe o botão de forçar parada
+
+            const style = document.createElement("style");
+            style.innerHTML = `@keyframes capture-spin { 100% { transform: rotate(360deg); } }`;
+            document.head.appendChild(style);
+        } else {
+            btnForceStop.style.display = 'none';
         }
     });
 
@@ -165,6 +190,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     btnAbort.addEventListener('click', () => {
         chrome.runtime.sendMessage({action: 'abort_recording'});
+        window.close();
+    });
+
+    btnForceStop.addEventListener('click', () => {
+        chrome.runtime.sendMessage({action: 'abort_processing'});
         window.close();
     });
 });

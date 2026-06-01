@@ -8,11 +8,17 @@ let canvasElement = document.createElement('canvas');
 chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
     if (message.target === 'offscreen') {
         if (message.action === 'start_recording') {
-            await startRecording();
+            await startRecording(message.useMic);
             sendResponse({ status: 'started' });
         } else if (message.action === 'stop_recording') {
             stopRecording();
             sendResponse({ status: 'stopped' });
+        } else if (message.action === 'start_recording_now') {
+            if (mediaRecorder && mediaRecorder.state !== 'recording') {
+                mediaRecorder.start();
+                console.log("Offscreen: Gravação WebM iniciada com sucesso.");
+            }
+            sendResponse({ status: 'started_now' });
         } else if (message.action === 'abort_recording') {
             abortRecording();
             sendResponse({ status: 'aborted' });
@@ -32,15 +38,11 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
     return true; // Keep message channel open for async response
 });
 
-async function startRecording() {
+async function startRecording(useMic) {
     if (mediaRecorder && mediaRecorder.state === 'recording') return;
     recordedChunks = [];
 
-    // Verificar se modo microfone está ativo
-    const { useMic } = await chrome.storage.local.get(['useMic']);
-
     try {
-        // Stream de tela (sempre)
         const displayStream = await navigator.mediaDevices.getDisplayMedia({
             audio: false,
             video: { displaySurface: "browser" }
@@ -48,15 +50,13 @@ async function startRecording() {
 
         videoElement.srcObject = displayStream;
 
-        let micStream = null;
         let micRecorder = null;
         let micChunks = [];
+        let micStream = null;
 
-        // Stream de microfone (somente Modo B)
         if (useMic) {
             try {
                 micStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-
                 micRecorder = new MediaRecorder(micStream, { mimeType: 'audio/webm' });
                 micRecorder.ondataavailable = (ev) => {
                     if (ev.data.size > 0) micChunks.push(ev.data);
@@ -75,46 +75,54 @@ async function startRecording() {
         };
 
         mediaRecorder.onstop = async () => {
-            // Parar microfone se ativo
-            if (micRecorder && micRecorder.state === 'recording') {
-                micRecorder.stop();
-            }
-            if (micStream) micStream.getTracks().forEach(t => t.stop());
-
+            // Converter vídeo para base64
             const videoBlob = new Blob(recordedChunks, { type: 'video/webm' });
-            const videoReader = new FileReader();
-            videoReader.readAsDataURL(videoBlob);
-            videoReader.onloadend = async () => {
-                const videoBase64 = videoReader.result;
+            const videoBase64 = await blobToBase64(videoBlob);
 
-                // Aguardar o micRecorder terminar se necessário
-                let micBase64 = "";
-                if (micChunks.length > 0) {
-                    const micBlob = new Blob(micChunks, { type: 'audio/webm' });
-                    micBase64 = await new Promise((resolve) => {
-                        const r = new FileReader();
-                        r.readAsDataURL(micBlob);
-                        r.onloadend = () => resolve(r.result);
-                    });
-                }
-
-                chrome.runtime.sendMessage({
-                    target: 'background',
-                    action: 'recording_ready',
-                    data: videoBase64,
-                    micAudioBase64: micBase64  // NOVO: áudio do microfone
+            // Aguardar o micRecorder terminar corretamente antes de processar o áudio
+            let micBase64 = "";
+            if (micRecorder && micRecorder.state !== 'inactive') {
+                micBase64 = await new Promise((resolve) => {
+                    micRecorder.onstop = async () => {
+                        if (micChunks.length > 0) {
+                            const micBlob = new Blob(micChunks, { type: 'audio/webm' });
+                            resolve(await blobToBase64(micBlob));
+                        } else {
+                            resolve("");
+                        }
+                        if (micStream) micStream.getTracks().forEach(t => t.stop());
+                    };
+                    micRecorder.stop(); // ← parar AQUI, dentro da Promise
                 });
-            };
-            displayStream.getTracks().forEach(track => track.stop());
+            } else if (micStream) {
+                micStream.getTracks().forEach(t => t.stop());
+            }
+
+            chrome.runtime.sendMessage({
+                target: 'background',
+                action: 'recording_ready',
+                data: videoBase64,
+                micAudioBase64: micBase64
+            });
+
+            displayStream.getTracks().forEach(t => t.stop());
         };
 
-        mediaRecorder.start();
-        console.log("Offscreen: Gravação WebM iniciada com sucesso.");
-        chrome.runtime.sendMessage({ target: 'background', action: 'recording_started_successfully' });
+        console.log("Offscreen: Stream capturado. Aguardando countdown...");
+        chrome.runtime.sendMessage({ target: 'background', action: 'stream_ready' });
 
     } catch (err) {
-        console.error("Offscreen: Erro ao iniciar getUserMedia", err);
+        console.error("Offscreen: Erro ao iniciar gravação", err);
     }
+}
+
+// Helper — converter Blob para base64 DataURL
+function blobToBase64(blob) {
+    return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(blob);
+        reader.onloadend = () => resolve(reader.result);
+    });
 }
 
 function stopRecording() {
