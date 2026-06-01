@@ -12,6 +12,9 @@ Durante a Fase 3 e evoluções mais recentes, nós:
 - Refatoramos a lógica do Árbitro (`arbitro_engine.py`) para validação rápida (`XPath`, `CSS` e `Text`) com fallback para o motor LLM caso seja um passo subjetivo.
 - Evoluímos a re-renderização (`rerender_pipeline.py`) para preservar a sincronia usando os `start_time_ms` reais.
 - Implementamos a possibilidade de **Regerar via IA** um passo específico dentro do Editor web.
+- **Integração Aura AI e RAG:** A inteligência artificial agora deduz objetivos corporativos injetando manuais RAG do `Pinecone` e cria uma narração rica e fluída incluindo passos de Introdução e Conclusão automáticos no roteiro.
+- **Motor de SCORM 1.2 Nativo:** O modo "Try" gera um pacote SCORM auto-suficiente que emula perfeitamente a interface do Sandbox HUD, removendo dependências externas de chamadas `fetch()` para contornar problemas de CORS localmente (`scorm_builder.py`).
+- **Geração Automática de Apostilas (PDF):** Utilizando a engine do ReportLab (`pdf_eng`), geramos uma apostila diagramada, com highlights (Set-of-Marks) da tela e narração correspondente a cada passo.
 
 ---
 
