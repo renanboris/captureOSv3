@@ -5,6 +5,7 @@ import logging
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types as genai_types
+from openai import AsyncOpenAI
 from api.status_manager import update_status
 from api.rag_engine import buscar_contexto_multi_namespace
 
@@ -145,11 +146,57 @@ Responda APENAS com a lista JSON validada, preservando os mesmos timestamps (exc
                 temperature=0.3
             )
         )
-        roteiro_enriquecido = json.loads(response.text)
-        return roteiro_enriquecido
+        roteiro_enriquecido_ai = json.loads(response.text)
+        
+        # Fazer o merge da resposta da IA de volta no roteiro_bruto para preservar a propriedade _simlink (hotspots de tela)
+        for ai_passo in roteiro_enriquecido_ai:
+            for bruto_passo in roteiro_bruto:
+                if str(ai_passo.get("passo")) == str(bruto_passo.get("passo")):
+                    bruto_passo["ancora"] = ai_passo.get("ancora", "")
+                    bruto_passo["micro_narracao"] = ai_passo.get("micro_narracao", "")
+                    if ai_passo.get("intencao_original"):
+                        bruto_passo["intencao_original"] = ai_passo.get("intencao_original")
+                    break
+                    
+        return roteiro_bruto
     except Exception as e:
-        logger.error(f"Erro no Enriquecimento Semântico: {e}")
-        # Retorna o bruto se falhar para não quebrar a compilação do vídeo
+        logger.error(f"Erro no Enriquecimento Semântico (Gemini): {e}. Tentando OpenAI Fallback...")
+        openai_key = os.getenv("OPENAI_API_KEY", "")
+        if openai_key:
+            try:
+                openai_client = AsyncOpenAI(api_key=openai_key)
+                completion = await openai_client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=[
+                        {"role": "system", "content": "Você é a Aura. Retorne EXATAMENTE o JSON puro do array, sem usar blocos de markdown ```json."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    temperature=0.3
+                )
+                res_text = completion.choices[0].message.content.strip()
+                if res_text.startswith("```json"):
+                    res_text = res_text[7:-3].strip()
+                elif res_text.startswith("```"):
+                    res_text = res_text[3:-3].strip()
+                    
+                roteiro_enriquecido_ai = json.loads(res_text)
+                
+                for ai_passo in roteiro_enriquecido_ai:
+                    for bruto_passo in roteiro_bruto:
+                        if str(ai_passo.get("passo")) == str(bruto_passo.get("passo")):
+                            bruto_passo["ancora"] = ai_passo.get("ancora", "")
+                            bruto_passo["micro_narracao"] = ai_passo.get("micro_narracao", "")
+                            if ai_passo.get("intencao_original"):
+                                bruto_passo["intencao_original"] = ai_passo.get("intencao_original")
+                            break
+                return roteiro_bruto
+            except Exception as e2:
+                logger.error(f"Erro no Fallback OpenAI (Enriquecimento): {e2}")
+
+        # Retorna o bruto preenchido com textos básicos se tudo falhar
+        for passo in roteiro_bruto:
+            passo["ancora"] = passo.get("intencao_original", "Interação na tela")
+            passo["micro_narracao"] = ""
         return roteiro_bruto
 
 async def regerar_passo_isolado(passo_alvo: dict, passo_anterior: dict = None, passo_seguinte: dict = None) -> dict:
@@ -198,7 +245,28 @@ Responda APENAS com um objeto JSON:
         resultado = json.loads(response.text)
         passo_alvo["ancora"] = resultado.get("ancora", "")
         passo_alvo["micro_narracao"] = resultado.get("micro_narracao", "")
-        return passo_alvo
+        return json.loads(response.text)
     except Exception as e:
-        logger.error(f"Erro ao regerar passo isolado: {e}")
+        logger.error(f"Erro ao regerar passo isolado (Gemini): {e}. Tentando OpenAI Fallback...")
+        openai_key = os.getenv("OPENAI_API_KEY", "")
+        if openai_key:
+            try:
+                openai_client = AsyncOpenAI(api_key=openai_key)
+                completion = await openai_client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=[
+                        {"role": "system", "content": "Você é a Aura. Retorne APENAS um objeto JSON válido, sem usar markdown ```json."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    temperature=0.7
+                )
+                res_text = completion.choices[0].message.content.strip()
+                if res_text.startswith("```json"):
+                    res_text = res_text[7:-3].strip()
+                elif res_text.startswith("```"):
+                    res_text = res_text[3:-3].strip()
+                return json.loads(res_text)
+            except Exception as e2:
+                logger.error(f"Erro no Fallback OpenAI (Regerar Passo): {e2}")
+        
         return passo_alvo

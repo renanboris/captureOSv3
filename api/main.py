@@ -271,7 +271,7 @@ async def listar_modulos(dominio: str = ""):
         if filepath.endswith("_resultado.json"):
             continue
         try:
-            with open(filepath) as f:
+            with open(filepath, "r", encoding="utf-8") as f:
                 mod = json.load(f)
 
             # Filtrar por domínio se fornecido

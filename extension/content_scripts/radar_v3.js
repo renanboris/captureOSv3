@@ -8,15 +8,24 @@
     let isSandboxMode = false;
     let sandboxSessionId = null;
     let sandboxTotalPassos = 0;
-    let sandboxPassoAtual = 0;
     let sandboxXP = 0;
+    let sandboxHotspots = [];
+    let sandboxStats = { errors: 0, hints: 0, skips: 0 };
 
-    chrome.storage.local.get(['sandboxMode', 'sandboxSessionId', 'sandboxTotalPassos', 'sandboxPassoAtual', 'sandboxXP'], (res) => {
+    chrome.storage.local.get(['sandboxMode', 'sandboxSessionId', 'sandboxTotalPassos', 'sandboxPassoAtual', 'sandboxXP', 'sandboxHotspots', 'sandboxStats'], (res) => {
         isSandboxMode = res.sandboxMode || false;
         sandboxSessionId = res.sandboxSessionId || null;
         sandboxTotalPassos = res.sandboxTotalPassos || 0;
         sandboxPassoAtual = res.sandboxPassoAtual || 0;
         sandboxXP = res.sandboxXP || 0;
+        sandboxHotspots = res.sandboxHotspots || [];
+        sandboxStats = res.sandboxStats || { errors: 0, hints: 0, skips: 0 };
+
+        if (isSandboxMode) {
+            setTimeout(() => {
+                if (typeof renderSandboxWidget === 'function') renderSandboxWidget();
+            }, 500);
+        }
     });
 
     chrome.storage.onChanged.addListener((changes) => {
@@ -25,10 +34,35 @@
         if (changes.sandboxTotalPassos) sandboxTotalPassos = changes.sandboxTotalPassos.newValue;
         if (changes.sandboxPassoAtual) sandboxPassoAtual = changes.sandboxPassoAtual.newValue;
         if (changes.sandboxXP) sandboxXP = changes.sandboxXP.newValue;
+        if (changes.sandboxHotspots) sandboxHotspots = changes.sandboxHotspots.newValue;
+        if (changes.sandboxStats) sandboxStats = changes.sandboxStats.newValue;
 
-        // Resetar XP quando nova sessão começa (sandboxMode ativado)
-        if (changes.sandboxMode && changes.sandboxMode.newValue === true) {
-            sandboxXP = 0;
+        // Atualizar renderização se os hotspots ou sessão mudarem
+        if (changes.sandboxSessionId || changes.sandboxHotspots) {
+            sandboxXP = 0; // zera xp na nova sessao
+            sandboxStats = { errors: 0, hints: 0, skips: 0 };
+            chrome.storage.local.set({ sandboxStats });
+            if (isSandboxMode && typeof renderSandboxWidget === 'function') {
+                renderSandboxWidget();
+            }
+        }
+
+        // Se o passo mudar, renderiza novamente o widget ou a tela de score
+        if (changes.sandboxPassoAtual || changes.sandboxXP || changes.sandboxStats) {
+            if (isSandboxMode) {
+                if (sandboxTotalPassos > 0 && sandboxPassoAtual >= sandboxTotalPassos) {
+                    if (typeof renderSandboxScoreWidget === 'function') renderSandboxScoreWidget();
+                } else {
+                    if (typeof renderSandboxWidget === 'function') renderSandboxWidget();
+                }
+            }
+        }
+
+        // Se o modo sandbox for desligado explicitamente
+        if (changes.sandboxMode && changes.sandboxMode.newValue === false) {
+            if (typeof removeSandboxWidget === 'function') removeSandboxWidget();
+        } else if (changes.sandboxMode && changes.sandboxMode.newValue === true) {
+            if (typeof renderSandboxWidget === 'function') renderSandboxWidget();
         }
     });
 
@@ -77,6 +111,29 @@
     }
 
     // --- RPA: Motor Avançado de Seletores ---
+    window.closeScoreWidget = function() {
+        chrome.storage.local.set({ sandboxMode: false });
+    };
+
+    function startHighlightingElement(el) {
+        if (!element) return '';
+        if (element.id) return `//*[@id="${element.id}"]`;
+        if (element.tagName === 'BODY') return '/html/body';
+
+        let ix = 0;
+        let siblings = element.parentNode ? element.parentNode.childNodes : [];
+        for (let i = 0; i < siblings.length; i++) {
+            let sibling = siblings[i];
+            if (sibling === element) {
+                return getXPath(element.parentNode) + '/' + element.tagName.toLowerCase() + '[' + (ix + 1) + ']';
+            }
+            if (sibling.nodeType === 1 && sibling.tagName === element.tagName) {
+                ix++;
+            }
+        }
+        return '';
+    }
+
     function getXPath(element) {
         if (!element) return '';
         if (element.id) return `//*[@id="${element.id}"]`;
@@ -168,13 +225,8 @@
         // Pega elemento clicado
         const target = e.target;
         
-        if (isSandboxMode) {
-            e.preventDefault();
-            e.stopPropagation();
-        }
-        
         // Impede que a IA narre cliques nos nossos próprios componentes do Capture OS
-        if (target.closest && (target.closest('#capture-os-widget') || target.closest('#capture-os-toast'))) {
+        if (target.closest && (target.closest('#capture-os-widget') || target.closest('#capture-os-sandbox-widget') || target.closest('#capture-os-toast'))) {
             return;
         }
 
@@ -209,48 +261,60 @@
         };
 
         if (isSandboxMode && type === 'click') {
-            chrome.runtime.sendMessage({
-                action: 'evaluate_sandbox',
-                session_id: sandboxSessionId,
-                url: window.location.href,
-                payload: payload
-            }, (response) => {
-                if (chrome.runtime.lastError) {
-                    console.error("Erro comunicação:", chrome.runtime.lastError);
-                    return;
-                }
-                const data = response;
-                if(data.is_correct) {
-                    sandboxXP += 10;
-                    chrome.storage.local.set({ sandboxXP });
+            const step = sandboxHotspots[sandboxPassoAtual];
+            if (!step) return;
 
-                    sandboxPassoAtual += 1;
-                    chrome.storage.local.set({ sandboxPassoAtual: sandboxPassoAtual });
-                    
-                    const concluido = sandboxPassoAtual >= sandboxTotalPassos;
-                    
-                    chrome.runtime.sendMessage({
-                        type: 'ARBITRO_PASSO_OK',
-                        session_id: sandboxSessionId,
-                        passo: sandboxPassoAtual,
-                        total: sandboxTotalPassos,
-                        xp: sandboxXP,
-                        concluido: concluido
-                    });
-                    
-                    showToast("success_arbitro");
-                    if (concluido) {
-                        showToast("success", "Prática Concluída! Muito bem!");
-                        chrome.storage.local.set({ sandboxMode: false });
+            // Se for navigation, não avalia click, apenas ignora
+            if (step.action === 'navigation') {
+                e.preventDefault();
+                e.stopPropagation();
+                showToast("error", "Aguarde a navegação ou pule este passo.");
+                return;
+            }
+
+            let isCorrect = false;
+            try {
+                if (step.css_selector && step.css_selector !== "body") {
+                    const elements = document.querySelectorAll(step.css_selector);
+                    for (let el of elements) {
+                        if (el === target || el.contains(target) || target.contains(el)) {
+                            isCorrect = true;
+                            break;
+                        }
                     }
-                } else {
-                    showToast("error");
-                    setTimeout(() => {
-                        let span = document.getElementById("capture-os-toast-msg");
-                        if (span) span.innerHTML = `<b>Dica:</b> ${data.hint}`;
-                    }, 50); // delay to ensure toast is in DOM
                 }
-            });
+            } catch(e) {}
+
+            if (!isCorrect && step.xpath && step.xpath !== "/html/body") {
+                try {
+                    const result = document.evaluate(step.xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
+                    if (result && result.singleNodeValue) {
+                        const el = result.singleNodeValue;
+                        if (el === target || el.contains(target) || target.contains(el)) {
+                            isCorrect = true;
+                        }
+                    }
+                } catch(e) {}
+            }
+
+            if (isCorrect) {
+                // PASS-THROUGH! O clique real vai acontecer.
+                advanceSandboxStep();
+            } else {
+                e.preventDefault();
+                e.stopPropagation();
+                sandboxStats.errors += 1;
+                sandboxXP = Math.max(0, sandboxXP - 5);
+                chrome.storage.local.set({ sandboxXP, sandboxStats });
+                showToast("error", "Clique incorreto. Tente novamente.");
+            }
+            return;
+        } else if (isSandboxMode) {
+            // Bloqueia interações indesejadas (teclado, etc) se não for o elemento certo
+            if (type !== 'scroll') {
+                e.preventDefault();
+                e.stopPropagation();
+            }
             return;
         }
 
@@ -487,15 +551,15 @@
         }
     }, 15000);
 
-    function showToast(type) {
+    function showToast(type, msg) {
         let toast = document.getElementById("capture-os-toast");
         if (!toast) {
             toast = document.createElement("div");
             toast.id = "capture-os-toast";
             toast.style.cssText = `
                 position: fixed;
-                bottom: 24px;
-                right: 24px;
+                top: 24px;
+                left: 50%;
                 padding: 16px 24px;
                 border-radius: 12px;
                 font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -511,7 +575,7 @@
                 gap: 14px;
                 transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
                 opacity: 0;
-                transform: translateY(30px) scale(0.95);
+                transform: translateX(-50%) translateY(-30px) scale(0.95);
             `;
             document.body.appendChild(toast);
         }
@@ -519,7 +583,7 @@
         // Anima a entrada
         setTimeout(() => {
             toast.style.opacity = "1";
-            toast.style.transform = "translateY(0) scale(1)";
+            toast.style.transform = "translateX(-50%) translateY(0) scale(1)";
         }, 10);
 
         if (type === "processing") {
@@ -539,7 +603,7 @@
                                 <circle cx="12" cy="12" r="10"></circle>
                                 <path d="M12 2v4"></path>
                             </svg>
-                            <span id="capture-os-toast-msg" style="font-size: 14px;"><b>Capture OS:</b> Processando...</span>
+                            <span id="capture-os-toast-msg" style="font-size: 14px;">Processando...</span>
                         </div>
                         <button id="capture-os-cancel-btn" style="background: none; border: none; color: #ef4444; font-size: 13px; font-weight: 600; cursor: pointer; padding: 4px 8px; border-radius: 4px;">Cancelar</button>
                     </div>
@@ -587,7 +651,7 @@
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                     <polyline points="20 6 9 17 4 12"></polyline>
                 </svg>
-                <span id="capture-os-toast-msg"><b>Capture OS:</b> Vídeo finalizado! Abrindo player...</span>
+                <span id="capture-os-toast-msg">${msg || "Vídeo finalizado! Abrindo player..."}</span>
             `;
             setTimeout(() => fecharToast(toast), 6000);
         } else if (type === "error") {
@@ -599,20 +663,32 @@
                     <line x1="15" y1="9" x2="9" y2="15"></line>
                     <line x1="9" y1="9" x2="15" y2="15"></line>
                 </svg>
-                <span id="capture-os-toast-msg"><b>Erro:</b> Falha na comunicação com o servidor.</span>
+                <span id="capture-os-toast-msg">${msg || "Falha na comunicação com o servidor."}</span>
+            `;
+            setTimeout(() => fecharToast(toast), 6000);
+        } else if (type === "warning") {
+            toast.style.background = "rgba(245, 158, 11, 0.85)";
+            toast.style.border = "1px solid rgba(245, 158, 11, 0.3)";
+            toast.innerHTML = `
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+                    <line x1="12" y1="9" x2="12" y2="13"></line>
+                    <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                </svg>
+                <span id="capture-os-toast-msg">${msg || "Aviso"}</span>
             `;
             setTimeout(() => fecharToast(toast), 6000);
         } else if (type === "success_arbitro") {
             toast.style.background = "rgba(0, 200, 83, 0.85)";
             toast.style.border = "1px solid rgba(0, 200, 83, 0.3)";
-            toast.innerHTML = `<span id="capture-os-toast-msg"><b>Capture OS Sandbox:</b> Correto!</span>`;
+            toast.innerHTML = `<span id="capture-os-toast-msg">Correto!</span>`;
             setTimeout(() => fecharToast(toast), 3000);
         }
     }
 
     function fecharToast(toast) {
         toast.style.opacity = "0";
-        toast.style.transform = "translateY(30px) scale(0.95)";
+        toast.style.transform = "translateX(-50%) translateY(-30px) scale(0.95)";
         setTimeout(() => {
             if (toast.parentNode) toast.parentNode.removeChild(toast);
         }, 400);
@@ -972,7 +1048,7 @@
             shadow.getElementById('editor-modal').style.transform = 'translateY(0) scale(1)';
         });
 
-        // Ouve mensagens do iframe para fechar o modal
+        // Ouve mensagens do iframe para fechar o modal ou broadcast
         const messageHandler = (e) => {
             if (e.data && (e.data.action === "close_editor_modal" || e.data.action === "close_editor_modal_and_resume" || e.data.action === "cancel_editor_modal")) {
                 host.style.opacity = '0';
@@ -1016,5 +1092,355 @@
         };
         window.addEventListener("message", messageHandler);
     }
+
+    // Escuta mensagens do background
+    chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+        if (request.action === "SHOW_HINT_LOCAL") {
+            const step = request.step;
+            if (!step) return;
+            
+            let targetEl = null;
+            if (step.css_selector && step.css_selector !== "body") {
+                try { targetEl = document.querySelector(step.css_selector); } catch(e){}
+            }
+            if (!targetEl && step.xpath && step.xpath !== "/html/body") {
+                try { 
+                    const res = document.evaluate(step.xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
+                    targetEl = res.singleNodeValue;
+                } catch(e){}
+            }
+
+            if (targetEl) {
+                targetEl.classList.add("capture-os-hint-highlight");
+                targetEl.style.boxShadow = "0 0 0 4px rgba(59, 130, 246, 0.6), 0 0 20px rgba(59, 130, 246, 0.4)";
+                targetEl.style.outline = "2px solid #3b82f6";
+                targetEl.style.borderRadius = "4px";
+                targetEl.style.transition = "all 0.3s ease";
+                targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+        }
+    });
+
+    // --- Funções do Sandbox Widget ---
+    let sandboxNavTimeout = null;
+
+    window.renderSandboxWidget = function() {
+        if (!isSandboxMode || sandboxHotspots.length === 0) return;
+        if (window !== window.top) return; // Não renderiza o widget dentro de iframes!
+        
+        // Limpa qualquer timeout anterior para evitar race conditions
+        if (sandboxNavTimeout) {
+            clearTimeout(sandboxNavTimeout);
+            sandboxNavTimeout = null;
+        }
+
+        let widget = document.getElementById("capture-os-sandbox-widget");
+        if (!widget) {
+            widget = document.createElement("div");
+            widget.id = "capture-os-sandbox-widget";
+            // Estilos iniciais. A posição pode ser arrastada depois.
+            widget.style.cssText = `
+                position: fixed;
+                bottom: 20px;
+                right: 20px;
+                width: 340px;
+                background: #1e1e1e;
+                color: #fff;
+                border-radius: 12px;
+                box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+                z-index: 999999999;
+                border: 1px solid rgba(255,255,255,0.1);
+                overflow: hidden;
+                display: flex;
+                flex-direction: column;
+                user-select: none;
+            `;
+
+            // Drag area (Header)
+            const header = document.createElement("div");
+            header.style.cssText = `
+                background: #2a2a2a;
+                padding: 10px 15px;
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                cursor: grab;
+                border-bottom: 1px solid rgba(255,255,255,0.05);
+            `;
+            header.innerHTML = `
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <div style="width: 10px; height: 10px; border-radius: 50%; background: #10b981; box-shadow: 0 0 8px rgba(16, 185, 129, 0.6);"></div>
+                    <span style="font-size: 12px; font-weight: 700; color: #f3f4f6; letter-spacing: 0.8px;">PRÁTICA ATIVA</span>
+                </div>
+                <div id="sandbox-xp" style="font-size: 13px; font-weight: bold; color: #10b981; background: rgba(16, 185, 129, 0.1); padding: 4px 10px; border-radius: 12px;">0 XP</div>
+            `;
+            
+            // Drag Logic
+            let isDragging = false;
+            let startX, startY, initialRight, initialBottom;
+            header.addEventListener("mousedown", (e) => {
+                isDragging = true;
+                header.style.cursor = "grabbing";
+                startX = e.clientX;
+                startY = e.clientY;
+                const rect = widget.getBoundingClientRect();
+                initialRight = window.innerWidth - rect.right;
+                initialBottom = window.innerHeight - rect.bottom;
+                e.preventDefault();
+            });
+            document.addEventListener("mousemove", (e) => {
+                if (!isDragging) return;
+                const dx = startX - e.clientX;
+                const dy = startY - e.clientY;
+                widget.style.right = (initialRight + dx) + "px";
+                widget.style.bottom = (initialBottom + dy) + "px";
+            });
+            document.addEventListener("mouseup", () => {
+                if (isDragging) {
+                    isDragging = false;
+                    header.style.cursor = "grab";
+                }
+            });
+
+            const content = document.createElement("div");
+            content.id = "sandbox-widget-content";
+            content.style.cssText = "padding: 16px 15px; display: flex; flex-direction: column; gap: 12px;";
+
+            const footer = document.createElement("div");
+            footer.style.cssText = `
+                background: rgba(0,0,0,0.2);
+                padding: 10px 15px;
+                display: flex;
+                justify-content: space-between;
+                border-top: 1px solid rgba(255,255,255,0.05);
+            `;
+            footer.innerHTML = `
+                <button id="btn-encerrar-pratica" style="background: transparent; color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.2); padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600; transition: all 0.2s;">Sair</button>
+                <div style="display: flex; gap: 8px;">
+                    <button id="btn-dica-pratica" style="background: rgba(255,255,255,0.05); color: #e5e7eb; border: 1px solid rgba(255,255,255,0.1); padding: 6px 16px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600; transition: all 0.2s; display: flex; align-items: center; gap: 4px;">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 16v-4"></path><path d="M12 8h.01"></path></svg> Dica
+                    </button>
+                    <button id="btn-pular-pratica" style="background: #3b82f6; color: #fff; border: none; padding: 6px 16px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600; transition: all 0.2s; display: flex; align-items: center; gap: 4px; box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);">
+                        Pular <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="M12 5l7 7-7 7"></path></svg>
+                    </button>
+                </div>
+            `;
+
+            widget.appendChild(header);
+            widget.appendChild(content);
+            widget.appendChild(footer);
+            document.body.appendChild(widget);
+
+            // Bind events
+            document.getElementById("btn-encerrar-pratica").onclick = window.endSandboxPractice;
+            document.getElementById("btn-dica-pratica").onclick = window.showSandboxHint;
+            document.getElementById("btn-pular-pratica").onclick = window.skipSandboxStep;
+            
+            // Hover effects
+            const addHover = (id, hoverBg, normalBg) => {
+                const el = document.getElementById(id);
+                if(el) {
+                    el.onmouseenter = () => el.style.background = hoverBg;
+                    el.onmouseleave = () => el.style.background = normalBg;
+                }
+            };
+            addHover("btn-encerrar-pratica", "rgba(239, 68, 68, 0.1)", "transparent");
+            addHover("btn-dica-pratica", "rgba(255,255,255,0.1)", "rgba(255,255,255,0.05)");
+            addHover("btn-pular-pratica", "#2563eb", "#3b82f6");
+        }
+
+        const step = sandboxHotspots[sandboxPassoAtual];
+        if (step) {
+            document.getElementById("sandbox-xp").innerText = `${sandboxXP} XP`;
+            document.getElementById("sandbox-widget-content").innerHTML = `
+                <div style="font-size: 11px; color: #a1a1aa; text-transform: uppercase; font-weight: 700; letter-spacing: 0.8px;">Passo ${sandboxPassoAtual + 1} de ${sandboxTotalPassos}</div>
+                <div style="font-size: 14px; line-height: 1.5; color: #f4f4f5;">${step.micro_narracao || step.ancora || "Interaja com a tela para avançar."}</div>
+            `;
+            if (step.action === "navigation") {
+                document.getElementById("btn-dica-pratica").style.display = "none";
+                document.getElementById("btn-pular-pratica").style.display = "none";
+                document.getElementById("sandbox-widget-content").innerHTML = `
+                    <div style="font-size: 11px; color: #a1a1aa; text-transform: uppercase; font-weight: 700; letter-spacing: 0.8px;">Passo ${sandboxPassoAtual + 1} de ${sandboxTotalPassos}</div>
+                    <div style="font-size: 14px; line-height: 1.5; color: #f4f4f5;">Aguarde, carregando...</div>
+                `;
+                // Auto-advance after 2 seconds to let the user see it, or if they navigated
+                sandboxNavTimeout = setTimeout(() => {
+                    if (sandboxPassoAtual === sandboxTotalPassos - 1) {
+                         // Se for o último passo, encerra
+                         advanceSandboxStep();
+                    } else {
+                         sandboxXP += 10;
+                         sandboxPassoAtual += 1;
+                         const concluido = sandboxPassoAtual >= sandboxTotalPassos;
+                         chrome.storage.local.set({ sandboxXP, sandboxPassoAtual, sandboxStats });
+                         chrome.runtime.sendMessage({
+                             type: 'ARBITRO_PASSO_OK',
+                             session_id: sandboxSessionId,
+                             passo: sandboxPassoAtual,
+                             total: sandboxTotalPassos,
+                             xp: sandboxXP,
+                             concluido: concluido
+                         }).catch(() => {});
+                         // A renderização ocorrerá via listener do chrome.storage.onChanged
+                    }
+                }, 1500);
+            } else {
+                document.getElementById("btn-dica-pratica").style.display = "flex";
+                document.getElementById("btn-pular-pratica").style.display = "flex";
+            }
+        }
+    };
+
+    window.removeSandboxWidget = function() {
+        if (window !== window.top) return;
+        const widget = document.getElementById("capture-os-sandbox-widget");
+        if (widget) widget.remove();
+        // Remove also any existing hint highlights
+        document.querySelectorAll(".capture-os-hint-highlight").forEach(el => {
+            el.classList.remove("capture-os-hint-highlight");
+            el.style.boxShadow = "";
+            el.style.outline = "";
+        });
+    };
+
+    window.advanceSandboxStep = function() {
+        sandboxXP += 10;
+        sandboxPassoAtual += 1;
+        chrome.storage.local.set({ sandboxXP, sandboxPassoAtual });
+        showToast("success_arbitro");
+        
+        // Limpa dicas antigas
+        document.querySelectorAll(".capture-os-hint-highlight").forEach(el => {
+            el.classList.remove("capture-os-hint-highlight");
+            el.style.boxShadow = "";
+            el.style.outline = "";
+        });
+
+        const concluido = sandboxPassoAtual >= sandboxTotalPassos;
+        chrome.runtime.sendMessage({
+            type: 'ARBITRO_PASSO_OK',
+            session_id: sandboxSessionId,
+            passo: sandboxPassoAtual,
+            total: sandboxTotalPassos,
+            xp: sandboxXP,
+            concluido: concluido
+        }).catch(() => {});
+
+        if (!concluido) {
+            // O chrome.storage.onChanged lidará com a renderização.
+            // Apenas para garantir que o iframe não renderize, deixamos limpo.
+        }
+    };
+
+    window.skipSandboxStep = function() {
+        const step = sandboxHotspots[sandboxPassoAtual];
+        if (!step) return;
+        
+        if (step.action !== "navigation") {
+            sandboxXP -= 10;
+            sandboxStats.skips += 1;
+        }
+        sandboxPassoAtual += 1;
+        chrome.storage.local.set({ sandboxXP, sandboxPassoAtual, sandboxStats });
+        
+        document.querySelectorAll(".capture-os-hint-highlight").forEach(el => {
+            el.classList.remove("capture-os-hint-highlight");
+            el.style.boxShadow = "";
+            el.style.outline = "";
+        });
+
+        const concluido = sandboxPassoAtual >= sandboxTotalPassos;
+        chrome.runtime.sendMessage({
+            type: 'ARBITRO_PASSO_OK',
+            session_id: sandboxSessionId,
+            passo: sandboxPassoAtual,
+            total: sandboxTotalPassos,
+            xp: sandboxXP,
+            concluido: concluido
+        }).catch(() => {});
+
+        if (concluido) {
+            renderSandboxScoreWidget();
+        } else {
+            if (window === window.top) renderSandboxWidget();
+        }
+    };
+
+    window.showSandboxHint = function() {
+        sandboxXP -= 5;
+        sandboxStats.hints += 1;
+        chrome.storage.local.set({ sandboxXP, sandboxStats });
+        renderSandboxWidget();
+
+        const step = sandboxHotspots[sandboxPassoAtual];
+        if (!step) return;
+
+        // Avisa TODAS as janelas (iframes inclusos) para tentar mostrar o hint
+        chrome.runtime.sendMessage({
+            action: "SHOW_HINT_BROADCAST",
+            step: step
+        }).catch(() => {});
+        
+        // Em 200ms a gente confere se alguém pintou o highlight. Se não, exibe aviso (no top window).
+        if (window === window.top) {
+            setTimeout(() => {
+                // we assume if it worked, some frame scrolled to it.
+                // It's hard to synchronously know if an iframe succeeded without direct messaging.
+                // We'll trust it worked if they clicked the button.
+            }, 300);
+        }
+    };
+
+    window.endSandboxPractice = function() {
+        chrome.storage.local.set({ sandboxMode: false });
+        chrome.runtime.sendMessage({ type: "ARBITRO_ENCERRADO" }).catch(() => {});
+        showToast("warning", "Modo Prática suspenso. Te esperamos na próxima!");
+    };
+
+    window.renderSandboxScoreWidget = function() {
+        if (window !== window.top) return;
+        
+        let widget = document.getElementById("capture-os-sandbox-widget");
+        if (!widget) return;
+        
+        const perc = Math.max(0, Math.round(((sandboxTotalPassos * 10) - (sandboxStats.errors*5) - (sandboxStats.hints*5) - (sandboxStats.skips*10)) / (sandboxTotalPassos * 10) * 100)) || 0;
+        
+        widget.innerHTML = `
+            <div style="background: #2a2a2a; padding: 15px; border-bottom: 1px solid rgba(255,255,255,0.05); display: flex; align-items: center; justify-content: center;">
+                <span style="font-size: 14px; font-weight: 700; color: #10b981; letter-spacing: 0.5px;">PRÁTICA CONCLUÍDA</span>
+            </div>
+            <div style="padding: 20px; display: flex; flex-direction: column; gap: 16px;">
+                <div style="text-align: center;">
+                    <div style="font-size: 32px; font-weight: 800; color: #fff;">${sandboxXP} <span style="font-size: 16px; color: #9ca3af;">XP</span></div>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; text-align: center;">
+                    <div style="background: rgba(255,255,255,0.05); padding: 10px; border-radius: 8px;">
+                        <div style="font-size: 16px; font-weight: bold; color: #f87171;">${sandboxStats.errors}</div>
+                        <div style="font-size: 10px; color: #9ca3af; text-transform: uppercase; margin-top: 2px;">Erros</div>
+                    </div>
+                    <div style="background: rgba(255,255,255,0.05); padding: 10px; border-radius: 8px;">
+                        <div style="font-size: 16px; font-weight: bold; color: #fbbf24;">${sandboxStats.hints}</div>
+                        <div style="font-size: 10px; color: #9ca3af; text-transform: uppercase; margin-top: 2px;">Dicas</div>
+                    </div>
+                    <div style="background: rgba(255,255,255,0.05); padding: 10px; border-radius: 8px;">
+                        <div style="font-size: 16px; font-weight: bold; color: #60a5fa;">${sandboxStats.skips}</div>
+                        <div style="font-size: 10px; color: #9ca3af; text-transform: uppercase; margin-top: 2px;">Pulos</div>
+                    </div>
+                </div>
+                <button id="btn-fechar-score" style="margin-top: 10px; width: 100%; background: #3b82f6; color: #fff; border: none; padding: 10px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600;">Fechar</button>
+            </div>
+        `;
+        
+        setTimeout(() => {
+            const btn = document.getElementById("btn-fechar-score");
+            if (btn) {
+                btn.addEventListener("click", () => {
+                    chrome.storage.local.set({ sandboxMode: false });
+                });
+            }
+        }, 100);
+    };
+
 
 })();

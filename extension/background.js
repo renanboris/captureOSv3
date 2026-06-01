@@ -211,7 +211,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                     sandboxMode: true,
                     sandboxSessionId: moduloId,
                     sandboxTotalPassos: modulo.total_passos,
-                    sandboxPassoAtual: 0
+                    sandboxPassoAtual: 0,
+                    sandboxHotspots: modulo.hotspots,
+                    sandboxXP: 0,
+                    sandboxStats: { errors: 0, hints: 0, skips: 0 }
                 });
 
                 // Resetar estado do sandbox no backend
@@ -219,12 +222,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ session_id: moduloId })
-                }).catch(() => {});
-
-                // Notificar content script da aba alvo
-                chrome.tabs.sendMessage(tabId, {
-                    action: "update_toast",
-                    msg: `🎯 Modo Prática iniciado — ${modulo.total_passos} passos`
                 }).catch(() => {});
 
                 sendResponse({ ok: true, total_passos: modulo.total_passos });
@@ -263,6 +260,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 chrome.action.setBadgeText({ text: '' });
                 setStaticIcon();
             }, 5000);
+        }
+    }
+
+    if (message.type === "ARBITRO_ENCERRADO") {
+        chrome.action.setBadgeText({ text: '' });
+        setStaticIcon();
+    }
+
+    if (message.action === "SHOW_HINT_BROADCAST") {
+        if (sender.tab) {
+            chrome.tabs.sendMessage(sender.tab.id, {
+                action: "SHOW_HINT_LOCAL",
+                step: message.step
+            }).catch(() => {});
         }
     }
     
