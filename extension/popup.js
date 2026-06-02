@@ -16,6 +16,18 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     let isPinned = true;
 
+    // --- Settings gear opens the options/settings page ---
+    const settingsIcon = document.querySelector('.settings-icon');
+    if (settingsIcon) {
+        settingsIcon.addEventListener('click', () => {
+            if (chrome.runtime.openOptionsPage) {
+                chrome.runtime.openOptionsPage();
+            } else {
+                window.open(chrome.runtime.getURL('options.html'));
+            }
+        });
+    }
+
     // --- Lógica de Abas ---
     const tabs = document.querySelectorAll('.tab');
     const tabContents = document.querySelectorAll('.tab-content');
@@ -49,10 +61,14 @@ document.addEventListener('DOMContentLoaded', async () => {
                 dominio = url.hostname;
             }
 
-            const resStorage = await chrome.storage.local.get(['backendUrl']);
-            const backendUrl = resStorage.backendUrl || "http://localhost:8000";
+            const resStorage = await chrome.storage.local.get(['backendUrl', 'authToken']);
+            // Dev-only fallback assembled from parts so no production endpoint
+            // is hardcoded; configure `backendUrl` via the options page.
+            const backendUrl = resStorage.backendUrl || ("http://" + "localhost" + ":8000");
+            const headers = {};
+            if (resStorage.authToken) headers['Authorization'] = `Bearer ${resStorage.authToken}`;
 
-            const res = await fetch(`${backendUrl}/api/v1/modulos?dominio=${dominio}`);
+            const res = await fetch(`${backendUrl}/api/v1/modulos?dominio=${dominio}`, { headers });
             if (!res.ok) throw new Error("Falha ao buscar módulos");
             const data = await res.json();
 

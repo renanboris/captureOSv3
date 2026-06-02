@@ -22,13 +22,20 @@ async def renderizar_exportacao(payload: dict):
     start_time_ms = payload.get("recording_start_time", 0)
     
     # 1. Salva o vídeo WebM Cru
-    b64_video = payload.get("video_webm")
-    if not b64_video:
-        logger.error("Nenhum video_webm recebido no payload.")
+    # Task 14.4: accept raw bytes from the binary upload (payload["video_bytes"])
+    # instead of base64-decoding payload["video_webm"].
+    raw_video_bytes = payload.get("video_bytes")
+    if raw_video_bytes is None:
+        # Backwards-compat fallback: old base64 path still works if caller uses it
+        b64_video = payload.get("video_webm", "")
+        if not b64_video:
+            logger.error("Nenhum video recebido no payload (nem video_bytes nem video_webm).")
+            return
+        b64_video = b64_video.split(',')[-1]
+        raw_video_bytes = base64.b64decode(b64_video)
+    elif not raw_video_bytes:
+        logger.error("Nenhum video_bytes recebido no payload.")
         return
-        
-    b64_video = b64_video.split(',')[-1]
-    raw_video_bytes = base64.b64decode(b64_video)
     
     os.makedirs("data/raw_videos", exist_ok=True)
     os.makedirs("data/videos_gerados", exist_ok=True)
@@ -43,12 +50,21 @@ async def renderizar_exportacao(payload: dict):
     modo_input = payload.get("modo_input", "A")
     transcricao_instrutor = None
 
-    if modo_input == "B" and payload.get("audio_instrutor_webm"):
-        update_status(session_id, "processing", "🎙️ Transcrevendo sua explicação...")
-        from audio_eng.whisper_transcriber import transcrever_audio_instrutor
-        transcricao_instrutor = await transcrever_audio_instrutor(
-            payload["audio_instrutor_webm"], session_id
-        )
+    if modo_input == "B":
+        # Task 14.4: accept raw audio bytes (payload["audio_bytes"]) first;
+        # fall back to legacy base64 field (payload["audio_instrutor_webm"]) for
+        # backwards compatibility.
+        audio_raw = payload.get("audio_bytes")
+        if audio_raw is None:
+            b64_audio = payload.get("audio_instrutor_webm", "")
+            if b64_audio:
+                audio_raw = base64.b64decode(b64_audio.split(',')[-1])
+        if audio_raw:
+            update_status(session_id, "processing", "🎙️ Transcrevendo sua explicação...")
+            from audio_eng.whisper_transcriber import transcrever_audio_instrutor
+            transcricao_instrutor = await transcrever_audio_instrutor(
+                audio_raw, session_id
+            )
 
     if modo_input == "C" and payload.get("roteiro_manual"):
         roteiro_enriquecido = payload["roteiro_manual"]

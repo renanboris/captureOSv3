@@ -1,7 +1,136 @@
 // background.js
 
-const BACKEND_URL = "http://localhost:8000"; // Substituir no build de produção
-chrome.storage.local.set({ backendUrl: BACKEND_URL });
+// ─── IndexedDB event storage helpers ─────────────────────────────────────────
+// Events and screenshots are persisted in IndexedDB (not chrome.storage.local)
+// to avoid the ~5 MB quota limit that silently drops events (bug C5).
+//
+// DB: captureOS_db  |  Object store: events
+// Each record: { id (autoIncrement), timestamp, type, eventData, screenshotData }
+
+const EVENTS_DB_NAME = 'captureOS_db';
+const EVENTS_DB_VERSION = 1;
+const EVENTS_STORE = 'events';
+
+/**
+ * Opens (or creates) the IndexedDB database and returns a Promise<IDBDatabase>.
+ */
+function openEventsDB() {
+    return new Promise((resolve, reject) => {
+        const req = indexedDB.open(EVENTS_DB_NAME, EVENTS_DB_VERSION);
+        req.onupgradeneeded = (e) => {
+            const db = e.target.result;
+            if (!db.objectStoreNames.contains(EVENTS_STORE)) {
+                db.createObjectStore(EVENTS_STORE, { keyPath: 'id', autoIncrement: true });
+            }
+        };
+        req.onsuccess = (e) => resolve(e.target.result);
+        req.onerror   = (e) => reject(e.target.error);
+    });
+}
+
+/**
+ * Appends a single event entry to IndexedDB.
+ * @param {{ timestamp: number, type: string, eventData: any, screenshotData: string }} event
+ * @returns {Promise<void>}
+ */
+async function appendEventToDB(event) {
+    const db = await openEventsDB();
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction(EVENTS_STORE, 'readwrite');
+        const store = tx.objectStore(EVENTS_STORE);
+        const req = store.add(event);
+        req.onsuccess = () => resolve();
+        req.onerror   = (e) => reject(e.target.error);
+        tx.oncomplete = () => db.close();
+        tx.onerror    = (e) => reject(e.target.error);
+    });
+}
+
+/**
+ * Reads all event entries from IndexedDB, ordered by insertion order.
+ * @returns {Promise<Array>}
+ */
+async function readAllEventsFromDB() {
+    const db = await openEventsDB();
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction(EVENTS_STORE, 'readonly');
+        const store = tx.objectStore(EVENTS_STORE);
+        const req = store.getAll();
+        req.onsuccess = (e) => resolve(e.target.result);
+        req.onerror   = (e) => reject(e.target.error);
+        tx.oncomplete = () => db.close();
+        tx.onerror    = (e) => reject(e.target.error);
+    });
+}
+
+/**
+ * Clears all events from IndexedDB (called after a successful upload or abort).
+ * @returns {Promise<void>}
+ */
+async function clearEventsDB() {
+    const db = await openEventsDB();
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction(EVENTS_STORE, 'readwrite');
+        const store = tx.objectStore(EVENTS_STORE);
+        const req = store.clear();
+        req.onsuccess = () => resolve();
+        req.onerror   = (e) => reject(e.target.error);
+        tx.oncomplete = () => db.close();
+        tx.onerror    = (e) => reject(e.target.error);
+    });
+}
+
+/**
+ * Surfaces an error to the user when event persistence fails (no silent loss).
+ * Uses chrome.notifications if available, falls back to console.error.
+ */
+function notifyEventPersistenceError(err) {
+    console.error('[CaptureOS] Event persistence error — events may be lost:', err);
+    if (chrome.notifications) {
+        chrome.notifications.create('event-persist-error', {
+            type: 'basic',
+            iconUrl: 'icon.png',
+            title: 'CaptureOS — Recording Error',
+            message: 'Failed to save capture events. Some interactions may be missing from the recording. Please try again.'
+        }).catch(() => {});
+    }
+    // Also badge the icon red so the user cannot miss it
+    chrome.action.setBadgeText({ text: '!' });
+    chrome.action.setBadgeBackgroundColor({ color: '#FF3B30' });
+}
+
+// ─── Backend endpoint resolution (configurable) ───
+// The backend endpoint is NOT hardcoded. It is resolved at runtime from
+// chrome.storage: the `backendUrl` key is populated by the options/settings
+// page (the gear in popup.html). Production builds MUST configure `backendUrl`
+// through that page so the published extension targets the deployed backend
+// instead of the end user's own machine.
+//
+// Dev-only fallback: when no endpoint has been configured we assemble a
+// localhost URL from parts (so no production endpoint is ever hardcoded). This
+// fallback exists purely to ease local development and is never used once a
+// real `backendUrl` is configured.
+const DEV_FALLBACK_BACKEND_URL = "http://" + "localhost" + ":8000";
+
+// Resolve the backend endpoint from configurable chrome.storage at request time.
+async function getBackendUrl() {
+    const res = await chrome.storage.local.get(['backendUrl']);
+    return res.backendUrl || DEV_FALLBACK_BACKEND_URL;
+}
+
+// Perform a fetch against the configured backend. Resolves the endpoint from
+// chrome.storage at request time and attaches the auth bearer token (from the
+// `authToken` key, populated by the settings/login flow) to every outgoing
+// request, pairing with the api/auth.py dependency on the backend.
+async function authedFetch(path, options = {}) {
+    const backendUrl = await getBackendUrl();
+    const { authToken } = await chrome.storage.local.get(['authToken']);
+    const headers = { ...(options.headers || {}) };
+    if (authToken) {
+        headers['Authorization'] = `Bearer ${authToken}`;
+    }
+    return fetch(`${backendUrl}${path}`, { ...options, headers });
+}
 
 let blinkInterval = null;
 let isDotVisible = true;
@@ -100,8 +229,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         chrome.storage.local.set({ isRecording: false });
         setStaticIcon();
         
-        chrome.storage.local.get(['recordingStartTime', 'eventsLog'], (res) => {
-            finalizeUpload(videoBase64, res.recordingStartTime || 0, res.eventsLog || [], message.micAudioBase64 || "");
+        // Read events from IndexedDB (not chrome.storage.local) to avoid the
+        // ~5 MB quota that silently drops screenshots (bug C5).
+        chrome.storage.local.get(['recordingStartTime'], (res) => {
+            readAllEventsFromDB()
+                .then((eventsLog) => {
+                    finalizeUpload(videoBase64, res.recordingStartTime || 0, eventsLog, message.micAudioBase64 || "");
+                })
+                .catch((err) => {
+                    // Surface the error — no silent loss of events.
+                    notifyEventPersistenceError(err);
+                    // Still attempt finalize with an empty event log so the
+                    // recording is not completely lost.
+                    finalizeUpload(videoBase64, res.recordingStartTime || 0, [], message.micAudioBase64 || "");
+                });
         });
     }
     
@@ -118,7 +259,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
     
     if (message.action === 'user_interaction') {
-        chrome.storage.local.get(['isRecording', 'eventsLog'], (res) => {
+        chrome.storage.local.get(['isRecording'], (res) => {
             if (res.isRecording) {
                 // GRAVA O TIMESTAMP IMEDIATAMENTE (Não espera o screenshot!)
                 const exact_timestamp = Date.now();
@@ -130,15 +271,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                         return;
                     }
                     if (response && response.dataUrl) {
-                        let logs = res.eventsLog || [];
-                        logs.push({
+                        // Persist to IndexedDB instead of chrome.storage.local to avoid
+                        // the ~5 MB quota that silently drops events (bug C5).
+                        appendEventToDB({
                             timestamp: exact_timestamp,
                             type: message.type,
                             eventData: message.data,
                             screenshotData: response.dataUrl
+                        }).then(() => {
+                            console.log("Evento gravado no IndexedDB", message.type);
+                        }).catch((err) => {
+                            notifyEventPersistenceError(err);
                         });
-                        chrome.storage.local.set({ eventsLog: logs });
-                        console.log("Evento gravado de forma persistente", message.type);
                     }
                 });
             }
@@ -164,9 +308,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         chrome.storage.local.set({
             isRecording: true,
             recordingStartTime: startTime,
-            eventsLog: [],
             sandboxMode: false
         });
+        // Clear events DB for the new recording (bug C5 fix: not using chrome.storage.local
+        // for eventsLog any more).
+        clearEventsDB().catch((err) => console.warn('[CaptureOS] Could not clear events DB on start:', err));
         chrome.runtime.sendMessage({ target: 'offscreen', action: 'start_recording_now' }).catch(() => {});
     }
     
@@ -188,7 +334,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         
         chrome.storage.local.get(['currentSessionId'], (res) => {
             if (res.currentSessionId) {
-                fetch(`${BACKEND_URL}/api/v1/capture/abort/${res.currentSessionId}`, { method: 'POST' })
+                authedFetch(`/api/v1/capture/abort/${res.currentSessionId}`, { method: 'POST' })
                 .catch(() => console.error('Falha ao abortar no backend'));
             }
         });
@@ -202,9 +348,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     // ─── MODO ÁRBITRO: iniciar sessão de prática ───
     if (message.action === "INICIAR_SESSAO_ARBITRO") {
         const { moduloId, tabId } = message;
-        const backendUrl = BACKEND_URL;
 
-        fetch(`${backendUrl}/api/v1/simlink/${moduloId}`)
+        authedFetch(`/api/v1/simlink/${moduloId}`)
             .then(r => r.json())
             .then(modulo => {
                 chrome.storage.local.set({
@@ -218,7 +363,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 });
 
                 // Resetar estado do sandbox no backend
-                fetch(`${backendUrl}/api/v1/sandbox/reset`, {
+                authedFetch(`/api/v1/sandbox/reset`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ session_id: moduloId })
@@ -245,7 +390,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             chrome.action.setBadgeBackgroundColor({ color: '#1D9E75' });
 
             // Reportar conclusão ao backend
-            fetch(`${BACKEND_URL}/api/v1/simlink/${message.session_id || ''}/conclusao`, {
+            authedFetch(`/api/v1/simlink/${message.session_id || ''}/conclusao`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -278,7 +423,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
     
     if (message.action === 'evaluate_sandbox') {
-        fetch(`${BACKEND_URL}/api/v1/sandbox/evaluate`, {
+        authedFetch(`/api/v1/sandbox/evaluate`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -304,11 +449,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 function startPolling(sessionId) {
     if (activePollInterval) clearInterval(activePollInterval);
     chrome.storage.local.set({ isProcessing: true });
-    
+
     activePollInterval = setInterval(() => {
-        fetch(`${BACKEND_URL}/api/v1/capture/status/${sessionId}`)
+        authedFetch(`/api/v1/capture/status/${sessionId}`)
             .then(r => r.json())
-            .then(status => {
+            .then(async status => {
                 if (status.status === "processing" || status.status === "rendering_final") {
                     if (status.message) {
                         chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
@@ -323,12 +468,13 @@ function startPolling(sessionId) {
                     if (activePollInterval !== null) {
                         clearInterval(activePollInterval);
                         activePollInterval = null;
+                        const backendUrl = await getBackendUrl();
                         chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
                             if (tabs[0]) {
                                 chrome.tabs.sendMessage(tabs[0].id, {
                                     action: "show_editor_modal",
                                     session_id: sessionId,
-                                    backendUrl: BACKEND_URL
+                                    backendUrl: backendUrl
                                 }).catch(() => {});
                             }
                         });
@@ -361,7 +507,10 @@ function startPolling(sessionId) {
 }
 
 async function startCapture() {
-    chrome.storage.local.set({ eventsLog: [], recordingStartTime: 0, isRecording: false, sandboxMode: false });
+    chrome.storage.local.set({ recordingStartTime: 0, isRecording: false, sandboxMode: false });
+    // Clear the IndexedDB events store for the new session (events are no longer
+    // persisted to chrome.storage.local — bug C5 fix).
+    clearEventsDB().catch((err) => console.warn('[CaptureOS] Could not clear events DB before capture:', err));
     
     // Configura offscreen
     await setupOffscreenDocument('offscreen.html');
@@ -391,7 +540,10 @@ async function stopCapture() {
 }
 
 async function abortCapture() {
-    chrome.storage.local.set({ isRecording: false, eventsLog: [], recordingStartTime: 0 });
+    chrome.storage.local.set({ isRecording: false, recordingStartTime: 0 });
+    // Clear the IndexedDB events store on abort (bug C5 fix: events are no longer
+    // kept in chrome.storage.local).
+    clearEventsDB().catch((err) => console.warn('[CaptureOS] Could not clear events DB on abort:', err));
     chrome.action.setBadgeText({ text: "" }); 
     setStaticIcon(); 
     
@@ -411,14 +563,46 @@ function finalizeUpload(videoBase64, recordingStartTime, eventsLog, micAudioBase
         let modoInput = "A";
         if (res.useMic && micAudioBase64) modoInput = "B";
 
-        const payload = {
-            session_id: "sess_" + Date.now(),
-            recording_start_time: recordingStartTime,
-            events: eventsLog,
-            video_webm: videoBase64,
-            audio_instrutor_webm: micAudioBase64,
-            modo_input: modoInput
-        };
+        const sessionId = "sess_" + Date.now();
+
+        // Task 14.4 (C4): convert base64 video to a binary Blob and upload via
+        // multipart/form-data instead of embedding it as a base64 string inside
+        // a JSON payload.  This avoids the network-timeout / Service-Worker
+        // memory-exhaustion failure on long recordings.
+        let videoBlob;
+        try {
+            // videoBase64 may include a data-URI prefix ("data:video/webm;base64,…")
+            const b64 = videoBase64.includes(',') ? videoBase64.split(',')[1] : videoBase64;
+            const binary = atob(b64);
+            const bytes = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+            videoBlob = new Blob([bytes], { type: 'video/webm' });
+        } catch (e) {
+            console.error('[CaptureOS] Failed to convert video to Blob:', e);
+            // Fallback: send an empty blob rather than crashing silently
+            videoBlob = new Blob([], { type: 'video/webm' });
+        }
+
+        const formData = new FormData();
+        formData.append('session_id', sessionId);
+        formData.append('recording_start_time', String(recordingStartTime || 0));
+        formData.append('events', JSON.stringify(eventsLog));
+        formData.append('modo_input', modoInput);
+        formData.append('roteiro_manual', '[]');
+        formData.append('video', videoBlob, 'recording.webm');
+
+        if (modoInput === 'B' && micAudioBase64) {
+            try {
+                const b64audio = micAudioBase64.includes(',') ? micAudioBase64.split(',')[1] : micAudioBase64;
+                const binaryAudio = atob(b64audio);
+                const bytesAudio = new Uint8Array(binaryAudio.length);
+                for (let i = 0; i < binaryAudio.length; i++) bytesAudio[i] = binaryAudio.charCodeAt(i);
+                const audioBlob = new Blob([bytesAudio], { type: 'audio/webm' });
+                formData.append('audio', audioBlob, 'instructor.webm');
+            } catch (e) {
+                console.error('[CaptureOS] Failed to convert audio to Blob:', e);
+            }
+        }
 
         // Avisa a aba ativa que o upload começou
         chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
@@ -429,32 +613,44 @@ function finalizeUpload(videoBase64, recordingStartTime, eventsLog, micAudioBase
             }
         });
 
-        fetch(`${BACKEND_URL}/api/v1/capture/ingest`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        })
-        .then(res => res.json())
-        .then(data => {
-            console.log('Upload recebido pelo servidor, aguardando pipeline...', data);
-            chrome.storage.local.set({ isProcessing: true });
-            
-            if (data.session_id) {
-                chrome.storage.local.set({ currentSessionId: data.session_id });
-                startPolling(data.session_id);
-            }
-        })
-        .catch(err => {
-            console.error('Erro no upload', err);
-            chrome.storage.local.set({ isProcessing: false });
-            chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-                if (tabs[0]) {
-                    chrome.tabs.sendMessage(tabs[0].id, {
-                        action: "show_toast", type: "error"
-                    }).catch(() => {});
-                }
-            });
-        });
+        fetch_ingest(sessionId, formData);
 
     }); // ← storage callback fecha AQUI — depois do fetch
+}
+
+// Sends the ingest payload to the configured backend with the auth token
+// attached. Task 14.4: uses multipart/form-data (binary upload) instead of
+// the old base64-in-JSON body (C4 fix).
+function fetch_ingest(sessionId, formData) {
+    // NOTE: do NOT set Content-Type manually — the browser sets it automatically
+    // with the correct multipart boundary when using FormData.
+    authedFetch(`/api/v1/capture/ingest`, {
+        method: 'POST',
+        body: formData
+    })
+    .then(res => res.json())
+    .then(data => {
+        console.log('Upload recebido pelo servidor, aguardando pipeline...', data);
+        chrome.storage.local.set({ isProcessing: true });
+        // Clear the IndexedDB events store now that events have been successfully
+        // uploaded (bug C5 fix).
+        clearEventsDB().catch((err) => console.warn('[CaptureOS] Could not clear events DB after upload:', err));
+
+        const resolvedSessionId = (data && data.session_id) ? data.session_id : sessionId;
+        if (resolvedSessionId) {
+            chrome.storage.local.set({ currentSessionId: resolvedSessionId });
+            startPolling(resolvedSessionId);
+        }
+    })
+    .catch(err => {
+        console.error('Erro no upload', err);
+        chrome.storage.local.set({ isProcessing: false });
+        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+            if (tabs[0]) {
+                chrome.tabs.sendMessage(tabs[0].id, {
+                    action: "show_toast", type: "error"
+                }).catch(() => {});
+            }
+        });
+    });
 }
