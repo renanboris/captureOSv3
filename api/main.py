@@ -17,6 +17,17 @@ from fastapi.middleware.cors import CORSMiddleware
 from config.settings import get_settings
 settings = get_settings()
 
+# Auth condicional: desabilitado em dev (jwt_secret padrão), ativo em produção
+_DEV_SECRET = "dev-secret-change-in-prod"
+_auth_enabled = settings.jwt_secret and settings.jwt_secret != _DEV_SECRET
+_auth_deps = [Depends(require_auth)] if _auth_enabled else []
+
+if not _auth_enabled:
+    logging.getLogger("uvicorn.error").warning(
+        "AUTH DESABILITADA — jwt_secret é o valor padrão de dev. "
+        "Configure JWT_SECRET no .env para habilitar autenticação."
+    )
+
 active_tasks: Dict[str, asyncio.Task] = {}
 
 app = FastAPI(title="Capture OS v3 Ingestion API")
@@ -162,7 +173,7 @@ class TTSPreviewPayload(BaseModel):
 
 from fastapi import HTTPException
 
-@app.post("/api/v1/capture/ingest", dependencies=[Depends(require_auth)])
+@app.post("/api/v1/capture/ingest", dependencies=_auth_deps)
 async def ingest_capture(
     session_id: str = Form(...),
     recording_start_time: int = Form(0),
@@ -239,6 +250,11 @@ async def ingest_capture(
 @app.post("/api/v1/capture/abort/{session_id}")
 async def abort_capture(session_id: str):
     logger.info(f"Recebido pedido de abort para sessão: {session_id}")
+    # Não sobrescrever se o pipeline já está renderizando ou concluído
+    current = get_status(session_id)
+    if current.get("status") in ("roteiro_pronto", "rendering_final", "completed"):
+        logger.info(f"Abort ignorado — sessão {session_id} já está em '{current.get('status')}'")
+        return {"status": "ok", "ignored": True}
     update_status(session_id, "failed", "Processamento cancelado pelo usuário.")
     if session_id in active_tasks:
         task = active_tasks[session_id]
@@ -270,7 +286,7 @@ async def check_status(session_id: str):
         
     return status_data
 
-@app.get("/api/v1/session/{session_id}/roteiro", dependencies=[Depends(require_auth)])
+@app.get("/api/v1/session/{session_id}/roteiro", dependencies=_auth_deps)
 async def get_roteiro(session_id: str):
     roteiro_path = f"data/roteiros/{session_id}.json"
     if not os.path.exists(roteiro_path):
@@ -278,7 +294,7 @@ async def get_roteiro(session_id: str):
     with open(roteiro_path, "r", encoding="utf-8") as f:
         return json.load(f)
 
-@app.post("/api/v1/session/{session_id}/roteiro", dependencies=[Depends(require_auth)])
+@app.post("/api/v1/session/{session_id}/roteiro", dependencies=_auth_deps)
 async def save_roteiro(session_id: str, payload: RoteiroEditadoPayload):
     roteiro_path = f"data/roteiros/{session_id}.json"
     
@@ -308,7 +324,7 @@ async def save_roteiro(session_id: str, payload: RoteiroEditadoPayload):
         
     return {"status": "ok"}
 
-@app.post("/api/v1/session/{session_id}/passo/{passo_num}/regerar", dependencies=[Depends(require_auth)])
+@app.post("/api/v1/session/{session_id}/passo/{passo_num}/regerar", dependencies=_auth_deps)
 async def regerar_passo(session_id: str, passo_num: int):
     """
     Rechama a Aura para regeração de um único passo, com contexto dos vizinhos.
@@ -335,7 +351,7 @@ async def regerar_passo(session_id: str, passo_num: int):
 
     return {"passo": passo_atualizado}
 
-@app.post("/api/v1/tts/preview", dependencies=[Depends(require_auth)])
+@app.post("/api/v1/tts/preview", dependencies=_auth_deps)
 async def tts_preview(payload: TTSPreviewPayload):
     from video_eng.tts_generator import gerar_audio
     import uuid
@@ -350,7 +366,7 @@ async def tts_preview(payload: TTSPreviewPayload):
     url = f"{base}/artifacts/previews/{filename}"
     return {"audio_url": url}
 
-@app.get("/api/v1/session/{session_id}/artifacts", dependencies=[Depends(require_auth)])
+@app.get("/api/v1/session/{session_id}/artifacts", dependencies=_auth_deps)
 async def get_artifacts(session_id: str):
     """Retorna URLs de todos os artefatos gerados para uma sessão."""
     base = settings.backend_url
@@ -396,7 +412,7 @@ async def get_artifacts(session_id: str):
         "status":          get_status(session_id).get("status", "unknown")
     }
 
-@app.get("/api/v1/simlink/{modulo_id}", dependencies=[Depends(require_auth)])
+@app.get("/api/v1/simlink/{modulo_id}", dependencies=_auth_deps)
 async def get_simlink_modulo(modulo_id: str):
     # Procura pelo módulo — offloaded to a thread so the event loop is not blocked
     import glob
@@ -417,7 +433,7 @@ async def get_simlink_modulo(modulo_id: str):
         raise HTTPException(status_code=404, detail="Módulo Simlink não encontrado")
     return mod
 
-@app.get("/api/v1/modulos", dependencies=[Depends(require_auth)])
+@app.get("/api/v1/modulos", dependencies=_auth_deps)
 async def listar_modulos(dominio: str = "", limit: int = 0, offset: int = 0):
     """
     Lista módulos Simlink disponíveis, filtrados opcionalmente por domínio.
@@ -473,7 +489,7 @@ async def listar_modulos(dominio: str = "", limit: int = 0, offset: int = 0):
 
     return {"modulos": modulos, "total": total, "count": len(modulos), "offset": offset, "limit": limit}
 
-@app.post("/api/v1/simlink/{modulo_id}/conclusao", dependencies=[Depends(require_auth)])
+@app.post("/api/v1/simlink/{modulo_id}/conclusao", dependencies=_auth_deps)
 async def registrar_conclusao_simlink(modulo_id: str, payload: dict):
     # Busca módulo e dispara callback LMS se necessário — offloaded so the event loop is not blocked
     import glob
@@ -507,7 +523,7 @@ async def registrar_conclusao_simlink(modulo_id: str, payload: dict):
         ))
     return {"status": "ok"}
 
-@app.post("/api/v1/session/{session_id}/simlink/configure", dependencies=[Depends(require_auth)])
+@app.post("/api/v1/session/{session_id}/simlink/configure", dependencies=_auth_deps)
 async def configurar_simlink(session_id: str, payload: dict):
     filepath = f"data/simlink/{session_id}.json"
     if not os.path.exists(filepath):
@@ -546,7 +562,7 @@ class SandboxActionPayload(BaseModel):
     url: str
     action_data: dict
 
-@app.post("/api/v1/sandbox/evaluate", dependencies=[Depends(require_auth)])
+@app.post("/api/v1/sandbox/evaluate", dependencies=_auth_deps)
 async def evaluate_sandbox(payload: SandboxActionPayload):
     from sandbox_eng.arbitro_engine import avaliar_acao_sandbox
     
@@ -578,7 +594,7 @@ async def evaluate_sandbox(payload: SandboxActionPayload):
         
     return result
 
-@app.post("/api/v1/sandbox/reset", dependencies=[Depends(require_auth)])
+@app.post("/api/v1/sandbox/reset", dependencies=_auth_deps)
 async def reset_sandbox(payload: dict):
     """Reseta o estado do sandbox para uma sessão (usado ao iniciar nova prática)."""
     session_id = payload.get("session_id", "")

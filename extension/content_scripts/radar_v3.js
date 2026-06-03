@@ -459,6 +459,8 @@
             if(toast) toast.remove();
             
             mountPlayerModal(msg.url, msg.roteiro);
+        } else if (msg.action === "show_error_toast") {
+            showToast("error");
         } else if (msg.action === "show_editor_modal") {
             let toast = document.getElementById("capture-os-toast");
             if(toast) toast.remove();
@@ -1065,27 +1067,13 @@
                 if (e.data.action === "close_editor_modal_and_resume") {
                     showToast("processing", "Renderizando vídeo final...");
                     
-                    // Polling local para fugir do bug de suspensão do Service Worker do MV3
-                    let localPollInterval = setInterval(() => {
-                        fetch(`${backendUrl}/api/v1/capture/status/${e.data.session_id}`)
-                            .then(r => r.json())
-                            .then(status => {
-                                if (status.status === "processing" || status.status === "rendering_final") {
-                                    if (status.message) showToast("processing", status.message);
-                                } else if (status.status === "completed") {
-                                    clearInterval(localPollInterval);
-                                    if (chrome.runtime && chrome.runtime.sendMessage) chrome.runtime.sendMessage({ action: 'stop_processing' }).catch(()=>{});
-                                    const toast = document.getElementById("capture-os-toast");
-                                    if (toast) toast.remove();
-                                    mountPlayerModal(status.url, status.roteiro || []);
-                                } else if (status.status === "error" || status.status === "failed") {
-                                    clearInterval(localPollInterval);
-                                    if (chrome.runtime && chrome.runtime.sendMessage) chrome.runtime.sendMessage({ action: 'stop_processing' }).catch(()=>{});
-                                    showToast("error");
-                                }
-                            })
-                            .catch(err => console.error("Erro no polling local", err));
-                    }, 3000);
+                    // Delega polling ao background (resiliente à navegação da página)
+                    if (chrome.runtime && chrome.runtime.sendMessage) {
+                        chrome.runtime.sendMessage({ 
+                            action: 'resume_polling_after_editor', 
+                            session_id: e.data.session_id 
+                        }).catch(() => {});
+                    }
                     
                 } else if (e.data.action === "cancel_editor_modal") {
                     if (chrome.runtime && chrome.runtime.sendMessage) {

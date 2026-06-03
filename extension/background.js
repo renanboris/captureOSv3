@@ -345,6 +345,58 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         console.log("Processamento finalizado com sucesso.");
     }
 
+    if (message.action === 'resume_polling_after_editor') {
+        // Retoma polling no background após o editor aprovar o roteiro.
+        // Mais resiliente que polling no content script (sobrevive a navegação).
+        const sessionId = message.session_id;
+        console.log(`Retomando polling para sessão ${sessionId} após editor.`);
+        if (activePollInterval) {
+            clearInterval(activePollInterval);
+            activePollInterval = null;
+        }
+        activePollInterval = setInterval(async () => {
+            try {
+                const resp = await authedFetch(`/api/v1/capture/status/${sessionId}`);
+                const status = await resp.json();
+                if (status.status === "processing" || status.status === "rendering_final") {
+                    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+                        if (tabs[0]) {
+                            chrome.tabs.sendMessage(tabs[0].id, {
+                                action: "update_toast", msg: status.message
+                            }).catch(() => {});
+                        }
+                    });
+                } else if (status.status === "completed") {
+                    clearInterval(activePollInterval);
+                    activePollInterval = null;
+                    chrome.storage.local.set({ isProcessing: false });
+                    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+                        if (tabs[0]) {
+                            chrome.tabs.sendMessage(tabs[0].id, {
+                                action: "show_player_modal",
+                                url: status.url,
+                                roteiro: status.roteiro || []
+                            }).catch(() => {});
+                        }
+                    });
+                } else if (status.status === "error" || status.status === "failed") {
+                    clearInterval(activePollInterval);
+                    activePollInterval = null;
+                    chrome.storage.local.set({ isProcessing: false });
+                    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+                        if (tabs[0]) {
+                            chrome.tabs.sendMessage(tabs[0].id, {
+                                action: "show_error_toast"
+                            }).catch(() => {});
+                        }
+                    });
+                }
+            } catch (e) {
+                console.error("Erro no polling pós-editor", e);
+            }
+        }, 3000);
+    }
+
     // ─── MODO ÁRBITRO: iniciar sessão de prática ───
     if (message.action === "INICIAR_SESSAO_ARBITRO") {
         const { moduloId, tabId } = message;

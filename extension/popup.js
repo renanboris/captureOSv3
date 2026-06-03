@@ -99,10 +99,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             moduloId: moduloId,
             tabId: tabId
         }, (response) => {
-            if (response && response.ok) {
+            // O popup pode fechar antes da response async chegar (MV3 race condition).
+            // Se response é undefined (port closed) ou ok, fechamos normalmente.
+            if (chrome.runtime.lastError || !response || response.ok) {
                 window.close();
             } else {
-                alert("Erro ao iniciar sessão de prática.");
+                alert("Erro ao iniciar sessão de prática: " + (response.error || "desconhecido"));
             }
         });
     }
