@@ -32,7 +32,7 @@ def _get_media_duration(file_path: str) -> float:
 def _calculate_segments(timeline_events: list, video_duration: float) -> tuple:
     """
     Calcula os segmentos de vídeo e freeze frames.
-    Retorna (segments, audio_delays) com a mesma lógica do código original.
+    Single shared timing rule for both FFmpeg and MoviePy paths.
     
     segments: lista de tuplas:
         ("video", start, end) — segmento de vídeo normal
@@ -49,33 +49,42 @@ def _calculate_segments(timeline_events: list, video_duration: float) -> tuple:
     for event in timeline_events:
         ts = event['timestamp']
         audio_path = event['audio_path']
-        audio_dur = event['audio_duration']
+        dur = event['audio_duration']
 
-        # Lógica original preservada: congela 0.2s ANTES do clique
-        safe_offset = 0.2
-        if current_time > 0:
-            freeze_ts = max(current_time + 0.1, ts - safe_offset)
-            if freeze_ts >= ts:
-                freeze_ts = max(current_time, ts - 0.1)
+        if event.get('is_loading', False):
+            # Property 1: keep the recording running; no freeze for loading events.
+            run_end = min(current_time + dur, video_duration)
+            if run_end > current_time:
+                segments.append(("video", current_time, run_end))
+            # If the recording ends before the narration, hold the last frame
+            # so the narration is fully covered and the timeline stays consistent.
+            remainder = dur - (run_end - current_time)
+            if remainder > 0:
+                hold_t = max(0, video_duration - 0.1)
+                segments.append(("freeze", hold_t, remainder))
+            # Audio positioned over the running segment
+            audio_delays.append((audio_path, shifted_time, dur))
+            shifted_time += dur
+            current_time = run_end
         else:
-            freeze_ts = max(0, ts - safe_offset)
+            # Property 2: freeze on the click frame (cursor on correct target).
+            # clamp(ts, lower=current_time, upper=video_duration - 0.1)
+            freeze_ts = max(current_time, min(ts, video_duration - 0.1))
 
-        # 1. Segmento de vídeo normal até o momento do congelamento
-        if freeze_ts > current_time:
-            end_ts = min(freeze_ts, video_duration)
-            seg_dur = end_ts - current_time
-            segments.append(("video", current_time, end_ts))
-            shifted_time += seg_dur
+            # 1. Segmento de vídeo normal até o momento do congelamento
+            if freeze_ts > current_time:
+                end_ts = min(freeze_ts, video_duration)
+                segments.append(("video", current_time, end_ts))
+                shifted_time += (end_ts - current_time)
 
-        # 2. Frame congelado com duração do áudio TTS
-        safe_freeze = min(freeze_ts, video_duration - 0.1)
-        segments.append(("freeze", safe_freeze, audio_dur))
+            # 2. Frame congelado com duração do áudio TTS
+            segments.append(("freeze", freeze_ts, dur))
 
-        # 3. Posição do áudio na timeline expandida
-        audio_delays.append((audio_path, shifted_time, audio_dur))
+            # 3. Posição do áudio na timeline expandida
+            audio_delays.append((audio_path, shifted_time, dur))
 
-        shifted_time += audio_dur
-        current_time = freeze_ts
+            shifted_time += dur
+            current_time = freeze_ts
 
     # 4. Restante do vídeo após o último evento
     if current_time < video_duration:
@@ -200,7 +209,8 @@ def compose_video_with_freeze_frames(input_webm: str, output_mp4: str, timeline_
             valid_events.append({
                 "timestamp": event["timestamp"],
                 "audio_path": audio_path,
-                "audio_duration": dur
+                "audio_duration": dur,
+                "is_loading": bool(event.get("is_loading", False))
             })
 
     if not valid_events:
@@ -302,8 +312,11 @@ def _simple_convert(input_webm: str, output_mp4: str) -> bool:
 
 def _compose_legacy_moviepy(input_webm: str, output_mp4: str, timeline_events: list):
     """
-    Fallback: composição via MoviePy (código legado).
+    Fallback: composição via MoviePy.
     Usado automaticamente se o pipeline FFmpeg puro falhar.
+
+    Delegates timing to the shared _calculate_segments rule so that both
+    the FFmpeg path and this fallback produce identical (segments, audio_delays).
     """
     try:
         from moviepy import VideoFileClip, AudioFileClip, CompositeAudioClip, concatenate_videoclips
@@ -329,69 +342,64 @@ def _compose_legacy_moviepy(input_webm: str, output_mp4: str, timeline_events: l
         print("[Fallback MoviePy] Abrindo video clip...")
         video = VideoFileClip(input_file)
         print(f"[Fallback MoviePy] Video aberto com duracao {video.duration}")
-        clips = []
-        audio_clips = []
 
-        current_time = 0
-        shifted_time = 0
-
+        # Build valid_events exactly as the FFmpeg path does:
+        # skip missing audio files, compute each audio_duration, carry is_loading.
+        valid_events = []
         for event in timeline_events:
-            ts = event['timestamp']
             audio_path = event['audio_path']
-
             if not os.path.exists(audio_path):
                 logger.warning(f"Audio não encontrado: {audio_path}")
                 continue
+            dur = _get_media_duration(audio_path)
+            if dur > 0:
+                valid_events.append({
+                    "timestamp": event["timestamp"],
+                    "audio_path": audio_path,
+                    "audio_duration": dur,
+                    "is_loading": bool(event.get("is_loading", False)),
+                })
 
-            audio = AudioFileClip(audio_path)
-            dur = audio.duration
+        if not valid_events:
+            logger.warning("Nenhum áudio válido encontrado no fallback MoviePy.")
+            video.close()
+            try:
+                if input_file != input_webm and os.path.exists(input_file):
+                    os.remove(input_file)
+            except:
+                pass
+            return _simple_convert(input_webm, output_mp4)
 
-            # O Segredo Pedagógico: Congelar a tela ANTES do clique acontecer!
-            # Volta apenas 0.2 segundos (evita pegar o clique em si), e garante que
-            # nunca volte para o passado antes do último evento (evitando flicker/piscar).
-            safe_offset = 0.2
-            if current_time > 0:
-                freeze_ts = max(current_time + 0.1, ts - safe_offset)
-                if freeze_ts >= ts:
-                    freeze_ts = max(current_time, ts - 0.1) # Fallback muito rápido
-            else:
-                freeze_ts = max(0, ts - safe_offset)
+        # Derive timing from the single shared rule (Property 3).
+        segments, audio_delays = _calculate_segments(valid_events, video.duration)
 
-            # 1. Adiciona o vídeo normal do ponto atual até o momento do congelamento
-            if freeze_ts > current_time:
-                end_ts = min(freeze_ts, video.duration)
-                clip = video.subclipped(current_time, end_ts)
+        if not segments:
+            logger.error("Nenhum segmento gerado na timeline.")
+            video.close()
+            return False
+
+        # Render from the shared plan using MoviePy APIs.
+        clips = []
+        for seg in segments:
+            if seg[0] == "video":
+                start, end = seg[1], seg[2]
+                clip = video.subclipped(start, end)
                 clips.append(clip)
-                shifted_time += clip.duration
+            else:
+                # ("freeze", freeze_t, duration)
+                freeze_t, duration = seg[1], seg[2]
+                print(f"[Fallback MoviePy] Gerando frame congelado no tempo {freeze_t}")
+                freeze = video.to_ImageClip(t=freeze_t).with_duration(duration)
+                clips.append(freeze)
+                print("[Fallback MoviePy] Frame congelado adicionado")
 
-            # 2. Extrai o frame exato antes do clique e congela
-            # Aqui a IA vai falar enquanto a tela está estática
-            safe_freeze = min(freeze_ts, video.duration - 0.1)
-            print(f"[Fallback MoviePy] Gerando frame congelado no tempo {safe_freeze}")
-            freeze = video.to_ImageClip(t=safe_freeze).with_duration(dur)
-            clips.append(freeze)
-            print("[Fallback MoviePy] Frame congelado adicionado")
-
-            # 3. Posiciona o áudio exatamente no momento do freeze frame
-            audio = audio.with_start(shifted_time)
+        # Place each audio with the delay from the shared plan.
+        audio_clips = []
+        for audio_path, delay, _dur in audio_delays:
+            audio = AudioFileClip(audio_path).with_start(delay)
             audio_clips.append(audio)
 
-            # Atualiza os contadores
-            shifted_time += dur
-            current_time = freeze_ts
-
-        # 4. Adiciona o restante do vídeo (após o último clique)
-        if current_time < video.duration:
-            clip = video.subclipped(current_time, video.duration)
-            clips.append(clip)
-
-        # Adiciona um freeze frame final de 3.5 segundos para mostrar o resultado da última ação
-        if video.duration > 0:
-            safe_final_t = max(0, video.duration - 0.1)
-            final_freeze = video.to_ImageClip(t=safe_final_t).with_duration(3.5)
-            clips.append(final_freeze)
-
-        # 5. Concatena e aplica a trilha de voz
+        # Concatena e aplica a trilha de voz
         if not clips:
             logger.error("Nenhum clip gerado na timeline.")
             return False
@@ -401,7 +409,7 @@ def _compose_legacy_moviepy(input_webm: str, output_mp4: str, timeline_events: l
         if audio_clips:
             final_video = final_video.with_audio(CompositeAudioClip(audio_clips))
 
-        # 6. Renderiza
+        # Renderiza
         logger.info(f"[Fallback MoviePy] Renderizando MP4 final: {output_mp4}")
         print("[Fallback MoviePy] Iniciando write_videofile...")
         final_video.write_videofile(
