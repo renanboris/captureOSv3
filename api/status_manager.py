@@ -17,4 +17,4 @@ def get_status(session_id: str):
                 return json.load(f)
         except:
             pass
-    return {"status": "processing", "message": "Inicializando servidor..."}
+    return {"status": "unknown", "message": "Sessão não encontrada."}

@@ -379,9 +379,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                             }).catch(() => {});
                         }
                     });
-                } else if (status.status === "error" || status.status === "failed") {
+                } else if (status.status === "error" || status.status === "failed" || status.status === "unknown") {
                     clearInterval(activePollInterval);
                     activePollInterval = null;
+                    chrome.storage.local.set({ isProcessing: false });
                     chrome.storage.local.set({ isProcessing: false });
                     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
                         if (tabs[0]) {
@@ -546,11 +547,21 @@ function startPolling(sessionId) {
                             }
                         });
                     }
-                } else if (status.status === "error" || status.status === "failed") {
+                } else if (status.status === "error" || status.status === "failed" || status.status === "unknown") {
                     if (activePollInterval !== null) {
                         clearInterval(activePollInterval);
                         activePollInterval = null;
                         chrome.storage.local.set({ isProcessing: false });
+                        if (status.status !== "unknown") {
+                            // Só notifica erro real; "unknown" é sessão expirada/não encontrada
+                            chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+                                if (tabs[0]) {
+                                    chrome.tabs.sendMessage(tabs[0].id, {
+                                        action: "update_toast", msg: status.message || "Erro no processamento."
+                                    }).catch(() => {});
+                                }
+                            });
+                        }
                     }
                 }
             })

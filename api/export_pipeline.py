@@ -19,6 +19,14 @@ async def renderizar_exportacao(payload: dict):
     4. Compõe o Vídeo Final.
     """
     session_id = payload.get("session_id", "sess_unknown")
+    try:
+        await _renderizar_exportacao_impl(payload, session_id)
+    except Exception as e:
+        logger.error(f"[{session_id}] Pipeline falhou com exceção não tratada: {e}", exc_info=True)
+        update_status(session_id, "failed", f"Erro interno no pipeline: {e}")
+
+
+async def _renderizar_exportacao_impl(payload: dict, session_id: str):
     start_time_ms = payload.get("recording_start_time", 0)
     
     # 1. Salva o vídeo WebM Cru
@@ -29,12 +37,11 @@ async def renderizar_exportacao(payload: dict):
         # Backwards-compat fallback: old base64 path still works if caller uses it
         b64_video = payload.get("video_webm", "")
         if not b64_video:
-            logger.error("Nenhum video recebido no payload (nem video_bytes nem video_webm).")
-            return
+            raise ValueError("Nenhum video recebido no payload (nem video_bytes nem video_webm).")
         b64_video = b64_video.split(',')[-1]
         raw_video_bytes = base64.b64decode(b64_video)
     elif not raw_video_bytes:
-        logger.error("Nenhum video_bytes recebido no payload.")
+        raise ValueError("video_bytes recebido está vazio.")
         return
     
     os.makedirs("data/raw_videos", exist_ok=True)

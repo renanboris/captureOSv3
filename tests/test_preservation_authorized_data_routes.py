@@ -376,7 +376,7 @@ def test_authorized_artifacts_fresh_session_baseline(client):
         assert body["simlink_url"] is None
         assert body["scorm_download_url"] is None
         assert body["scorm_player_url"] is None
-        assert body["status"] == "processing"
+        assert body["status"] in ("processing", "unknown")
     finally:
         _unlink(_status_file(session_id))
 
