@@ -15,6 +15,14 @@ import os
 import asyncio
 from fastapi.middleware.cors import CORSMiddleware
 from config.settings import get_settings
+
+# Increase multipart upload limit to 500 MB before the app is created.
+# The default Starlette limit is 1 MB per part (MultiPartParser.max_part_size),
+# which is too small for screen recordings.
+import starlette.formparsers
+_500_MB = 500 * 1024 * 1024
+starlette.formparsers.MultiPartParser.max_part_size = _500_MB
+
 settings = get_settings()
 
 # Auth sempre ativa. Em dev, o secret padrão aceita tokens assinados com ele
@@ -43,6 +51,19 @@ app.add_middleware(
 )
 
 logger = logging.getLogger("uvicorn.error")
+
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    logger.error(f"VALIDATION ERROR em {request.method} {request.url.path}: {exc.errors()}")
+    return JSONResponse(status_code=422, content={"detail": exc.errors()})
+
+@app.exception_handler(400)
+async def bad_request_handler(request: Request, exc):
+    logger.error(f"400 BAD REQUEST em {request.method} {request.url.path}: {exc}")
+    return JSONResponse(status_code=400, content={"detail": str(exc)})
 
 
 @app.middleware("http")
