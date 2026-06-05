@@ -132,6 +132,68 @@ async function authedFetch(path, options = {}) {
     return fetch(`${backendUrl}${path}`, { ...options, headers });
 }
 
+// ─── Auth header injection via declarativeNetRequest ───
+// The editor runs as an iframe served by the backend and makes its own fetch
+// calls (roteiro, tts, regerar). Rather than threading the token through URL
+// params or postMessage (fragile, cache-sensitive), we inject the
+// Authorization header at the network layer for EVERY request to the backend.
+// This covers the iframe, the content script, and the service worker uniformly.
+const AUTH_RULE_ID = 1;
+
+async function refreshAuthHeaderRule() {
+    const { authToken, backendUrl } = await chrome.storage.local.get(['authToken', 'backendUrl']);
+    // Always remove the old rule first.
+    await chrome.declarativeNetRequest.updateDynamicRules({
+        removeRuleIds: [AUTH_RULE_ID],
+    });
+    if (!authToken) {
+        console.warn('[CaptureOS] Sem authToken — header de auth NÃO será injetado.');
+        return;
+    }
+    const base = backendUrl || DEV_FALLBACK_BACKEND_URL;
+    // urlFilter matches any request whose URL contains the backend host.
+    let urlFilter;
+    try {
+        const u = new URL(base);
+        urlFilter = `||${u.host}/`;   // e.g. ||localhost:8000/
+    } catch (e) {
+        urlFilter = '||localhost:8000/';
+    }
+    await chrome.declarativeNetRequest.updateDynamicRules({
+        addRules: [{
+            id: AUTH_RULE_ID,
+            priority: 1,
+            action: {
+                type: 'modifyHeaders',
+                requestHeaders: [{
+                    header: 'Authorization',
+                    operation: 'set',
+                    value: `Bearer ${authToken}`,
+                }],
+            },
+            condition: {
+                urlFilter,
+                // Apply to all request types (xmlhttprequest from iframe, etc.)
+                resourceTypes: [
+                    'main_frame', 'sub_frame', 'xmlhttprequest', 'other',
+                ],
+            },
+        }],
+    });
+    console.log('[CaptureOS] Regra de auth header registrada para', urlFilter);
+}
+
+// Register/refresh the rule on startup and whenever the token/backend changes.
+chrome.runtime.onInstalled.addListener(() => { refreshAuthHeaderRule(); });
+chrome.runtime.onStartup.addListener(() => { refreshAuthHeaderRule(); });
+chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === 'local' && (changes.authToken || changes.backendUrl)) {
+        refreshAuthHeaderRule();
+    }
+});
+// Also refresh immediately when this service worker loads.
+refreshAuthHeaderRule();
+
 let blinkInterval = null;
 let isDotVisible = true;
 let activePollInterval = null;

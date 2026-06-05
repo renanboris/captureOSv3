@@ -11,7 +11,8 @@
     "tabs",
     "scripting",
     "offscreen",
-    "tabCapture"
+    "tabCapture",
+    "declarativeNetRequest"
   ],
   "host_permissions": [
     "https://api.captureos.fly.dev/*",
