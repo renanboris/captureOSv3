@@ -6,6 +6,7 @@ env/
 # Cache do Python e Pytest
 __pycache__/
 .pytest_cache/
+.hypothesis/
 *.pyc
 
 # IDEs
@@ -16,3 +17,8 @@ __pycache__/
 *.log
 legacy_repos_tmp/
 data/
+
+# Dados de sessão (não versionar — risco de vazamento de dados reais).
+# Escopado a arquivos de sessão; NÃO ignora JSON de configuração rastreado.
+session*_steps.json
+session_*

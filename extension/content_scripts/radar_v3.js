@@ -459,6 +459,8 @@
             if(toast) toast.remove();
             
             mountPlayerModal(msg.url, msg.roteiro);
+        } else if (msg.action === "show_error_toast") {
+            showToast("error");
         } else if (msg.action === "show_editor_modal") {
             let toast = document.getElementById("capture-os-toast");
             if(toast) toast.remove();
@@ -997,7 +999,7 @@
     }
 
     // --- Editor Modal Injetado ---
-    function mountEditorModal(backendUrl, sessionId) {
+    async function mountEditorModal(backendUrl, sessionId) {
         let existing = document.getElementById('capture-os-editor-host');
         if (existing) existing.remove();
 
@@ -1020,6 +1022,13 @@
         document.body.appendChild(host);
         const shadow = host.attachShadow({mode: 'open'});
         
+        // Pass the auth token in the URL so the editor iframe has it
+        // immediately on load — avoids postMessage timing issues.
+        const { authToken: editorToken } = await new Promise(r =>
+            chrome.storage.local.get(['authToken'], r)
+        );
+        const tokenParam = editorToken ? `&token=${encodeURIComponent(editorToken)}` : '';
+
         shadow.innerHTML = `
             <style>
                 .modal-container {
@@ -1043,7 +1052,7 @@
                 }
             </style>
             <div class="modal-container" id="editor-modal">
-                <iframe src="${backendUrl}/editor?session=${sessionId}&embedded=true"></iframe>
+                <iframe src="${backendUrl}/editor?session=${sessionId}&embedded=true${tokenParam}"></iframe>
             </div>
         `;
 
@@ -1053,7 +1062,21 @@
         });
 
         // Ouve mensagens do iframe para fechar o modal ou broadcast
+        // Também responde ao editor pedindo o token de auth.
         const messageHandler = (e) => {
+            if (e.data && e.data.action === 'get_auth_token') {
+                chrome.storage.local.get(['authToken'], (res) => {
+                    // Envia para todos os iframes do shadow DOM
+                    const iframeEl = shadow.querySelector('iframe');
+                    if (iframeEl && iframeEl.contentWindow) {
+                        iframeEl.contentWindow.postMessage(
+                            { type: 'captureOs_authToken', token: res.authToken || null },
+                            '*'
+                        );
+                    }
+                });
+                return;
+            }
             if (e.data && (e.data.action === "close_editor_modal" || e.data.action === "close_editor_modal_and_resume" || e.data.action === "cancel_editor_modal")) {
                 host.style.opacity = '0';
                 shadow.getElementById('editor-modal').style.transform = 'translateY(20px) scale(0.98)';
@@ -1065,27 +1088,13 @@
                 if (e.data.action === "close_editor_modal_and_resume") {
                     showToast("processing", "Renderizando vídeo final...");
                     
-                    // Polling local para fugir do bug de suspensão do Service Worker do MV3
-                    let localPollInterval = setInterval(() => {
-                        fetch(`${backendUrl}/api/v1/capture/status/${e.data.session_id}`)
-                            .then(r => r.json())
-                            .then(status => {
-                                if (status.status === "processing" || status.status === "rendering_final") {
-                                    if (status.message) showToast("processing", status.message);
-                                } else if (status.status === "completed") {
-                                    clearInterval(localPollInterval);
-                                    if (chrome.runtime && chrome.runtime.sendMessage) chrome.runtime.sendMessage({ action: 'stop_processing' }).catch(()=>{});
-                                    const toast = document.getElementById("capture-os-toast");
-                                    if (toast) toast.remove();
-                                    mountPlayerModal(status.url, status.roteiro || []);
-                                } else if (status.status === "error" || status.status === "failed") {
-                                    clearInterval(localPollInterval);
-                                    if (chrome.runtime && chrome.runtime.sendMessage) chrome.runtime.sendMessage({ action: 'stop_processing' }).catch(()=>{});
-                                    showToast("error");
-                                }
-                            })
-                            .catch(err => console.error("Erro no polling local", err));
-                    }, 3000);
+                    // Delega polling ao background (resiliente à navegação da página)
+                    if (chrome.runtime && chrome.runtime.sendMessage) {
+                        chrome.runtime.sendMessage({ 
+                            action: 'resume_polling_after_editor', 
+                            session_id: e.data.session_id 
+                        }).catch(() => {});
+                    }
                     
                 } else if (e.data.action === "cancel_editor_modal") {
                     if (chrome.runtime && chrome.runtime.sendMessage) {

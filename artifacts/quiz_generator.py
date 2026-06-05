@@ -1,8 +1,12 @@
 import json, logging
 from google import genai
 from google.genai import types as genai_types
+from config.prompt_loader import load_system_instruction
 
 logger = logging.getLogger(__name__)
+
+PROMPT_QUIZ = "quiz_generator.v1.txt"
+
 
 async def gerar_quiz(roteiro: list, api_key: str, num_questoes: int = 3) -> list:
     """
@@ -17,30 +21,21 @@ async def gerar_quiz(roteiro: list, api_key: str, num_questoes: int = 3) -> list
         if p.get('passo', 0) not in (0, 999)
     ])
 
-    prompt = f"""Você é um especialista em avaliação de treinamentos corporativos.
-Com base no tutorial abaixo, crie exatamente {num_questoes} questões de múltipla escolha.
-Cada questão deve testar se o aluno compreendeu o processo — não decoreba de cliques.
-Foque no "por quê" e na sequência lógica das ações.
+    system_instruction = load_system_instruction(PROMPT_QUIZ)
 
-TUTORIAL:
+    user_content = f"""Crie exatamente {num_questoes} questões de múltipla escolha (4 opções cada) com base no tutorial abaixo.
+
+<TUTORIAL>
 {texto_roteiro}
+</TUTORIAL>"""
 
-Responda APENAS com JSON válido, sem markdown, sem explicações externas, com o seguinte formato:
-[
-  {{
-    "pergunta": "Texto da pergunta",
-    "opcoes": ["Opção A", "Opção B", "Opção C", "Opção D"],
-    "correta": 0,
-    "explicacao": "Por que esta opção está correta"
-  }}
-]
-"""
     try:
         client = genai.Client(api_key=api_key)
         response = await client.aio.models.generate_content(
             model="gemini-2.5-flash",
-            contents=prompt,
+            contents=user_content,
             config=genai_types.GenerateContentConfig(
+                system_instruction=system_instruction,
                 response_mime_type="application/json",
                 temperature=0.4
             )

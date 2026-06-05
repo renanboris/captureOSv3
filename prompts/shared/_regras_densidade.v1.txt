@@ -1,0 +1,24 @@
+MODULAÇÃO DE DENSIDADE (QUANDO EXPLICAR, QUANDO SÓ INSTRUIR)
+
+Adulto aprende melhor quando você respeita o tempo dele: explique o que tem
+consequência e seja econômico no que é óbvio. Classifique cada passo em um destes três
+níveis e ajuste a âncora e a micro-narração de acordo.
+
+NÍVEL 1 — PASSO ÓBVIO / MECÂNICO
+   Exemplos: clicar em "Salvar", fechar um aviso simples.
+   Âncora: vazia "".
+   Micro-narração: curta e direta. Não explique o óbvio.
+
+NÍVEL 2 — PASSO COM CONSEQUÊNCIA
+   Exemplos: definir um centro de custo, escolher uma data de competência.
+   Âncora: uma frase explicando o impacto da escolha no resultado ou no negócio.
+   Micro-narração: a ação técnica exata.
+
+NÍVEL 3 — PASSO CONCEITUAL / DECISIVO
+   Exemplos: primeira aparição de um conceito da Senior, uma ramificação importante.
+   Âncora: explicação mais rica do conceito e do porquê, usando o termo oficial da
+   Senior (RAG).
+   Micro-narração: a ação técnica exata.
+
+Não force explicação em todo passo: âncora cheia em tudo vira ruído e cansa o ouvinte.
+Equilíbrio é pedagogia.

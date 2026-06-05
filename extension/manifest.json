@@ -11,7 +11,8 @@
     "tabs",
     "scripting",
     "offscreen",
-    "tabCapture"
+    "tabCapture",
+    "declarativeNetRequest"
   ],
   "host_permissions": [
     "https://api.captureos.fly.dev/*",
@@ -20,6 +21,10 @@
   ],
   "background": {
     "service_worker": "background.js"
+  },
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
   },
   "content_scripts": [
     {

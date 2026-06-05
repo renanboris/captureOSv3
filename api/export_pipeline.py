@@ -10,6 +10,96 @@ import json
 
 logger = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
+# Defect 2 fix: double-click burst coalescing
+# ---------------------------------------------------------------------------
+
+# Maximum span (ms) between the first click and the closing dblclick of a
+# same-target burst for it to be treated as a single double-click.
+# The observed span in sess_1780690407909 was ~197ms; 400ms gives safe headroom.
+COALESCE_WINDOW_MS = 400
+
+# Pixel tolerance when comparing target_geometry coordinates (sameTarget).
+_PIXEL_TOLERANCE = 10
+
+
+def sameTarget(a: dict, b: dict, c: dict) -> bool:
+    """Return True when three captured events target the same element.
+
+    Compares ``eventData.xpath`` for exact equality and ``target_geometry``
+    (x, y) within ``_PIXEL_TOLERANCE`` pixels.  Pure — no side effects.
+    """
+    def _ed(ev):
+        return ev.get("eventData", {})
+
+    def _xpath(ev):
+        return _ed(ev).get("xpath", "")
+
+    def _geom(ev):
+        g = _ed(ev).get("target_geometry") or {}
+        return g.get("x", 0), g.get("y", 0)
+
+    if not (_xpath(a) == _xpath(b) == _xpath(c)):
+        return False
+
+    ax, ay = _geom(a)
+    bx, by = _geom(b)
+    cx, cy = _geom(c)
+    return (
+        abs(ax - bx) <= _PIXEL_TOLERANCE and abs(ay - by) <= _PIXEL_TOLERANCE and
+        abs(ax - cx) <= _PIXEL_TOLERANCE and abs(ay - cy) <= _PIXEL_TOLERANCE
+    )
+
+
+def coalesce_dblclick_bursts(events: list, window_ms: int = COALESCE_WINDOW_MS) -> list:
+    """Coalesce same-target click+click+dblclick bursts into a single dblclick event.
+
+    Scans the ordered event list.  Whenever a run of three consecutive events
+    satisfies ALL of:
+      - events[i].eventData.action == "click"
+      - events[i+1].eventData.action == "click"
+      - events[i+2].eventData.action == "dblclick"
+      - sameTarget(events[i], events[i+1], events[i+2])
+      - events[i+2].timestamp - events[i].timestamp <= window_ms
+
+    …the two leading click events are dropped and only the dblclick is kept.
+    Every other event is left untouched and in order.
+
+    Returns the input list unchanged when no qualifying burst exists.
+    Pure — no side effects.
+    """
+    if len(events) < 3:
+        return list(events)
+
+    result = []
+    i = 0
+    while i < len(events):
+        if i + 2 < len(events):
+            a, b, c = events[i], events[i + 1], events[i + 2]
+
+            def _action(ev):
+                return ev.get("eventData", {}).get("action", "")
+
+            def _ts(ev):
+                return ev.get("timestamp", 0)
+
+            if (
+                _action(a) == "click"
+                and _action(b) == "click"
+                and _action(c) == "dblclick"
+                and sameTarget(a, b, c)
+                and (_ts(c) - _ts(a)) <= window_ms
+            ):
+                # Drop the two leading clicks; keep only the dblclick
+                result.append(c)
+                i += 3
+                continue
+
+        result.append(events[i])
+        i += 1
+
+    return result
+
 async def renderizar_exportacao(payload: dict):
     """
     Orquestrador Completo (Em Background):
@@ -19,16 +109,30 @@ async def renderizar_exportacao(payload: dict):
     4. Compõe o Vídeo Final.
     """
     session_id = payload.get("session_id", "sess_unknown")
+    try:
+        await _renderizar_exportacao_impl(payload, session_id)
+    except Exception as e:
+        logger.error(f"[{session_id}] Pipeline falhou com exceção não tratada: {e}", exc_info=True)
+        update_status(session_id, "failed", f"Erro interno no pipeline: {e}")
+
+
+async def _renderizar_exportacao_impl(payload: dict, session_id: str):
     start_time_ms = payload.get("recording_start_time", 0)
     
     # 1. Salva o vídeo WebM Cru
-    b64_video = payload.get("video_webm")
-    if not b64_video:
-        logger.error("Nenhum video_webm recebido no payload.")
+    # Task 14.4: accept raw bytes from the binary upload (payload["video_bytes"])
+    # instead of base64-decoding payload["video_webm"].
+    raw_video_bytes = payload.get("video_bytes")
+    if raw_video_bytes is None:
+        # Backwards-compat fallback: old base64 path still works if caller uses it
+        b64_video = payload.get("video_webm", "")
+        if not b64_video:
+            raise ValueError("Nenhum video recebido no payload (nem video_bytes nem video_webm).")
+        b64_video = b64_video.split(',')[-1]
+        raw_video_bytes = base64.b64decode(b64_video)
+    elif not raw_video_bytes:
+        raise ValueError("video_bytes recebido está vazio.")
         return
-        
-    b64_video = b64_video.split(',')[-1]
-    raw_video_bytes = base64.b64decode(b64_video)
     
     os.makedirs("data/raw_videos", exist_ok=True)
     os.makedirs("data/videos_gerados", exist_ok=True)
@@ -43,19 +147,31 @@ async def renderizar_exportacao(payload: dict):
     modo_input = payload.get("modo_input", "A")
     transcricao_instrutor = None
 
-    if modo_input == "B" and payload.get("audio_instrutor_webm"):
-        update_status(session_id, "processing", "🎙️ Transcrevendo sua explicação...")
-        from audio_eng.whisper_transcriber import transcrever_audio_instrutor
-        transcricao_instrutor = await transcrever_audio_instrutor(
-            payload["audio_instrutor_webm"], session_id
-        )
+    if modo_input == "B":
+        # Task 14.4: accept raw audio bytes (payload["audio_bytes"]) first;
+        # fall back to legacy base64 field (payload["audio_instrutor_webm"]) for
+        # backwards compatibility.
+        audio_raw = payload.get("audio_bytes")
+        if audio_raw is None:
+            b64_audio = payload.get("audio_instrutor_webm", "")
+            if b64_audio:
+                audio_raw = base64.b64decode(b64_audio.split(',')[-1])
+        if audio_raw:
+            update_status(session_id, "processing", "🎙️ Transcrevendo sua explicação...")
+            from audio_eng.whisper_transcriber import transcrever_audio_instrutor
+            transcricao_instrutor = await transcrever_audio_instrutor(
+                audio_raw, session_id
+            )
 
     if modo_input == "C" and payload.get("roteiro_manual"):
         roteiro_enriquecido = payload["roteiro_manual"]
     else:
         # --- 1. INTELIGÊNCIA VISUAL ---
         update_status(session_id, "processing", "✨ Assistente interpretando suas ações na tela...")
-        events = payload.get("events", [])
+        # Defect 2 fix: coalesce click+click+dblclick bursts on the same target
+        # into a single dblclick event BEFORE the per-event processar_evento
+        # fan-out, so downstream enrichment/TTS/timeline see one step per burst.
+        events = coalesce_dblclick_bursts(payload.get("events", []))
         
         from vision.som_annotator import anotar_imagem_coordenadas
         

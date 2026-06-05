@@ -1,0 +1,22 @@
+# Dev / test dependencies for CaptureOS v3.
+# Installed in addition to requirements.txt for running the test suite.
+#
+#   pip install -r requirements.txt -r requirements-dev.txt
+#
+# Kept separate from the production manifest so runtime images stay lean.
+
+# Test runner (tests live under tests/, see conftest.py)
+pytest>=8.0
+
+# Property-based testing (used by the production-hardening exploration/preservation suites)
+hypothesis>=6.100
+
+# HTTP client backing FastAPI's TestClient (starlette.testclient requires httpx).
+# google-genai 1.69+ requires httpx>=0.28.1.
+httpx>=0.28.1
+
+# JWT encode/decode for auth tests. The shared jwt_factory fixture in
+# tests/conftest.py is self-contained (stdlib HS256) so the suite collects even
+# before this is installed, but PyJWT is the library the production auth
+# dependency (api/auth.py, task 14.2) is expected to validate against.
+PyJWT>=2.8
