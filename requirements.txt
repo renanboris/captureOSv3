@@ -3,7 +3,7 @@
 # Dev/test-only deps live in requirements-dev.txt.
 
 # --- Web framework / server ---
-fastapi==0.109.2
+fastapi>=0.115.0
 uvicorn==0.27.1
 # pydantic must satisfy google-genai (>=2.9.0) and pydantic-settings (>=2.7.0).
 pydantic==2.12.5

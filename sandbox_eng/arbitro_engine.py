@@ -3,8 +3,12 @@ import logging
 from google import genai
 from google.genai import types as genai_types
 from config.settings import get_settings
+from config.prompt_loader import load_system_instruction
 
 logger = logging.getLogger(__name__)
+
+PROMPT_ARBITRO = "arbitro_sandbox.v1.txt"
+
 
 async def avaliar_acao_sandbox(roteiro: list, passo_esperado: int, action_data: dict) -> dict:
     """
@@ -12,9 +16,9 @@ async def avaliar_acao_sandbox(roteiro: list, passo_esperado: int, action_data: 
     """
     if passo_esperado > len(roteiro):
         return {"is_correct": False, "hint": "Você já concluiu o tutorial!"}
-        
+
     passo_atual_dados = roteiro[passo_esperado - 1]
-    
+
     settings = get_settings()
     if not settings.google_api_key:
         return {"is_correct": True, "hint": "Sem API Key para avaliar"}
@@ -23,7 +27,7 @@ async def avaliar_acao_sandbox(roteiro: list, passo_esperado: int, action_data: 
     expected_text = simlink_data.get('target_text', '')
     expected_selector = simlink_data.get('selector', '')
     expected_xpath = simlink_data.get('xpath', '')
-    
+
     actual_text = action_data.get('target_text', '')
     actual_selector = action_data.get('css_selector', '')
     actual_xpath = action_data.get('xpath', '')
@@ -36,32 +40,27 @@ async def avaliar_acao_sandbox(roteiro: list, passo_esperado: int, action_data: 
     if match_selector or match_xpath or (match_text and len(expected_text) > 3):
         return {"is_correct": True, "hint": ""}
 
-        
-    prompt = f"""Você é um Árbitro de Sandbox (RPA Evaluation).
-O usuário deve realizar o passo {passo_esperado} de um tutorial.
-O passo correto original foi:
-- Intenção: {passo_atual_dados.get('intencao_original')}
-- Elemento esperado (Texto): {passo_atual_dados.get('_simlink', {}).get('target_text')}
-- Seletor esperado: {passo_atual_dados.get('_simlink', {}).get('selector')}
+    system_instruction = load_system_instruction(PROMPT_ARBITRO)
 
-O usuário acabou de realizar a seguinte ação:
-- URL atual: {action_data.get('url')}
-- Elemento Clicado: {action_data.get('target_tag')} com texto "{action_data.get('target_text')}"
-- Seletor Clicado: {action_data.get('css_selector')}
+    user_content = f"""<PASSO_ESPERADO numero="{passo_esperado}">
+Intenção: {passo_atual_dados.get('intencao_original')}
+Elemento esperado (texto): {passo_atual_dados.get('_simlink', {}).get('target_text')}
+Seletor esperado: {passo_atual_dados.get('_simlink', {}).get('selector')}
+</PASSO_ESPERADO>
 
-A ação do usuário corresponde semanticamente ao esperado?
-Responda APENAS em JSON com a estrutura:
-{{
-  "is_correct": boolean,
-  "hint": "string (se is_correct for false, dê uma dica amigável, ex: 'Clique no botão X')"
-}}
-"""
+<ACAO_DO_ALUNO>
+URL atual: {action_data.get('url')}
+Elemento clicado: {action_data.get('target_tag')} com texto "{action_data.get('target_text')}"
+Seletor clicado: {action_data.get('css_selector')}
+</ACAO_DO_ALUNO>"""
+
     try:
         client = genai.Client(api_key=settings.google_api_key)
         response = await client.aio.models.generate_content(
             model="gemini-2.5-flash",
-            contents=prompt,
+            contents=user_content,
             config=genai_types.GenerateContentConfig(
+                system_instruction=system_instruction,
                 response_mime_type="application/json",
                 temperature=0.0
             )
@@ -69,4 +68,5 @@ Responda APENAS em JSON com a estrutura:
         return json.loads(response.text)
     except Exception as e:
         logger.error(f"Erro no árbitro: {e}")
-        return {"is_correct": False, "hint": "Erro ao validar ação."}
+        # Falha de IA não deve reprovar o aluno: mantém neutro e permite nova tentativa.
+        return {"is_correct": False, "hint": "Não consegui validar agora. Tente novamente."}

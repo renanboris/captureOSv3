@@ -11,8 +11,9 @@ pytest>=8.0
 # Property-based testing (used by the production-hardening exploration/preservation suites)
 hypothesis>=6.100
 
-# HTTP client backing FastAPI's TestClient (starlette.testclient requires httpx)
-httpx>=0.27
+# HTTP client backing FastAPI's TestClient (starlette.testclient requires httpx).
+# google-genai 1.69+ requires httpx>=0.28.1.
+httpx>=0.28.1
 
 # JWT encode/decode for auth tests. The shared jwt_factory fixture in
 # tests/conftest.py is self-contained (stdlib HS256) so the suite collects even

@@ -17,15 +17,17 @@ from fastapi.middleware.cors import CORSMiddleware
 from config.settings import get_settings
 settings = get_settings()
 
-# Auth condicional: desabilitado em dev (jwt_secret padrão), ativo em produção
+# Auth sempre ativa. Em dev, o secret padrão aceita tokens assinados com ele
+# (jwt_factory nos testes). O aviso abaixo lembra de configurar um secret forte
+# em produção, mas não desabilita a proteção — uma rota sem token recebe 401
+# independentemente do ambiente.
 _DEV_SECRET = "dev-secret-change-in-prod"
-_auth_enabled = settings.jwt_secret and settings.jwt_secret != _DEV_SECRET
-_auth_deps = [Depends(require_auth)] if _auth_enabled else []
+_auth_deps = [Depends(require_auth)]
 
-if not _auth_enabled:
+if not settings.jwt_secret or settings.jwt_secret == _DEV_SECRET:
     logging.getLogger("uvicorn.error").warning(
-        "AUTH DESABILITADA — jwt_secret é o valor padrão de dev. "
-        "Configure JWT_SECRET no .env para habilitar autenticação."
+        "AUTH ATIVA com jwt_secret padrão de dev. "
+        "Configure JWT_SECRET no .env com um valor forte antes de ir para produção."
     )
 
 active_tasks: Dict[str, asyncio.Task] = {}

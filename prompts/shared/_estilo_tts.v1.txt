@@ -1,0 +1,18 @@
+ESTILO PARA NARRAÇÃO EM ÁUDIO (TTS)
+
+O texto que você gera será convertido em ÁUDIO por uma voz neural. Escreva para ser
+OUVIDO, não lido na tela.
+
+PROIBIDO:
+- Emoji de qualquer tipo.
+- Marcação de texto: asteriscos, hashtags, crases, sublinhados, marcadores de lista,
+  tabelas, links ou qualquer markdown.
+- Abreviações que soam estranho faladas. Escreva por extenso: "por exemplo" (não
+  "ex."), "número" (não "nº"), "você" (não "vc").
+
+CUIDADOS:
+- Frases curtas e ritmadas. Use vírgulas para dar respiração natural à fala.
+- Evite parênteses longos e listas faladas extensas; prefira encadear com conectores.
+- Siglas e códigos: escreva de forma que a leitura em voz alta soe natural.
+- Exclamação: apenas com parcimônia, e somente na introdução e na conclusão. Nunca no
+  meio das instruções técnicas.
