@@ -7,6 +7,16 @@ from api.status_manager import update_status
 
 logger = logging.getLogger(__name__)
 
+
+def is_loading_step(passo: dict) -> bool:
+    """
+    Pure, side-effect-free classifier.
+    Returns True when the roteiro step represents a loading/navigation transition,
+    meaning time_bender should keep the recording playing instead of freezing.
+    """
+    return passo.get("_simlink", {}).get("action") == "navigation"
+
+
 async def rerenderizar_com_roteiro_aprovado(session_id: str, roteiro_aprovado: list):
     """
     Pipeline parcial para re-renderização pós-editor.
@@ -66,7 +76,8 @@ async def rerenderizar_com_roteiro_aprovado(session_id: str, roteiro_aprovado: l
         tts_tasks.append({
             "texto": intencao_combinada,
             "audio_path": audio_path,
-            "rel_sec": rel_sec
+            "rel_sec": rel_sec,
+            "is_loading": is_loading_step(passo)
         })
         last_computed_ts = rel_sec
 
@@ -84,10 +95,13 @@ async def rerenderizar_com_roteiro_aprovado(session_id: str, roteiro_aprovado: l
     # Montar timeline_events na ordem original, apenas com TTS bem-sucedidos
     for task_info, sucesso_tts in zip(tts_tasks, resultados):
         if sucesso_tts:
-            timeline_events.append({
+            event: dict = {
                 "timestamp": task_info["rel_sec"],
                 "audio_path": task_info["audio_path"]
-            })
+            }
+            if task_info["is_loading"]:
+                event["is_loading"] = True
+            timeline_events.append(event)
             
     # --- 4. RENDERIZAÇÃO DE VÍDEO ---
     update_status(session_id, "rendering_final", "🎬 Renderizando seu vídeo final aprovado...")

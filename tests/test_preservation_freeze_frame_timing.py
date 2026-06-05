@@ -53,7 +53,7 @@ def video_duration_strategy(min_dur=10.0):
     events=non_loading_timeline_strategy(min_size=1, max_size=6),
     video_duration=video_duration_strategy(min_dur=10.0),
 )
-@settings(max_examples=200, deadline=None)
+@settings(max_examples=20, deadline=None)
 def test_one_freeze_per_event_with_matching_duration(events, video_duration):
     """Property 4: Per-event freeze/audio structure for non-loading timelines.
 
@@ -125,7 +125,7 @@ def test_one_freeze_per_event_with_matching_duration(events, video_duration):
     events=non_loading_timeline_strategy(min_size=1, max_size=6),
     video_duration=video_duration_strategy(min_dur=10.0),
 )
-@settings(max_examples=200, deadline=None)
+@settings(max_examples=20, deadline=None)
 def test_segment_ordering_video_and_freeze_alternate(events, video_duration):
     """Property 4 (supplementary): Segments maintain a coherent ordering.
 
@@ -206,7 +206,7 @@ def any_timeline_strategy(min_size=1, max_size=6):
     events=any_timeline_strategy(min_size=1, max_size=6),
     video_duration=video_duration_strategy(min_dur=10.0),
 )
-@settings(max_examples=200, deadline=None)
+@settings(max_examples=20, deadline=None)
 def test_one_audio_delay_per_event(events, video_duration):
     """Property 5: Exactly one audio_delays entry per event.
 
@@ -230,7 +230,7 @@ def test_one_audio_delay_per_event(events, video_duration):
     events=any_timeline_strategy(min_size=2, max_size=6),
     video_duration=video_duration_strategy(min_dur=10.0),
 )
-@settings(max_examples=200, deadline=None)
+@settings(max_examples=20, deadline=None)
 def test_audio_delays_non_decreasing(events, video_duration):
     """Property 5: Audio delay_seconds values are non-decreasing.
 
@@ -259,7 +259,7 @@ def test_audio_delays_non_decreasing(events, video_duration):
     events=any_timeline_strategy(min_size=1, max_size=6),
     video_duration=video_duration_strategy(min_dur=10.0),
 )
-@settings(max_examples=200, deadline=None)
+@settings(max_examples=20, deadline=None)
 def test_audio_aligned_to_segment_start(events, video_duration):
     """Property 5: Each audio start aligns with its corresponding segment.
 

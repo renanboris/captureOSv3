@@ -10,6 +10,96 @@ import json
 
 logger = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
+# Defect 2 fix: double-click burst coalescing
+# ---------------------------------------------------------------------------
+
+# Maximum span (ms) between the first click and the closing dblclick of a
+# same-target burst for it to be treated as a single double-click.
+# The observed span in sess_1780690407909 was ~197ms; 400ms gives safe headroom.
+COALESCE_WINDOW_MS = 400
+
+# Pixel tolerance when comparing target_geometry coordinates (sameTarget).
+_PIXEL_TOLERANCE = 10
+
+
+def sameTarget(a: dict, b: dict, c: dict) -> bool:
+    """Return True when three captured events target the same element.
+
+    Compares ``eventData.xpath`` for exact equality and ``target_geometry``
+    (x, y) within ``_PIXEL_TOLERANCE`` pixels.  Pure — no side effects.
+    """
+    def _ed(ev):
+        return ev.get("eventData", {})
+
+    def _xpath(ev):
+        return _ed(ev).get("xpath", "")
+
+    def _geom(ev):
+        g = _ed(ev).get("target_geometry") or {}
+        return g.get("x", 0), g.get("y", 0)
+
+    if not (_xpath(a) == _xpath(b) == _xpath(c)):
+        return False
+
+    ax, ay = _geom(a)
+    bx, by = _geom(b)
+    cx, cy = _geom(c)
+    return (
+        abs(ax - bx) <= _PIXEL_TOLERANCE and abs(ay - by) <= _PIXEL_TOLERANCE and
+        abs(ax - cx) <= _PIXEL_TOLERANCE and abs(ay - cy) <= _PIXEL_TOLERANCE
+    )
+
+
+def coalesce_dblclick_bursts(events: list, window_ms: int = COALESCE_WINDOW_MS) -> list:
+    """Coalesce same-target click+click+dblclick bursts into a single dblclick event.
+
+    Scans the ordered event list.  Whenever a run of three consecutive events
+    satisfies ALL of:
+      - events[i].eventData.action == "click"
+      - events[i+1].eventData.action == "click"
+      - events[i+2].eventData.action == "dblclick"
+      - sameTarget(events[i], events[i+1], events[i+2])
+      - events[i+2].timestamp - events[i].timestamp <= window_ms
+
+    …the two leading click events are dropped and only the dblclick is kept.
+    Every other event is left untouched and in order.
+
+    Returns the input list unchanged when no qualifying burst exists.
+    Pure — no side effects.
+    """
+    if len(events) < 3:
+        return list(events)
+
+    result = []
+    i = 0
+    while i < len(events):
+        if i + 2 < len(events):
+            a, b, c = events[i], events[i + 1], events[i + 2]
+
+            def _action(ev):
+                return ev.get("eventData", {}).get("action", "")
+
+            def _ts(ev):
+                return ev.get("timestamp", 0)
+
+            if (
+                _action(a) == "click"
+                and _action(b) == "click"
+                and _action(c) == "dblclick"
+                and sameTarget(a, b, c)
+                and (_ts(c) - _ts(a)) <= window_ms
+            ):
+                # Drop the two leading clicks; keep only the dblclick
+                result.append(c)
+                i += 3
+                continue
+
+        result.append(events[i])
+        i += 1
+
+    return result
+
 async def renderizar_exportacao(payload: dict):
     """
     Orquestrador Completo (Em Background):
@@ -78,7 +168,10 @@ async def _renderizar_exportacao_impl(payload: dict, session_id: str):
     else:
         # --- 1. INTELIGÊNCIA VISUAL ---
         update_status(session_id, "processing", "✨ Assistente interpretando suas ações na tela...")
-        events = payload.get("events", [])
+        # Defect 2 fix: coalesce click+click+dblclick bursts on the same target
+        # into a single dblclick event BEFORE the per-event processar_evento
+        # fan-out, so downstream enrichment/TTS/timeline see one step per burst.
+        events = coalesce_dblclick_bursts(payload.get("events", []))
         
         from vision.som_annotator import anotar_imagem_coordenadas
         
