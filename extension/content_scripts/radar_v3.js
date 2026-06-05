@@ -1022,6 +1022,13 @@
         document.body.appendChild(host);
         const shadow = host.attachShadow({mode: 'open'});
         
+        // Pass the auth token in the URL so the editor iframe has it
+        // immediately on load — avoids postMessage timing issues.
+        const { authToken: editorToken } = await new Promise(r =>
+            chrome.storage.local.get(['authToken'], r)
+        );
+        const tokenParam = editorToken ? `&token=${encodeURIComponent(editorToken)}` : '';
+
         shadow.innerHTML = `
             <style>
                 .modal-container {
@@ -1045,7 +1052,7 @@
                 }
             </style>
             <div class="modal-container" id="editor-modal">
-                <iframe src="${backendUrl}/editor?session=${sessionId}&embedded=true"></iframe>
+                <iframe src="${backendUrl}/editor?session=${sessionId}&embedded=true${tokenParam}"></iframe>
             </div>
         `;
 

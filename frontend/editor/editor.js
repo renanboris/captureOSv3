@@ -1,5 +1,9 @@
 const urlParams = new URLSearchParams(window.location.search);
 const sessionId = urlParams.get('session');
+// Token passed in URL by the extension (avoids postMessage timing issues).
+// Stored in sessionStorage so it survives SPA navigation within the iframe.
+const urlToken = urlParams.get('token');
+if (urlToken) sessionStorage.setItem('captureOsAuthToken', urlToken);
 let roteiroAtual = [];
 
 // ---------------------------------------------------------------------------
