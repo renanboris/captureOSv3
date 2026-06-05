@@ -1055,7 +1055,21 @@
         });
 
         // Ouve mensagens do iframe para fechar o modal ou broadcast
+        // Também responde ao editor pedindo o token de auth.
         const messageHandler = (e) => {
+            if (e.data && e.data.action === 'get_auth_token') {
+                chrome.storage.local.get(['authToken'], (res) => {
+                    // Envia para todos os iframes do shadow DOM
+                    const iframeEl = shadow.querySelector('iframe');
+                    if (iframeEl && iframeEl.contentWindow) {
+                        iframeEl.contentWindow.postMessage(
+                            { type: 'captureOs_authToken', token: res.authToken || null },
+                            '*'
+                        );
+                    }
+                });
+                return;
+            }
             if (e.data && (e.data.action === "close_editor_modal" || e.data.action === "close_editor_modal_and_resume" || e.data.action === "cancel_editor_modal")) {
                 host.style.opacity = '0';
                 shadow.getElementById('editor-modal').style.transform = 'translateY(20px) scale(0.98)';

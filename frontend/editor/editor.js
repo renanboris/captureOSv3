@@ -2,6 +2,44 @@ const urlParams = new URLSearchParams(window.location.search);
 const sessionId = urlParams.get('session');
 let roteiroAtual = [];
 
+// ---------------------------------------------------------------------------
+// Auth: o editor roda como iframe/página injetada pela extensão.
+// O token é armazenado em chrome.storage.local (chave 'authToken').
+// Lemos via postMessage para o content script, que tem acesso ao storage.
+// Fallback: lê do sessionStorage (para dev sem extensão).
+// ---------------------------------------------------------------------------
+let _cachedToken = null;
+
+async function getAuthToken() {
+    if (_cachedToken) return _cachedToken;
+    // Tenta ler do sessionStorage primeiro (dev sem extensão)
+    const stored = sessionStorage.getItem('captureOsAuthToken');
+    if (stored) { _cachedToken = stored; return stored; }
+    // Tenta ler via extensão (postMessage)
+    return new Promise((resolve) => {
+        const timeout = setTimeout(() => resolve(null), 500);
+        const handler = (e) => {
+            if (e.data && e.data.type === 'captureOs_authToken') {
+                clearTimeout(timeout);
+                window.removeEventListener('message', handler);
+                _cachedToken = e.data.token || null;
+                resolve(_cachedToken);
+            }
+        };
+        window.addEventListener('message', handler);
+        window.parent.postMessage({ action: 'get_auth_token' }, '*');
+    });
+}
+
+async function authFetch(url, options = {}) {
+    const token = await getAuthToken();
+    const headers = { ...(options.headers || {}) };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    return fetch(url, { ...options, headers });
+}
+
+// ---------------------------------------------------------------------------
+
 if (!sessionId) {
     document.getElementById('passos-container').innerHTML = '<p class="loading">ID da sessão não fornecido.</p>';
 } else {
@@ -10,7 +48,7 @@ if (!sessionId) {
 
 async function carregarRoteiro() {
     try {
-        const response = await fetch(`/api/v1/session/${sessionId}/roteiro`);
+        const response = await authFetch(`/api/v1/session/${sessionId}/roteiro`);
         if (!response.ok) throw new Error('Falha ao buscar roteiro');
         const data = await response.json();
         roteiroAtual = data.roteiro;
@@ -28,7 +66,7 @@ function renderizarPassos() {
         const item = document.createElement('div');
         item.className = 'transcript-item';
         
-        const tempoFicticio = `00:0${index+1}`; // Apenas cosmético para simular timeline
+        const tempoFicticio = `00:0${index+1}`;
         const textoCompleto = `${passo.ancora || ''} ${passo.micro_narracao || ''}`.trim() || '(vazio)';
 
         item.innerHTML = `
@@ -55,13 +93,12 @@ function renderizarPassos() {
 function iniciarEdicao(container, textareaId) {
     const textEl = container.querySelector('.editable-text');
     const ta = document.getElementById(textareaId);
-    if(ta.style.display === 'block') return; // já editando
+    if(ta.style.display === 'block') return;
     
     textEl.style.display = 'none';
     ta.style.display = 'block';
     ta.focus();
     
-    // Auto-resize
     ta.style.height = "auto";
     ta.style.height = (ta.scrollHeight) + "px";
 }
@@ -79,7 +116,6 @@ async function previewTTS(index, btnElement) {
     const texto = document.getElementById(`texto-${index}`).value.trim();
     if (!texto) return;
     
-    // UI state
     const originalHtml = btnElement.innerHTML;
     btnElement.innerHTML = `<span style="font-size:12px; margin-right:4px;">Carregando...</span>`;
     btnElement.disabled = true;
@@ -90,7 +126,7 @@ async function previewTTS(index, btnElement) {
     }
 
     try {
-        const response = await fetch('/api/v1/tts/preview', {
+        const response = await authFetch('/api/v1/tts/preview', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ texto })
@@ -116,7 +152,7 @@ async function regerarPassoIA(indexArray, passoNum) {
     btn.innerHTML = `<span style="font-size:12px;">⏳</span>`;
 
     try {
-        const res = await fetch(`/api/v1/session/${sessionId}/passo/${passoNum}/regerar`, {
+        const res = await authFetch(`/api/v1/session/${sessionId}/passo/${passoNum}/regerar`, {
             method: 'POST'
         });
         
@@ -129,7 +165,6 @@ async function regerarPassoIA(indexArray, passoNum) {
         document.getElementById(`texto-${indexArray}`).value = textoUnificado;
         document.getElementById(`texto-view-${indexArray}`).innerText = textoUnificado || '(vazio)';
         
-        // Atualiza a memória local também
         roteiroAtual[indexArray].ancora = passoAtualizado.ancora;
         roteiroAtual[indexArray].micro_narracao = passoAtualizado.micro_narracao;
         
@@ -155,7 +190,6 @@ document.getElementById('btn-cancel').addEventListener('click', () => {
 });
 
 document.getElementById('btn-render').addEventListener('click', async () => {
-    // Atualiza array local consolidando o texto na micro_narracao e limpando ancora
     roteiroAtual.forEach((passo, index) => {
         const textoUnificado = document.getElementById(`texto-${index}`).value.trim();
         passo.ancora = "";
@@ -164,7 +198,7 @@ document.getElementById('btn-render').addEventListener('click', async () => {
 
     const payload = {
         roteiro: roteiroAtual,
-        modo_input: "C",
+        modo_input: "A",   // "C" estava incorreto — o editor edita roteiros de Modo A/B
         aprovado: true
     };
 
@@ -173,14 +207,13 @@ document.getElementById('btn-render').addEventListener('click', async () => {
     btn.innerText = 'Renderizando...';
 
     try {
-        const res = await fetch(`/api/v1/session/${sessionId}/roteiro`, {
+        const res = await authFetch(`/api/v1/session/${sessionId}/roteiro`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
         });
         
         if (res.ok) {
-            // Se for em modal iframe, manda mensagem para o parent fechar
             const isEmbedded = new URLSearchParams(window.location.search).get('embedded') === 'true';
             if (isEmbedded) {
                 window.parent.postMessage({ action: "close_editor_modal_and_resume", session_id: sessionId }, "*");
