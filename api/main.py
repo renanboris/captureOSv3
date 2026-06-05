@@ -17,11 +17,26 @@ from fastapi.middleware.cors import CORSMiddleware
 from config.settings import get_settings
 
 # Increase multipart upload limit to 500 MB before the app is created.
-# The default Starlette limit is 1 MB per part (MultiPartParser.max_part_size),
+# The default Starlette limit is 1 MB per part (MultiPartParser.__init__ default),
 # which is too small for screen recordings.
-import starlette.formparsers
+# The limit lives as a default argument in Request._get_form and Request.form —
+# we patch those defaults directly so FastAPI's form dependency injection picks
+# up the new value without needing to change every call site.
+import starlette.requests as _sr
 _500_MB = 500 * 1024 * 1024
-starlette.formparsers.MultiPartParser.max_part_size = _500_MB
+
+def _patch_default(fn, param: str, value: int):
+    """Replace a keyword-argument default in a function/coroutine."""
+    import inspect
+    sig = inspect.signature(fn)
+    if param not in sig.parameters:
+        return
+    defaults = fn.__kwdefaults__ or {}
+    defaults[param] = value
+    fn.__kwdefaults__ = defaults
+
+_patch_default(_sr.Request._get_form, "max_part_size", _500_MB)
+_patch_default(_sr.Request.form, "max_part_size", _500_MB)
 
 settings = get_settings()
 
