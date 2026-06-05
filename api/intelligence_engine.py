@@ -18,6 +18,43 @@ PROMPT_ENRIQUECER = "aura_enriquecer_narrativa.v1.txt"
 PROMPT_REGERAR = "aura_regerar_passo.v1.txt"
 
 
+def _coerce_to_lista_passos(parsed) -> list:
+    """Normaliza a resposta de um LLM para uma lista de passos (dicts).
+
+    Modelos às vezes devolvem a lista diretamente, e às vezes embrulham num
+    objeto (``{"roteiro": [...]}``, ``{"passos": [...]}`` ou um dict indexado por
+    número de passo). Esta função sempre devolve uma lista de dicts, descartando
+    quaisquer entradas que não sejam dict (a causa do bug
+    ``'str' object has no attribute 'get'``).
+    """
+    if isinstance(parsed, list):
+        candidatos = parsed
+    elif isinstance(parsed, dict):
+        # Procura a primeira chave cujo valor seja uma lista (roteiro/passos/etc).
+        lista = next((v for v in parsed.values() if isinstance(v, list)), None)
+        if lista is not None:
+            candidatos = lista
+        else:
+            # Dict indexado por passo ({"0": {...}, "1": {...}}): usa os valores.
+            candidatos = list(parsed.values())
+    else:
+        return []
+    # Mantém apenas dicts (descarta strings/None que quebrariam o .get()).
+    return [item for item in candidatos if isinstance(item, dict)]
+
+
+def _strip_code_fences(texto: str) -> str:
+    """Remove cercas de markdown (```json ... ```) de uma resposta de LLM."""
+    t = texto.strip()
+    if t.startswith("```"):
+        # Remove a primeira linha (``` ou ```json) inteira.
+        nl = t.find("\n")
+        t = t[nl + 1:] if nl != -1 else t[3:]
+    if t.endswith("```"):
+        t = t[:-3]
+    return t.strip()
+
+
 async def processar_intencao(image_bytes: bytes, event_data: dict, a11y_tree: list, session_id: str = None) -> dict:
     load_dotenv()
     api_key = os.getenv("GOOGLE_API_KEY", "")
@@ -65,7 +102,38 @@ async def processar_intencao(image_bytes: bytes, event_data: dict, a11y_tree: li
             res_json["intencao_detalhada"] = "Interagir com a tela"
         return res_json
     except Exception as e:
-        logger.error(f"Erro no Gemini Engine: {e}")
+        logger.error(f"Erro no Gemini Engine: {e}. Tentando OpenAI Fallback...")
+        openai_key = os.getenv("OPENAI_API_KEY", "")
+        if openai_key:
+            try:
+                b64_img = base64.b64encode(image_bytes).decode("ascii") if image_bytes else ""
+                user_parts = [{"type": "text", "text": user_content}]
+                if b64_img:
+                    user_parts.append({
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/jpeg;base64,{b64_img}"},
+                    })
+                openai_client = AsyncOpenAI(api_key=openai_key)
+                completion = await openai_client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=[
+                        {"role": "system", "content": system_instruction},
+                        {"role": "user", "content": user_parts},
+                    ],
+                    response_format={"type": "json_object"},
+                    temperature=0.0,
+                )
+                res_json = json.loads(_strip_code_fences(completion.choices[0].message.content))
+                if "intencao_detalhada" not in res_json:
+                    for k, v in res_json.items():
+                        if isinstance(v, str) and k != "confidence":
+                            res_json["intencao_detalhada"] = v
+                            break
+                if not res_json.get("intencao_detalhada"):
+                    res_json["intencao_detalhada"] = "Interagir com a tela"
+                return res_json
+            except Exception as e2:
+                logger.error(f"Erro no Fallback OpenAI (Intenção): {e2}")
         return {"intencao_detalhada": "Interagir com o sistema"}
 
 
@@ -128,7 +196,7 @@ O instrutor explicou o processo com as próprias palavras acima. Use o raciocín
                 temperature=0.3
             )
         )
-        roteiro_enriquecido_ai = json.loads(response.text)
+        roteiro_enriquecido_ai = _coerce_to_lista_passos(json.loads(response.text))
 
         # Fazer o merge da resposta da IA de volta no roteiro_bruto para preservar a propriedade _simlink (hotspots de tela)
         roteiro_final = []
@@ -179,15 +247,12 @@ O instrutor explicou o processo com as próprias palavras acima. Use o raciocín
                         {"role": "system", "content": system_instruction},
                         {"role": "user", "content": user_content}
                     ],
+                    response_format={"type": "json_object"},
                     temperature=0.3
                 )
-                res_text = completion.choices[0].message.content.strip()
-                if res_text.startswith("```json"):
-                    res_text = res_text[7:-3].strip()
-                elif res_text.startswith("```"):
-                    res_text = res_text[3:-3].strip()
+                res_text = _strip_code_fences(completion.choices[0].message.content)
 
-                roteiro_enriquecido_ai = json.loads(res_text)
+                roteiro_enriquecido_ai = _coerce_to_lista_passos(json.loads(res_text))
 
                 for ai_passo in roteiro_enriquecido_ai:
                     for bruto_passo in roteiro_bruto:
@@ -261,16 +326,13 @@ async def regerar_passo_isolado(passo_alvo: dict, passo_anterior: dict = None, p
                         {"role": "system", "content": system_instruction},
                         {"role": "user", "content": user_content}
                     ],
+                    response_format={"type": "json_object"},
                     temperature=0.3
                 )
-                res_text = completion.choices[0].message.content.strip()
-                if res_text.startswith("```json"):
-                    res_text = res_text[7:-3].strip()
-                elif res_text.startswith("```"):
-                    res_text = res_text[3:-3].strip()
-                resultado = json.loads(res_text)
-                passo_alvo["ancora"] = resultado.get("ancora", passo_alvo.get("ancora", ""))
-                passo_alvo["micro_narracao"] = resultado.get("micro_narracao", passo_alvo.get("micro_narracao", ""))
+                resultado = json.loads(_strip_code_fences(completion.choices[0].message.content))
+                if isinstance(resultado, dict):
+                    passo_alvo["ancora"] = resultado.get("ancora", passo_alvo.get("ancora", ""))
+                    passo_alvo["micro_narracao"] = resultado.get("micro_narracao", passo_alvo.get("micro_narracao", ""))
                 return passo_alvo
             except Exception as e2:
                 logger.error(f"Erro no Fallback OpenAI (Regerar Passo): {e2}")
