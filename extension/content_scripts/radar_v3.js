@@ -999,7 +999,7 @@
     }
 
     // --- Editor Modal Injetado ---
-    function mountEditorModal(backendUrl, sessionId) {
+    async function mountEditorModal(backendUrl, sessionId) {
         let existing = document.getElementById('capture-os-editor-host');
         if (existing) existing.remove();
 
