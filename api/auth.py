@@ -105,11 +105,22 @@ async def require_auth(
     Returns the decoded claims on success; raises ``401 Unauthorized`` for
     missing, malformed, wrongly-signed, or expired credentials.
     """
-    if credentials is None or (credentials.scheme or "").lower() != "bearer":
+    import logging
+    _log = logging.getLogger("uvicorn.error")
+
+    if credentials is None:
+        _log.error("[AUTH DEBUG] Nenhuma credencial recebida (header Authorization ausente).")
+        raise _unauthorized()
+    if (credentials.scheme or "").lower() != "bearer":
+        _log.error(f"[AUTH DEBUG] Scheme inesperado: {credentials.scheme!r}")
         raise _unauthorized()
 
     secret = get_settings().jwt_secret or ""
+    _log.error(f"[AUTH DEBUG] Token recebido (primeiros 30): {credentials.credentials[:30]!r}... | secret usado (primeiros 10): {secret[:10]!r}")
     try:
-        return decode_and_verify_jwt(credentials.credentials, secret)
-    except InvalidTokenError:
+        claims = decode_and_verify_jwt(credentials.credentials, secret)
+        _log.error(f"[AUTH DEBUG] Token VÁLIDO. sub={claims.get('sub')!r}")
+        return claims
+    except InvalidTokenError as e:
+        _log.error(f"[AUTH DEBUG] Token INVÁLIDO: {e}")
         raise _unauthorized()

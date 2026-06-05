@@ -82,6 +82,22 @@ async def bad_request_handler(request: Request, exc):
 
 
 @app.middleware("http")
+async def no_cache_for_editor(request: Request, call_next):
+    """Disable browser caching for the editor SPA assets.
+
+    The editor is served from the backend and embedded as an iframe by the
+    extension. Without this, browsers aggressively cache editor.js and serve a
+    stale build that does not attach the auth token.
+    """
+    response = await call_next(request)
+    if request.url.path.startswith("/editor"):
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+    return response
+
+
+@app.middleware("http")
 async def reject_modo_c_middleware(request: Request, call_next):
     """Reject Modo C at the ingest boundary before any route logic (incl. auth).
 

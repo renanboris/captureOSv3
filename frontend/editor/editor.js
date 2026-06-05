@@ -4,6 +4,11 @@ const sessionId = urlParams.get('session');
 // Stored in sessionStorage so it survives SPA navigation within the iframe.
 const urlToken = urlParams.get('token');
 if (urlToken) sessionStorage.setItem('captureOsAuthToken', urlToken);
+
+console.log('[CaptureOS Editor] BUILD 2024-token-v2 | session=', sessionId,
+            '| urlToken?', !!urlToken,
+            '| sessionStorageToken?', !!sessionStorage.getItem('captureOsAuthToken'));
+
 let roteiroAtual = [];
 
 // ---------------------------------------------------------------------------
@@ -37,6 +42,7 @@ async function getAuthToken() {
 
 async function authFetch(url, options = {}) {
     const token = await getAuthToken();
+    console.log('[CaptureOS Editor] authFetch', url, '| token presente?', !!token);
     const headers = { ...(options.headers || {}) };
     if (token) headers['Authorization'] = `Bearer ${token}`;
     return fetch(url, { ...options, headers });
