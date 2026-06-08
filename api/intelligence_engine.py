@@ -17,6 +17,16 @@ PROMPT_MOTOR_INTENCAO = "motor_intencao.v1.txt"
 PROMPT_ENRIQUECER = "aura_enriquecer_narrativa.v1.txt"
 PROMPT_REGERAR = "aura_regerar_passo.v1.txt"
 
+import asyncio
+
+_openai_semaphore = None
+
+async def _get_openai_semaphore() -> asyncio.Semaphore:
+    global _openai_semaphore
+    if _openai_semaphore is None:
+        _openai_semaphore = asyncio.Semaphore(2)
+    return _openai_semaphore
+
 
 def _coerce_to_lista_passos(parsed) -> list:
     """Normaliza a resposta de um LLM para uma lista de passos (dicts).
@@ -114,15 +124,17 @@ async def processar_intencao(image_bytes: bytes, event_data: dict, a11y_tree: li
                         "image_url": {"url": f"data:image/jpeg;base64,{b64_img}"},
                     })
                 openai_client = AsyncOpenAI(api_key=openai_key)
-                completion = await openai_client.chat.completions.create(
-                    model="gpt-4o-mini",
-                    messages=[
-                        {"role": "system", "content": system_instruction},
-                        {"role": "user", "content": user_parts},
-                    ],
-                    response_format={"type": "json_object"},
-                    temperature=0.0,
-                )
+                sem = await _get_openai_semaphore()
+                async with sem:
+                    completion = await openai_client.chat.completions.create(
+                        model="gpt-4o-mini",
+                        messages=[
+                            {"role": "system", "content": system_instruction + "\nRespond in JSON."},
+                            {"role": "user", "content": user_parts},
+                        ],
+                        response_format={"type": "json_object"},
+                        temperature=0.0,
+                    )
                 res_json = json.loads(_strip_code_fences(completion.choices[0].message.content))
                 if "intencao_detalhada" not in res_json:
                     for k, v in res_json.items():
@@ -241,15 +253,17 @@ O instrutor explicou o processo com as próprias palavras acima. Use o raciocín
         if openai_key:
             try:
                 openai_client = AsyncOpenAI(api_key=openai_key)
-                completion = await openai_client.chat.completions.create(
-                    model="gpt-4o-mini",
-                    messages=[
-                        {"role": "system", "content": system_instruction},
-                        {"role": "user", "content": user_content}
-                    ],
-                    response_format={"type": "json_object"},
-                    temperature=0.3
-                )
+                sem = await _get_openai_semaphore()
+                async with sem:
+                    completion = await openai_client.chat.completions.create(
+                        model="gpt-4o-mini",
+                        messages=[
+                            {"role": "system", "content": system_instruction + "\nRespond in JSON."},
+                            {"role": "user", "content": user_content}
+                        ],
+                        response_format={"type": "json_object"},
+                        temperature=0.3
+                    )
                 res_text = _strip_code_fences(completion.choices[0].message.content)
 
                 roteiro_enriquecido_ai = _coerce_to_lista_passos(json.loads(res_text))
@@ -323,7 +337,7 @@ async def regerar_passo_isolado(passo_alvo: dict, passo_anterior: dict = None, p
                 completion = await openai_client.chat.completions.create(
                     model="gpt-4o-mini",
                     messages=[
-                        {"role": "system", "content": system_instruction},
+                        {"role": "system", "content": system_instruction + "\nRespond in JSON."},
                         {"role": "user", "content": user_content}
                     ],
                     response_format={"type": "json_object"},

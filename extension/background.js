@@ -142,11 +142,11 @@ const AUTH_RULE_ID = 1;
 
 async function refreshAuthHeaderRule() {
     const { authToken, backendUrl } = await chrome.storage.local.get(['authToken', 'backendUrl']);
-    // Always remove the old rule first.
-    await chrome.declarativeNetRequest.updateDynamicRules({
-        removeRuleIds: [AUTH_RULE_ID],
-    });
+
     if (!authToken) {
+        await chrome.declarativeNetRequest.updateDynamicRules({
+            removeRuleIds: [AUTH_RULE_ID],
+        });
         console.warn('[CaptureOS] Sem authToken — header de auth NÃO será injetado.');
         return;
     }
@@ -160,6 +160,7 @@ async function refreshAuthHeaderRule() {
         urlFilter = '||localhost:8000/';
     }
     await chrome.declarativeNetRequest.updateDynamicRules({
+        removeRuleIds: [AUTH_RULE_ID], // Operação atômica de remoção e adição
         addRules: [{
             id: AUTH_RULE_ID,
             priority: 1,

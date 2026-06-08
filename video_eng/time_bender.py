@@ -296,7 +296,7 @@ def compose_video_with_freeze_frames(input_webm: str, output_mp4: str, timeline_
 def _simple_convert(input_webm: str, output_mp4: str) -> bool:
     """Conversão simples WebM→MP4 sem freeze frames."""
     try:
-        print("Convertendo WebM → MP4 (sem freeze frames)...")
+        print("Convertendo WebM -> MP4 (sem freeze frames)...")
         subprocess.run([
             "ffmpeg", "-y", "-i", input_webm,
             "-r", str(FPS), "-c:v", "libx264", "-preset", "fast",
@@ -327,7 +327,7 @@ def _compose_legacy_moviepy(input_webm: str, output_mp4: str, timeline_events: l
     # Passo 1: VFR → CFR (com CRF 28 para intermediário — será re-encodado)
     cfr_mp4 = input_webm.replace(".webm", "_cfr.mp4")
     try:
-        print("[Fallback MoviePy] Convertendo VFR → CFR...")
+        print("[Fallback MoviePy] Convertendo VFR -> CFR...")
         subprocess.run([
             "ffmpeg", "-y", "-i", input_webm,
             "-r", "30", "-c:v", "libx264", "-preset", "ultrafast",
