@@ -343,29 +343,43 @@
         if (hasShownInvalidated) return;
         hasShownInvalidated = true;
         
+        const _isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
         const banner = document.createElement("div");
         banner.style.cssText = `
             position: fixed;
             top: 20px;
             left: 50%;
             transform: translateX(-50%);
-            background: #ef4444;
-            color: white;
-            padding: 12px 24px;
-            border-radius: 8px;
-            font-family: sans-serif;
+            background: ${_isDark ? 'rgba(239, 68, 68, 0.15)' : 'rgba(239, 68, 68, 0.9)'};
+            color: ${_isDark ? '#fca5a5' : 'white'};
+            padding: 14px 24px;
+            border-radius: 14px;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             font-size: 14px;
             font-weight: 600;
             z-index: 2147483647;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid ${_isDark ? 'rgba(239, 68, 68, 0.3)' : 'rgba(255, 255, 255, 0.2)'};
+            box-shadow: 0 8px 32px rgba(239, 68, 68, 0.25), 0 0 0 1px rgba(239, 68, 68, 0.1);
             display: flex;
             align-items: center;
             gap: 12px;
+            animation: _capture_banner_in 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
         `;
+        const bannerStyle = document.createElement('style');
+        bannerStyle.innerHTML = `
+            @keyframes _capture_banner_in {
+                from { transform: translateX(-50%) translateY(-20px); opacity: 0; }
+                to { transform: translateX(-50%) translateY(0); opacity: 1; }
+            }
+        `;
+        document.head.appendChild(bannerStyle);
         banner.innerHTML = `
-            <span>🚨 O Capture OS foi atualizado. Para voltar a gravar, você <b>precisa recarregar esta página (F5)</b>.</span>
-            <button onclick="window.top.location.reload(true)" style="background: white; color: #ef4444; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-weight: bold;">Recarregar Agora</button>
-            <button onclick="this.parentElement.remove()" style="background: transparent; color: white; border: none; cursor: pointer; font-size: 16px;">×</button>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+            <span>O Capture OS foi atualizado. Para voltar a gravar, você <b>precisa recarregar esta página (F5)</b>.</span>
+            <button onclick="window.top.location.reload(true)" style="background: ${_isDark ? 'rgba(255,255,255,0.1)' : 'white'}; color: ${_isDark ? '#fca5a5' : '#ef4444'}; border: 1px solid ${_isDark ? 'rgba(255,255,255,0.1)' : 'transparent'}; padding: 7px 14px; border-radius: 8px; cursor: pointer; font-weight: 700; font-size: 13px; transition: all 0.2s;">Recarregar Agora</button>
+            <button onclick="this.parentElement.remove()" style="background: transparent; color: ${_isDark ? '#fca5a5' : 'white'}; border: none; cursor: pointer; font-size: 18px; padding: 4px; line-height: 1; opacity: 0.7;">×</button>
         `;
         document.body.appendChild(banner);
     }
@@ -477,12 +491,13 @@
             overlay.id = "capture-os-countdown";
             overlay.style.cssText = `
                 position: fixed; top: 40px; left: 50%; transform: translateX(-50%);
-                background: rgba(15,23,42,0.9); z-index: 2147483647;
-                display: flex; align-items: center; justify-content: center; gap: 14px;
-                backdrop-filter: blur(16px); border: 1px solid rgba(255,255,255,0.12);
-                border-radius: 100px; padding: 12px 28px;
-                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-                box-shadow: 0 12px 32px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.05);
+                background: rgba(15,23,42,0.92); z-index: 2147483647;
+                display: flex; align-items: center; justify-content: center; gap: 16px;
+                backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
+                border: 1px solid rgba(255,255,255,0.12);
+                border-radius: 100px; padding: 14px 32px;
+                font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+                box-shadow: 0 16px 48px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.06), inset 0 1px 0 rgba(255,255,255,0.06);
                 transition: opacity 0.5s ease, transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
                 animation: _capture_slideDown 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
             `;
@@ -493,18 +508,30 @@
                     from { transform: translate(-50%, -20px); opacity: 0; }
                     to { transform: translate(-50%, 0); opacity: 1; }
                 }
+                @keyframes _capture_countdown_pop {
+                    0% { transform: scale(1.4); opacity: 0; }
+                    50% { opacity: 1; }
+                    100% { transform: scale(1); opacity: 1; }
+                }
                 @keyframes _capture_pulse_dot {
                     0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
                     70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(239, 68, 68, 0); }
                     100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+                }
+                @keyframes _capture_go_flash {
+                    0% { transform: scale(0.5); opacity: 0; }
+                    40% { transform: scale(1.1); opacity: 1; }
+                    100% { transform: scale(1); opacity: 1; }
                 }
             `;
             document.head.appendChild(style);
             
             const countText = document.createElement("div");
             countText.style.cssText = `
-                font-size: 22px; font-weight: 700; color: #ef4444;
-                min-width: 20px; text-align: center;
+                font-size: 56px; font-weight: 800; color: #ef4444;
+                min-width: 48px; text-align: center; line-height: 1;
+                animation: _capture_countdown_pop 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+                text-shadow: 0 0 30px rgba(239, 68, 68, 0.4);
             `;
             
             const hint = document.createElement("div");
@@ -524,19 +551,32 @@
                 counter--;
                 if (counter > 0) {
                     countText.innerText = counter;
+                    // Re-trigger pop animation
+                    countText.style.animation = 'none';
+                    countText.offsetHeight; // force reflow
+                    countText.style.animation = '_capture_countdown_pop 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards';
                 } else {
                     clearInterval(interval);
                     
-                    // Some imediatamente, sem tela de 'Gravando'
-                    overlay.style.opacity = "0";
-                    overlay.style.transform = "translate(-50%, -20px)";
+                    // Show "GO!" flash before fading out
+                    countText.innerText = 'GO!';
+                    countText.style.color = '#10B981';
+                    countText.style.fontSize = '40px';
+                    countText.style.textShadow = '0 0 30px rgba(16, 185, 129, 0.5)';
+                    countText.style.animation = '_capture_go_flash 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards';
+                    hint.innerHTML = 'Gravando!';
+                    
                     setTimeout(() => {
-                        overlay.remove();
-                        style.remove();
-                        if (chrome.runtime && chrome.runtime.sendMessage) {
-                            chrome.runtime.sendMessage({ action: 'start_recording_now' }).catch(() => {});
-                        }
-                    }, 500);
+                        overlay.style.opacity = "0";
+                        overlay.style.transform = "translate(-50%, -20px)";
+                        setTimeout(() => {
+                            overlay.remove();
+                            style.remove();
+                            if (chrome.runtime && chrome.runtime.sendMessage) {
+                                chrome.runtime.sendMessage({ action: 'start_recording_now' }).catch(() => {});
+                            }
+                        }, 500);
+                    }, 600);
                 }
             }, 1000);
         }
@@ -554,6 +594,7 @@
     }, 15000);
 
     function showToast(type, msg) {
+        const _isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
         let toast = document.getElementById("capture-os-toast");
         if (!toast) {
             toast = document.createElement("div");
@@ -563,19 +604,19 @@
                 top: 24px;
                 left: 50%;
                 padding: 16px 24px;
-                border-radius: 12px;
-                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+                border-radius: 16px;
+                font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
                 font-size: 15px;
                 font-weight: 500;
                 color: white;
-                z-index: 2147483647; /* Máximo do navegador */
-                backdrop-filter: blur(16px);
-                -webkit-backdrop-filter: blur(16px);
-                box-shadow: 0 10px 40px rgba(0,0,0,0.25);
+                z-index: 2147483647;
+                backdrop-filter: blur(20px);
+                -webkit-backdrop-filter: blur(20px);
+                box-shadow: 0 12px 48px rgba(0,0,0,0.3), 0 0 0 1px ${_isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)'};
                 display: flex;
                 align-items: center;
                 gap: 14px;
-                transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+                transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
                 opacity: 0;
                 transform: translateX(-50%) translateY(-30px) scale(0.95);
             `;
@@ -589,8 +630,9 @@
         }, 10);
 
         if (type === "processing") {
-            toast.style.background = "rgba(20, 20, 20, 0.85)";
-            toast.style.border = "1px solid rgba(255, 255, 255, 0.1)";
+            toast.style.background = _isDark ? 'rgba(15, 23, 42, 0.88)' : 'rgba(255, 255, 255, 0.92)';
+            toast.style.border = `1px solid ${_isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)'}`;
+            toast.style.color = _isDark ? '#f8fafc' : '#0f172a';
             // Adicionada a Progress Bar na base do Toast
             toast.style.flexDirection = "column";
             toast.style.alignItems = "stretch";
@@ -601,15 +643,15 @@
                 <div style="display: flex; flex-direction: column; width: 100%; gap: 10px;">
                     <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
                         <div style="display: flex; align-items: center; gap: 14px;">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2979ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="capture-spin">
-                                <circle cx="12" cy="12" r="10"></circle>
-                                <path d="M12 2v4"></path>
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" class="capture-spin" style="flex-shrink:0;">
+                                <circle cx="12" cy="12" r="10" stroke="${_isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)'}" stroke-width="2.5" fill="none"></circle>
+                                <path d="M12 2a10 10 0 0 1 10 10" stroke="#3B82F6" stroke-width="2.5" stroke-linecap="round" fill="none"></path>
                             </svg>
                             <span id="capture-os-toast-msg" style="font-size: 14px;">Processando...</span>
                         </div>
-                        <button id="capture-os-cancel-btn" style="background: none; border: none; color: #ef4444; font-size: 13px; font-weight: 600; cursor: pointer; padding: 4px 8px; border-radius: 4px;">Cancelar</button>
+                        <button id="capture-os-cancel-btn" style="background: ${_isDark ? 'rgba(239,68,68,0.1)' : 'rgba(239,68,68,0.08)'}; border: none; color: #ef4444; font-size: 13px; font-weight: 600; cursor: pointer; padding: 5px 12px; border-radius: 8px; transition: all 0.2s;">Cancelar</button>
                     </div>
-                    <div style="width: 100%; height: 4px; background: rgba(255,255,255,0.1); border-radius: 2px; overflow: hidden;">
+                    <div style="width: 100%; height: 3px; background: ${_isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)'}; border-radius: 3px; overflow: hidden;">
                         <div class="capture-progress-fill"></div>
                     </div>
                 </div>
@@ -629,7 +671,7 @@
                 style.id = "capture-os-toast-style";
                 style.innerHTML = `
                     @keyframes capture-spin { 100% { transform: rotate(360deg); } } 
-                    .capture-spin { animation: capture-spin 1s linear infinite; }
+                    .capture-spin { animation: capture-spin 0.8s linear infinite; }
                     @keyframes capture-progress { 
                         0% { width: 0%; } 
                         20% { width: 30%; }
@@ -639,28 +681,36 @@
                     }
                     .capture-progress-fill {
                         height: 100%;
-                        background: #2979ff;
+                        background: linear-gradient(90deg, #3B82F6, #8B5CF6, #3B82F6);
+                        background-size: 200% 100%;
                         width: 0%;
-                        animation: capture-progress 60s cubic-bezier(0.1, 0.7, 0.1, 1) forwards;
+                        border-radius: 3px;
+                        animation: capture-progress 60s cubic-bezier(0.1, 0.7, 0.1, 1) forwards, capture-progress-shimmer 2s linear infinite;
+                    }
+                    @keyframes capture-progress-shimmer {
+                        0% { background-position: 200% 0; }
+                        100% { background-position: -200% 0; }
                     }
                 `;
                 document.head.appendChild(style);
             }
         } else if (type === "success") {
-            toast.style.background = "rgba(0, 200, 83, 0.85)";
-            toast.style.border = "1px solid rgba(0, 200, 83, 0.3)";
+            toast.style.background = _isDark ? 'rgba(16, 185, 129, 0.15)' : 'rgba(16, 185, 129, 0.9)';
+            toast.style.border = `1px solid ${_isDark ? 'rgba(16,185,129,0.3)' : 'rgba(255,255,255,0.2)'}`;
+            toast.style.color = _isDark ? '#6EE7B7' : 'white';
             toast.innerHTML = `
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                     <polyline points="20 6 9 17 4 12"></polyline>
                 </svg>
                 <span id="capture-os-toast-msg">${msg || "Vídeo finalizado! Abrindo player..."}</span>
             `;
             setTimeout(() => fecharToast(toast), 6000);
         } else if (type === "error") {
-            toast.style.background = "rgba(255, 23, 68, 0.85)";
-            toast.style.border = "1px solid rgba(255, 23, 68, 0.3)";
+            toast.style.background = _isDark ? 'rgba(239, 68, 68, 0.15)' : 'rgba(239, 68, 68, 0.9)';
+            toast.style.border = `1px solid ${_isDark ? 'rgba(239,68,68,0.3)' : 'rgba(255,255,255,0.2)'}`;
+            toast.style.color = _isDark ? '#FCA5A5' : 'white';
             toast.innerHTML = `
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <circle cx="12" cy="12" r="10"></circle>
                     <line x1="15" y1="9" x2="9" y2="15"></line>
                     <line x1="9" y1="9" x2="15" y2="15"></line>
@@ -669,10 +719,11 @@
             `;
             setTimeout(() => fecharToast(toast), 6000);
         } else if (type === "warning") {
-            toast.style.background = "rgba(245, 158, 11, 0.85)";
-            toast.style.border = "1px solid rgba(245, 158, 11, 0.3)";
+            toast.style.background = _isDark ? 'rgba(245, 158, 11, 0.15)' : 'rgba(245, 158, 11, 0.9)';
+            toast.style.border = `1px solid ${_isDark ? 'rgba(245,158,11,0.3)' : 'rgba(255,255,255,0.2)'}`;
+            toast.style.color = _isDark ? '#FCD34D' : 'white';
             toast.innerHTML = `
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
                     <line x1="12" y1="9" x2="12" y2="13"></line>
                     <line x1="12" y1="17" x2="12.01" y2="17"></line>
@@ -681,19 +732,23 @@
             `;
             setTimeout(() => fecharToast(toast), 6000);
         } else if (type === "success_arbitro") {
-            toast.style.background = "rgba(0, 200, 83, 0.85)";
-            toast.style.border = "1px solid rgba(0, 200, 83, 0.3)";
-            toast.innerHTML = `<span id="capture-os-toast-msg">Correto!</span>`;
+            toast.style.background = _isDark ? 'rgba(16, 185, 129, 0.15)' : 'rgba(16, 185, 129, 0.9)';
+            toast.style.border = `1px solid ${_isDark ? 'rgba(16,185,129,0.3)' : 'rgba(255,255,255,0.2)'}`;
+            toast.style.color = _isDark ? '#6EE7B7' : 'white';
+            toast.innerHTML = `
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                <span id="capture-os-toast-msg">Correto!</span>
+            `;
             setTimeout(() => fecharToast(toast), 3000);
         }
     }
 
     function fecharToast(toast) {
         toast.style.opacity = "0";
-        toast.style.transform = "translateX(-50%) translateY(-30px) scale(0.95)";
+        toast.style.transform = "translateX(-50%) translateY(-20px) scale(0.97)";
         setTimeout(() => {
             if (toast.parentNode) toast.parentNode.removeChild(toast);
-        }, 400);
+        }, 500);
     }
 
 
@@ -713,6 +768,8 @@
             backendUrl = 'http://127.0.0.1:8000';
         }
 
+        const _isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+
         // Se já existir, remove
         let existing = document.getElementById('capture-os-player-host');
         if (existing) existing.remove();
@@ -727,9 +784,9 @@
             display: flex;
             justify-content: center;
             align-items: center;
-            backdrop-filter: blur(8px);
-            -webkit-backdrop-filter: blur(8px);
-            background: rgba(0, 0, 0, 0.4);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            background: ${_isDark ? 'rgba(0, 0, 0, 0.6)' : 'rgba(15, 23, 42, 0.4)'};
             opacity: 0;
             transition: opacity 0.4s ease;
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -738,36 +795,47 @@
         document.body.appendChild(host);
         const shadow = host.attachShadow({mode: 'open'});
 
+        // SVG icons for step badges (replacing emojis)
+        const svgBulb = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2z"/></svg>';
+        const svgCheck = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+
         let stepsHtml = '';
         if (roteiro && roteiro.length > 0) {
             roteiro.forEach((passo, index) => {
                 let badge = passo.passo;
-                if (passo.passo === 0) badge = '💡';
-                if (passo.passo === 999) badge = '✅';
-                
-                // Se a IA não retornou o passo 0 ou 999, e quisemos apenas sequenciar:
-                // Mas os guardrails garantem o 0 e o 999.
+                let badgeStyle = '';
+                if (passo.passo === 0) { badge = svgBulb; badgeStyle = `background: ${_isDark ? 'rgba(59,130,246,0.15)' : '#eff6ff'}; color: #3B82F6;`; }
+                else if (passo.passo === 999) { badge = svgCheck; badgeStyle = `background: ${_isDark ? 'rgba(16,185,129,0.15)' : '#ecfdf5'}; color: #10B981;`; }
                 
                 stepsHtml += `
                     <div class="step-item">
-                        <div class="step-num" style="${passo.passo === 0 || passo.passo === 999 ? 'background: #eff6ff; color: #0b5ce3; font-size: 14px;' : ''}">${badge}</div>
+                        <div class="step-num" style="${badgeStyle}">${badge}</div>
                         <div class="step-text">${passo.intencao_original}</div>
                     </div>
                 `;
             });
         } else {
-            stepsHtml = `<div style="color: #64748b; font-size: 14px; text-align: center; margin-top: 40px;">Nenhum roteiro detalhado gerado.</div>`;
+            stepsHtml = `<div style="color: ${_isDark ? '#94A3B8' : '#64748b'}; font-size: 14px; text-align: center; margin-top: 40px;">Nenhum roteiro detalhado gerado.</div>`;
         }
 
         shadow.innerHTML = `
             <style>
                 :host {
-                    --primary: #0b5ce3;
-                    --primary-hover: #084bbb;
-                    --bg: #ffffff;
-                    --text-main: #0f172a;
-                    --text-muted: #64748b;
-                    --border: #e2e8f0;
+                    --primary: #3B82F6;
+                    --primary-hover: #2563EB;
+                    --bg: ${_isDark ? '#0F172A' : '#ffffff'};
+                    --bg-secondary: ${_isDark ? '#1E293B' : '#F8FAFC'};
+                    --text-main: ${_isDark ? '#F8FAFC' : '#0f172a'};
+                    --text-muted: ${_isDark ? '#94A3B8' : '#64748b'};
+                    --border: ${_isDark ? 'rgba(255,255,255,0.08)' : '#e2e8f0'};
+                    --btn-secondary-bg: ${_isDark ? 'rgba(255,255,255,0.05)' : 'white'};
+                    --btn-secondary-hover: ${_isDark ? 'rgba(255,255,255,0.1)' : '#f1f5f9'};
+                    --btn-secondary-border: ${_isDark ? 'rgba(255,255,255,0.1)' : '#cbd5e1'};
+                }
+                @keyframes _capture_modal_in {
+                    0% { transform: translateY(24px) scale(0.96); opacity: 0; }
+                    60% { transform: translateY(-4px) scale(1.005); }
+                    100% { transform: translateY(0) scale(1); opacity: 1; }
                 }
                 .modal-container {
                     width: 1000px;
@@ -775,13 +843,12 @@
                     height: 650px;
                     max-height: 90vh;
                     background: var(--bg);
-                    border-radius: 16px;
-                    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+                    border-radius: 20px;
+                    box-shadow: 0 25px 60px -12px rgba(0, 0, 0, ${_isDark ? '0.6' : '0.25'}), 0 0 0 1px var(--border);
                     display: flex;
                     overflow: hidden;
                     position: relative;
-                    transform: translateY(20px) scale(0.98);
-                    transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+                    animation: _capture_modal_in 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
                 }
                 .video-section {
                     flex: 1.5;
@@ -791,6 +858,7 @@
                     justify-content: center;
                     align-items: center;
                     position: relative;
+                    border-radius: 20px 0 0 20px;
                 }
                 video {
                     width: 100%;
@@ -812,8 +880,9 @@
                 .script-header h2 {
                     margin: 0;
                     font-size: 18px;
-                    font-weight: 600;
+                    font-weight: 700;
                     color: var(--text-main);
+                    letter-spacing: -0.3px;
                 }
                 .script-content {
                     flex: 1;
@@ -829,13 +898,13 @@
                     align-items: flex-start;
                 }
                 .step-num {
-                    background: #f1f5f9;
+                    background: ${_isDark ? 'rgba(59,130,246,0.12)' : '#f1f5f9'};
                     color: var(--primary);
                     font-weight: 600;
                     font-size: 13px;
-                    width: 28px;
-                    height: 28px;
-                    border-radius: 50%;
+                    width: 30px;
+                    height: 30px;
+                    border-radius: 10px;
                     display: flex;
                     align-items: center;
                     justify-content: center;
@@ -843,17 +912,28 @@
                 }
                 .step-text {
                     font-size: 14px;
-                    line-height: 1.5;
+                    line-height: 1.6;
                     color: var(--text-main);
-                    margin-top: 4px;
+                    margin-top: 5px;
                 }
                 .script-footer {
                     padding: 20px 24px;
                     border-top: 1px solid var(--border);
                     display: flex;
-                    gap: 12px;
+                    gap: 10px;
                     flex-direction: column;
-                    background: #f8fafc;
+                    background: var(--bg-secondary);
+                }
+                .btn-grid {
+                    display: grid;
+                    grid-template-columns: 1fr 1fr;
+                    gap: 8px;
+                }
+                .btn-grid-top {
+                    display: grid;
+                    grid-template-columns: 1fr 1fr;
+                    gap: 8px;
+                    margin-bottom: 2px;
                 }
                 .btn {
                     display: flex;
@@ -861,55 +941,69 @@
                     justify-content: center;
                     gap: 8px;
                     width: 100%;
-                    padding: 12px;
-                    border-radius: 8px;
-                    font-size: 14px;
+                    padding: 11px 12px;
+                    border-radius: 10px;
+                    font-size: 13px;
                     font-weight: 600;
                     cursor: pointer;
                     transition: all 0.2s;
                     border: none;
+                    text-decoration: none;
+                    box-sizing: border-box;
                 }
                 .btn-primary {
                     background: var(--primary);
                     color: white;
+                    box-shadow: 0 2px 8px rgba(59,130,246,0.25);
                 }
                 .btn-primary:hover {
                     background: var(--primary-hover);
+                    box-shadow: 0 4px 12px rgba(59,130,246,0.35);
                 }
                 .btn-secondary {
-                    background: white;
+                    background: var(--btn-secondary-bg);
                     color: var(--text-main);
-                    border: 1px solid #cbd5e1;
+                    border: 1px solid var(--btn-secondary-border);
                 }
                 .btn-secondary:hover {
-                    background: #f1f5f9;
+                    background: var(--btn-secondary-hover);
+                }
+                .btn-accent {
+                    background: ${_isDark ? 'rgba(59,130,246,0.12)' : '#eff6ff'};
+                    color: #3B82F6;
+                    border: 1px solid ${_isDark ? 'rgba(59,130,246,0.2)' : '#bfdbfe'};
+                }
+                .btn-accent:hover {
+                    background: ${_isDark ? 'rgba(59,130,246,0.2)' : '#dbeafe'};
                 }
                 .close-btn {
                     position: absolute;
                     top: 16px;
                     right: 16px;
-                    background: rgba(255, 255, 255, 0.95);
-                    border: 1px solid #e2e8f0;
-                    width: 32px;
-                    height: 32px;
-                    border-radius: 50%;
+                    background: ${_isDark ? 'rgba(255,255,255,0.1)' : 'rgba(255, 255, 255, 0.95)'};
+                    border: 1px solid ${_isDark ? 'rgba(255,255,255,0.1)' : '#e2e8f0'};
+                    width: 34px;
+                    height: 34px;
+                    border-radius: 12px;
                     display: flex;
                     align-items: center;
                     justify-content: center;
                     cursor: pointer;
-                    color: #64748b;
+                    color: ${_isDark ? '#94A3B8' : '#64748b'};
                     z-index: 10;
                     transition: all 0.2s;
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+                    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+                    backdrop-filter: blur(8px);
                 }
                 .close-btn:hover {
-                    background: white;
+                    background: ${_isDark ? 'rgba(239,68,68,0.15)' : 'white'};
                     color: #ef4444;
-                    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.12);
                 }
-                .script-content::-webkit-scrollbar { width: 6px; }
+                .script-content::-webkit-scrollbar { width: 5px; }
                 .script-content::-webkit-scrollbar-track { background: transparent; }
-                .script-content::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+                .script-content::-webkit-scrollbar-thumb { background: ${_isDark ? 'rgba(255,255,255,0.1)' : '#cbd5e1'}; border-radius: 10px; }
+                .script-content::-webkit-scrollbar-thumb:hover { background: ${_isDark ? 'rgba(255,255,255,0.2)' : '#94a3b8'}; }
             </style>
 
             <div class="modal-container" id="modal">
@@ -931,32 +1025,32 @@
                     </div>
                     
                     <div class="script-footer">
-                        <div style="display: flex; gap: 12px; flex-wrap: wrap;">
-                            <a href="${videoUrl}" target="_blank" download="tutorial_capture_os_${Date.now()}.mp4" class="btn btn-primary" style="flex: 1; min-width: 200px;">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2-2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-                                Baixar Vídeo (MP4)
+                        <div class="btn-grid-top">
+                            <a href="${videoUrl}" target="_blank" download="tutorial_capture_os_${Date.now()}.mp4" class="btn btn-primary">
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2-2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                                Baixar Vídeo
                             </a>
-                            <button class="btn btn-secondary" id="copy-btn" style="flex: 1; min-width: 200px;">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                            <button class="btn btn-secondary" id="copy-btn">
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
                                 Copiar Roteiro
                             </button>
                         </div>
-                        <div style="display: flex; gap: 12px; flex-wrap: wrap;">
-                            <a href="${backendUrl}/artifacts/${session_id}/apostila.pdf" target="_blank" download="apostila_capture_os_${Date.now()}.pdf" class="btn btn-secondary" style="flex: 1; min-width: 140px; font-size: 13px;">
+                        <div class="btn-grid">
+                            <a href="${backendUrl}/artifacts/${session_id}/apostila.pdf" target="_blank" download="apostila_capture_os_${Date.now()}.pdf" class="btn btn-secondary">
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
-                                Baixar PDF
+                                PDF
                             </a>
-                            <a href="${backendUrl}/artifacts/${session_id}/transcricao.txt" target="_blank" download="transcricao_capture_os_${Date.now()}.txt" class="btn btn-secondary" style="flex: 1; min-width: 140px; font-size: 13px;">
+                            <a href="${backendUrl}/artifacts/${session_id}/transcricao.txt" target="_blank" download="transcricao_capture_os_${Date.now()}.txt" class="btn btn-secondary">
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
                                 Transcrição
                             </a>
-                            <a href="${backendUrl}/artifacts/${session_id}/quiz.json" target="_blank" download="quiz_capture_os_${Date.now()}.json" class="btn btn-secondary" style="flex: 1; min-width: 140px; font-size: 13px;">
+                            <a href="${backendUrl}/artifacts/${session_id}/quiz.json" target="_blank" download="quiz_capture_os_${Date.now()}.json" class="btn btn-secondary">
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
-                                JSON do Quiz
+                                Quiz JSON
                             </a>
-                            <a href="${backendUrl}/scorm/${session_id}.zip" target="_blank" download="pacote_scorm_${session_id}.zip" class="btn btn-secondary" style="flex: 1; min-width: 140px; font-size: 13px; color: #0b5ce3; border-color: #bfdbfe; background: #eff6ff;">
+                            <a href="${backendUrl}/scorm/${session_id}.zip" target="_blank" download="pacote_scorm_${session_id}.zip" class="btn btn-accent">
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2-2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-                                Pacote SCORM
+                                SCORM
                             </a>
                         </div>
                     </div>
@@ -1003,6 +1097,8 @@
         let existing = document.getElementById('capture-os-editor-host');
         if (existing) existing.remove();
 
+        const _isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+
         const host = document.createElement('div');
         host.id = 'capture-os-editor-host';
         host.style.cssText = `
@@ -1012,9 +1108,9 @@
             display: flex;
             justify-content: center;
             align-items: center;
-            backdrop-filter: blur(8px);
-            -webkit-backdrop-filter: blur(8px);
-            background: rgba(15, 23, 42, 0.4);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            background: ${_isDark ? 'rgba(0, 0, 0, 0.6)' : 'rgba(15, 23, 42, 0.4)'};
             opacity: 0;
             transition: opacity 0.4s ease;
         `;
@@ -1031,34 +1127,130 @@
 
         shadow.innerHTML = `
             <style>
+                @keyframes _capture_editor_in {
+                    0% { transform: translateY(24px) scale(0.96); opacity: 0; }
+                    60% { transform: translateY(-3px) scale(1.003); }
+                    100% { transform: translateY(0) scale(1); opacity: 1; }
+                }
+                @keyframes _capture_shimmer {
+                    0% { background-position: -400px 0; }
+                    100% { background-position: 400px 0; }
+                }
+                .modal-wrapper {
+                    position: relative;
+                }
                 .modal-container {
                     width: 700px;
                     max-width: 95vw;
                     height: 85vh;
-                    background: transparent;
-                    border-radius: 16px;
+                    background: ${_isDark ? '#0F172A' : '#ffffff'};
+                    border-radius: 20px;
                     display: flex;
                     flex-direction: column;
-                    transform: translateY(20px) scale(0.98);
-                    transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-                    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+                    animation: _capture_editor_in 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+                    box-shadow: 0 0 60px rgba(59,130,246,0.12), 0 25px 60px -12px rgba(0, 0, 0, ${_isDark ? '0.6' : '0.35'}), 0 0 0 1px ${_isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)'};
                     overflow: hidden;
+                    position: relative;
+                }
+                .editor-close-btn {
+                    position: absolute;
+                    top: -14px;
+                    right: -14px;
+                    width: 32px;
+                    height: 32px;
+                    border-radius: 50%;
+                    background: ${_isDark ? '#1E293B' : '#ffffff'};
+                    border: 1px solid ${_isDark ? 'rgba(255,255,255,0.1)' : '#e2e8f0'};
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    cursor: pointer;
+                    color: ${_isDark ? '#94A3B8' : '#64748b'};
+                    z-index: 20;
+                    transition: all 0.2s;
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+                }
+                .editor-close-btn:hover {
+                    background: ${_isDark ? 'rgba(239,68,68,0.15)' : '#FEF2F2'};
+                    color: #ef4444;
+                    box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+                }
+                .loading-skeleton {
+                    position: absolute;
+                    top: 0; left: 0; width: 100%; height: 100%;
+                    display: flex;
+                    flex-direction: column;
+                    padding: 24px;
+                    gap: 16px;
+                    z-index: 5;
+                    background: ${_isDark ? '#0F172A' : '#ffffff'};
+                    transition: opacity 0.4s ease;
+                }
+                .skeleton-bar {
+                    height: 20px;
+                    border-radius: 8px;
+                    background: ${_isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)'};
+                    background-image: linear-gradient(
+                        90deg,
+                        ${_isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)'} 0px,
+                        ${_isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)'} 200px,
+                        ${_isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)'} 400px
+                    );
+                    background-size: 800px 100%;
+                    animation: _capture_shimmer 1.5s ease-in-out infinite;
                 }
                 iframe {
                     width: 100%;
                     height: 100%;
                     border: none;
                     background: transparent;
+                    border-radius: 20px;
+                    position: relative;
+                    z-index: 10;
                 }
             </style>
-            <div class="modal-container" id="editor-modal">
-                <iframe src="${backendUrl}/editor?session=${sessionId}&embedded=true${tokenParam}"></iframe>
+            <div class="modal-wrapper">
+                <button class="editor-close-btn" id="editor-close-btn" title="Fechar">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+                <div class="modal-container" id="editor-modal">
+                    <div class="loading-skeleton" id="editor-loading">
+                        <div class="skeleton-bar" style="width: 60%; height: 28px;"></div>
+                        <div class="skeleton-bar" style="width: 100%; height: 40px;"></div>
+                        <div class="skeleton-bar" style="width: 80%;"></div>
+                        <div class="skeleton-bar" style="width: 45%;"></div>
+                        <div class="skeleton-bar" style="width: 100%; flex: 1; border-radius: 12px;"></div>
+                    </div>
+                    <iframe src="${backendUrl}/editor?session=${sessionId}&embedded=true${tokenParam}" id="editor-iframe"></iframe>
+                </div>
             </div>
         `;
 
+        // Hide loading skeleton when iframe finishes loading
+        const editorIframe = shadow.getElementById('editor-iframe');
+        const loadingSkeleton = shadow.getElementById('editor-loading');
+        if (editorIframe && loadingSkeleton) {
+            editorIframe.addEventListener('load', () => {
+                loadingSkeleton.style.opacity = '0';
+                setTimeout(() => loadingSkeleton.remove(), 400);
+            });
+        }
+
+        // Close button on overlay
+        const editorCloseBtn = shadow.getElementById('editor-close-btn');
+        if (editorCloseBtn) {
+            editorCloseBtn.addEventListener('click', () => {
+                host.style.opacity = '0';
+                shadow.getElementById('editor-modal').style.transform = 'translateY(20px) scale(0.98)';
+                setTimeout(() => host.remove(), 400);
+                if (chrome.runtime && chrome.runtime.sendMessage) {
+                    chrome.runtime.sendMessage({ action: "abort_processing" }).catch(() => {});
+                }
+            });
+        }
+
         requestAnimationFrame(() => {
             host.style.opacity = '1';
-            shadow.getElementById('editor-modal').style.transform = 'translateY(0) scale(1)';
         });
 
         // Ouve mensagens do iframe para fechar o modal ou broadcast
@@ -1157,37 +1349,78 @@
                 bottom: 20px;
                 right: 20px;
                 width: 340px;
-                background: #1e1e1e;
+                background: #0F172A;
                 color: #fff;
-                border-radius: 12px;
-                box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+                border-radius: 16px;
+                box-shadow: 0 12px 40px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.06);
+                font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
                 z-index: 999999999;
-                border: 1px solid rgba(255,255,255,0.1);
+                border: 1px solid rgba(255,255,255,0.08);
                 overflow: hidden;
                 display: flex;
                 flex-direction: column;
                 user-select: none;
             `;
 
-            // Drag area (Header)
+            // Inject sandbox widget animations
+            if (!document.getElementById('capture-os-sandbox-style')) {
+                const sbxStyle = document.createElement('style');
+                sbxStyle.id = 'capture-os-sandbox-style';
+                sbxStyle.innerHTML = `
+                    @keyframes _capture_progress_pulse {
+                        0%, 100% { opacity: 1; }
+                        50% { opacity: 0.7; }
+                    }
+                `;
+                document.head.appendChild(sbxStyle);
+            }
+
+            // Drag area (Header) - gradient instead of flat color
             const header = document.createElement("div");
             header.style.cssText = `
-                background: #2a2a2a;
+                background: linear-gradient(135deg, #1E293B 0%, #0F172A 100%);
+                padding: 0;
+                display: flex;
+                flex-direction: column;
+                cursor: grab;
+                border-bottom: 1px solid rgba(255,255,255,0.06);
+            `;
+
+            // Progress bar at top of header
+            const progressTrack = document.createElement("div");
+            progressTrack.id = "sandbox-progress-track";
+            progressTrack.style.cssText = `
+                width: 100%; height: 3px; background: rgba(255,255,255,0.06);
+                border-radius: 16px 16px 0 0; overflow: hidden;
+            `;
+            const progressFill = document.createElement("div");
+            progressFill.id = "sandbox-progress-fill";
+            const progressPct = sandboxTotalPassos > 0 ? Math.round((sandboxPassoAtual / sandboxTotalPassos) * 100) : 0;
+            progressFill.style.cssText = `
+                width: ${progressPct}%; height: 100%;
+                background: linear-gradient(90deg, #3B82F6, #10B981);
+                border-radius: 0 2px 2px 0;
+                transition: width 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+            `;
+            progressTrack.appendChild(progressFill);
+
+            const headerContent = document.createElement("div");
+            headerContent.style.cssText = `
                 padding: 10px 15px;
                 display: flex;
                 align-items: center;
                 justify-content: space-between;
-                cursor: grab;
-                border-bottom: 1px solid rgba(255,255,255,0.05);
             `;
-            header.innerHTML = `
+            headerContent.innerHTML = `
                 <div style="display: flex; align-items: center; gap: 8px;">
                     <div style="width: 10px; height: 10px; border-radius: 50%; background: #10b981; box-shadow: 0 0 8px rgba(16, 185, 129, 0.6);"></div>
-                    <span style="font-size: 12px; font-weight: 700; color: #f3f4f6; letter-spacing: 0.8px;">PRÁTICA ATIVA</span>
+                    <span style="font-size: 11px; font-weight: 700; color: #94A3B8; letter-spacing: 1px;">PRÁTICA ATIVA</span>
                 </div>
-                <div id="sandbox-xp" style="font-size: 13px; font-weight: bold; color: #10b981; background: rgba(16, 185, 129, 0.1); padding: 4px 10px; border-radius: 12px;">0 XP</div>
+                <div id="sandbox-xp" style="font-size: 13px; font-weight: 700; color: #10b981; background: rgba(16, 185, 129, 0.1); padding: 4px 12px; border-radius: 20px; letter-spacing: 0.3px;">0 XP</div>
             `;
+
+            header.appendChild(progressTrack);
+            header.appendChild(headerContent);
             
             // Drag Logic
             let isDragging = false;
@@ -1222,19 +1455,20 @@
 
             const footer = document.createElement("div");
             footer.style.cssText = `
-                background: rgba(0,0,0,0.2);
+                background: rgba(0,0,0,0.25);
                 padding: 10px 15px;
                 display: flex;
                 justify-content: space-between;
-                border-top: 1px solid rgba(255,255,255,0.05);
+                align-items: center;
+                border-top: 1px solid rgba(255,255,255,0.06);
             `;
             footer.innerHTML = `
-                <button id="btn-encerrar-pratica" style="background: transparent; color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.2); padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600; transition: all 0.2s;">Sair</button>
+                <button id="btn-encerrar-pratica" style="background: transparent; color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.2); padding: 6px 12px; border-radius: 8px; cursor: pointer; font-size: 12px; font-weight: 600; transition: all 0.2s;">Sair</button>
                 <div style="display: flex; gap: 8px;">
-                    <button id="btn-dica-pratica" style="background: rgba(255,255,255,0.05); color: #e5e7eb; border: 1px solid rgba(255,255,255,0.1); padding: 6px 16px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600; transition: all 0.2s; display: flex; align-items: center; gap: 4px;">
+                    <button id="btn-dica-pratica" style="background: rgba(255,255,255,0.05); color: #e5e7eb; border: 1px solid rgba(255,255,255,0.08); padding: 6px 16px; border-radius: 8px; cursor: pointer; font-size: 12px; font-weight: 600; transition: all 0.2s; display: flex; align-items: center; gap: 5px;">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 16v-4"></path><path d="M12 8h.01"></path></svg> Dica
                     </button>
-                    <button id="btn-pular-pratica" style="background: #3b82f6; color: #fff; border: none; padding: 6px 16px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600; transition: all 0.2s; display: flex; align-items: center; gap: 4px; box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);">
+                    <button id="btn-pular-pratica" style="background: #3b82f6; color: #fff; border: none; padding: 6px 16px; border-radius: 8px; cursor: pointer; font-size: 12px; font-weight: 600; transition: all 0.2s; display: flex; align-items: center; gap: 5px; box-shadow: 0 4px 12px rgba(59, 130, 246, 0.25);">
                         Pular <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="M12 5l7 7-7 7"></path></svg>
                     </button>
                 </div>
@@ -1261,6 +1495,13 @@
             addHover("btn-encerrar-pratica", "rgba(239, 68, 68, 0.1)", "transparent");
             addHover("btn-dica-pratica", "rgba(255,255,255,0.1)", "rgba(255,255,255,0.05)");
             addHover("btn-pular-pratica", "#2563eb", "#3b82f6");
+        }
+
+        // Update progress bar
+        const progressFillEl = document.getElementById("sandbox-progress-fill");
+        if (progressFillEl) {
+            const pct = sandboxTotalPassos > 0 ? Math.round((sandboxPassoAtual / sandboxTotalPassos) * 100) : 0;
+            progressFillEl.style.width = pct + '%';
         }
 
         const step = sandboxHotspots[sandboxPassoAtual];
@@ -1420,28 +1661,30 @@
         const perc = Math.max(0, Math.round(((sandboxTotalPassos * 10) - (sandboxStats.errors*5) - (sandboxStats.hints*5) - (sandboxStats.skips*10)) / (sandboxTotalPassos * 10) * 100)) || 0;
         
         widget.innerHTML = `
-            <div style="background: #2a2a2a; padding: 15px; border-bottom: 1px solid rgba(255,255,255,0.05); display: flex; align-items: center; justify-content: center;">
-                <span style="font-size: 14px; font-weight: 700; color: #10b981; letter-spacing: 0.5px;">PRÁTICA CONCLUÍDA</span>
+            <div style="background: linear-gradient(135deg, #065F46 0%, #064E3B 100%); padding: 16px; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#10B981" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                <span style="font-size: 12px; font-weight: 700; color: #6EE7B7; letter-spacing: 1px; text-transform: uppercase;">Prática Concluída</span>
             </div>
-            <div style="padding: 20px; display: flex; flex-direction: column; gap: 16px;">
+            <div style="padding: 24px 20px; display: flex; flex-direction: column; gap: 18px;">
                 <div style="text-align: center;">
-                    <div style="font-size: 32px; font-weight: 800; color: #fff;">${sandboxXP} <span style="font-size: 16px; color: #9ca3af;">XP</span></div>
+                    <div style="font-size: 40px; font-weight: 800; color: #F8FAFC; letter-spacing: -1px; line-height: 1;">${sandboxXP}</div>
+                    <div style="font-size: 13px; font-weight: 600; color: #64748B; margin-top: 4px; text-transform: uppercase; letter-spacing: 1px;">Pontos XP</div>
                 </div>
                 <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; text-align: center;">
-                    <div style="background: rgba(255,255,255,0.05); padding: 10px; border-radius: 8px;">
-                        <div style="font-size: 16px; font-weight: bold; color: #f87171;">${sandboxStats.errors}</div>
-                        <div style="font-size: 10px; color: #9ca3af; text-transform: uppercase; margin-top: 2px;">Erros</div>
+                    <div style="background: rgba(248,113,113,0.08); padding: 12px 8px; border-radius: 12px; border: 1px solid rgba(248,113,113,0.1);">
+                        <div style="font-size: 20px; font-weight: 800; color: #f87171; letter-spacing: -0.5px;">${sandboxStats.errors}</div>
+                        <div style="font-size: 10px; color: #94A3B8; text-transform: uppercase; margin-top: 4px; font-weight: 600; letter-spacing: 0.5px;">Erros</div>
                     </div>
-                    <div style="background: rgba(255,255,255,0.05); padding: 10px; border-radius: 8px;">
-                        <div style="font-size: 16px; font-weight: bold; color: #fbbf24;">${sandboxStats.hints}</div>
-                        <div style="font-size: 10px; color: #9ca3af; text-transform: uppercase; margin-top: 2px;">Dicas</div>
+                    <div style="background: rgba(251,191,36,0.08); padding: 12px 8px; border-radius: 12px; border: 1px solid rgba(251,191,36,0.1);">
+                        <div style="font-size: 20px; font-weight: 800; color: #fbbf24; letter-spacing: -0.5px;">${sandboxStats.hints}</div>
+                        <div style="font-size: 10px; color: #94A3B8; text-transform: uppercase; margin-top: 4px; font-weight: 600; letter-spacing: 0.5px;">Dicas</div>
                     </div>
-                    <div style="background: rgba(255,255,255,0.05); padding: 10px; border-radius: 8px;">
-                        <div style="font-size: 16px; font-weight: bold; color: #60a5fa;">${sandboxStats.skips}</div>
-                        <div style="font-size: 10px; color: #9ca3af; text-transform: uppercase; margin-top: 2px;">Pulos</div>
+                    <div style="background: rgba(96,165,250,0.08); padding: 12px 8px; border-radius: 12px; border: 1px solid rgba(96,165,250,0.1);">
+                        <div style="font-size: 20px; font-weight: 800; color: #60a5fa; letter-spacing: -0.5px;">${sandboxStats.skips}</div>
+                        <div style="font-size: 10px; color: #94A3B8; text-transform: uppercase; margin-top: 4px; font-weight: 600; letter-spacing: 0.5px;">Pulos</div>
                     </div>
                 </div>
-                <button id="btn-fechar-score" style="margin-top: 10px; width: 100%; background: #3b82f6; color: #fff; border: none; padding: 10px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600;">Fechar</button>
+                <button id="btn-fechar-score" style="margin-top: 4px; width: 100%; background: #3b82f6; color: #fff; border: none; padding: 11px; border-radius: 10px; cursor: pointer; font-size: 13px; font-weight: 700; box-shadow: 0 4px 12px rgba(59,130,246,0.25); transition: all 0.2s;">Fechar</button>
             </div>
         `;
         

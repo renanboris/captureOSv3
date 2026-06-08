@@ -4,51 +4,191 @@
   <meta charset="utf-8">
   <title>Capture OS v3 — Configurações</title>
   <style>
+    :root {
+      --bg-primary: #FFFFFF;
+      --bg-secondary: #F8FAFC;
+      --bg-glass: rgba(0, 0, 0, 0.03);
+      --border-glass: rgba(0, 0, 0, 0.08);
+      --border-default: #E2E8F0;
+      --text-primary: #0F172A;
+      --text-secondary: #64748B;
+      --text-muted: #94A3B8;
+      --accent-blue: #3B82F6;
+      --accent-blue-hover: #2563EB;
+      --input-bg: #FFFFFF;
+      --input-border: #CBD5E1;
+      --success-green: #16A34A;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg-primary: #0F172A;
+        --bg-secondary: #1E293B;
+        --bg-glass: rgba(255, 255, 255, 0.05);
+        --border-glass: rgba(255, 255, 255, 0.08);
+        --border-default: #334155;
+        --text-primary: #F8FAFC;
+        --text-secondary: #94A3B8;
+        --text-muted: #64748B;
+        --accent-blue: #3B82F6;
+        --accent-blue-hover: #60A5FA;
+        --input-bg: #1E293B;
+        --input-border: #475569;
+        --success-green: #22C55E;
+      }
+    }
+
+    * { box-sizing: border-box; }
+
     body {
       font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      background: #f8fafc;
-      color: #0f172a;
+      background: var(--bg-secondary);
+      color: var(--text-primary);
       margin: 0;
       padding: 32px;
+      min-height: 100vh;
     }
+
     .card {
       max-width: 520px;
       margin: 0 auto;
-      background: #ffffff;
-      border: 1px solid #e2e8f0;
-      border-radius: 12px;
-      padding: 28px;
+      background: var(--bg-glass);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid var(--border-glass);
+      border-radius: 16px;
+      padding: 32px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 8px 24px rgba(0, 0, 0, 0.06);
     }
-    h1 { font-size: 18px; margin: 0 0 4px; }
-    p.sub { margin: 0 0 24px; font-size: 13px; color: #64748b; }
-    label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
-    .hint { font-size: 11px; color: #94a3b8; margin: 4px 0 18px; }
+
+    @media (prefers-color-scheme: dark) {
+      .card {
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2), 0 8px 24px rgba(0, 0, 0, 0.3);
+      }
+    }
+
+    /* ── Branding header ── */
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 6px;
+    }
+
+    .brand-icon {
+      width: 28px;
+      height: 28px;
+      flex-shrink: 0;
+    }
+
+    .brand h1 {
+      font-size: 18px;
+      font-weight: 700;
+      margin: 0;
+      color: var(--text-primary);
+      letter-spacing: -0.02em;
+    }
+
+    p.sub {
+      margin: 0 0 28px;
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+
+    /* ── Form elements ── */
+    label {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 6px;
+      color: var(--text-primary);
+    }
+
+    .hint {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin: 4px 0 18px;
+    }
+
     input[type="text"], input[type="password"] {
       width: 100%;
       box-sizing: border-box;
       padding: 10px 12px;
-      border: 1px solid #cbd5e1;
+      border: 1px solid var(--input-border);
       border-radius: 8px;
       font-size: 13px;
+      font-family: inherit;
+      background: var(--input-bg);
+      color: var(--text-primary);
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
     }
-    .btn {
+
+    input[type="text"]::placeholder, input[type="password"]::placeholder {
+      color: var(--text-muted);
+    }
+
+    input[type="text"]:focus, input[type="password"]:focus {
+      outline: none;
+      border-color: var(--accent-blue);
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+    }
+
+    /* ── Button ── */
+    .actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
       margin-top: 8px;
+    }
+
+    .btn {
       padding: 10px 18px;
-      background: #0b5ce3;
-      color: #fff;
+      background: var(--accent-blue);
+      color: #FFFFFF;
       border: none;
       border-radius: 8px;
       font-size: 14px;
       font-weight: 600;
+      font-family: inherit;
       cursor: pointer;
+      transition: background 0.15s ease, transform 0.1s ease;
     }
-    .btn:hover { background: #0949b6; }
-    #status { margin-left: 12px; font-size: 13px; color: #16a34a; }
+
+    .btn:hover { background: var(--accent-blue-hover); }
+    .btn:active { transform: scale(0.97); }
+
+    /* ── Save success indicator ── */
+    #status {
+      font-size: 13px;
+      color: var(--success-green);
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    }
+
+    #status:not(:empty) {
+      opacity: 1;
+    }
+
+    #status:not(:empty)::before {
+      content: "✓ ";
+      font-weight: 700;
+    }
   </style>
 </head>
 <body>
   <div class="card">
-    <h1>Configurações do Capture OS v3</h1>
+    <div class="brand">
+      <svg class="brand-icon" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <!-- 4-point sparkle -->
+        <path d="M14 2 L15.5 10 L22 14 L15.5 18 L14 26 L12.5 18 L6 14 L12.5 10 Z"
+              fill="var(--accent-blue)" opacity="0.9"/>
+        <path d="M22 4 L22.8 7.2 L26 8 L22.8 8.8 L22 12 L21.2 8.8 L18 8 L21.2 7.2 Z"
+              fill="var(--accent-blue)" opacity="0.5"/>
+        <path d="M7 20 L7.5 22 L9.5 22.5 L7.5 23 L7 25 L6.5 23 L4.5 22.5 L6.5 22 Z"
+              fill="var(--accent-blue)" opacity="0.4"/>
+      </svg>
+      <h1>Capture OS v3</h1>
+    </div>
     <p class="sub">Defina o backend de produção e o token de autenticação.</p>
 
     <label for="backendUrl">URL do Backend</label>
@@ -59,8 +199,10 @@
     <input type="password" id="authToken" placeholder="cole o JWT aqui" autocomplete="off">
     <p class="hint">Enviado como cabeçalho Authorization: Bearer em todas as requisições ao backend.</p>
 
-    <button id="save" class="btn">Salvar</button>
-    <span id="status"></span>
+    <div class="actions">
+      <button id="save" class="btn">Salvar</button>
+      <span id="status"></span>
+    </div>
   </div>
 
   <script src="options.js"></script>

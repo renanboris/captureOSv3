@@ -1,23 +1,44 @@
 document.addEventListener('DOMContentLoaded', async () => {
-    // Elementos do DOM
+    // ═══════════════════════════════════════════
+    // DOM ELEMENTS
+    // ═══════════════════════════════════════════
     const btnStart = document.getElementById('btn-start');
     const btnStop = document.getElementById('btn-stop');
     const btnAbort = document.getElementById('btn-abort');
-    const pinWarning = document.getElementById('pin-warning');
-    
+    const btnForceStop = document.getElementById('btn-force-stop');
+
     // Toggles
     const toggleMic = document.getElementById('toggle-mic');
     const toggleAi = document.getElementById('toggle-ai');
     const toggleCam = document.getElementById('toggle-cam');
-    
-    // Icons
+
+    // Icon boxes
     const iconMic = document.getElementById('icon-mic');
     const iconAi = document.getElementById('icon-ai');
 
-    let isPinned = true;
+    // Cards
+    const cardMic = document.getElementById('card-mic');
+    const cardAi = document.getElementById('card-ai');
 
-    // --- Settings gear opens the options/settings page ---
-    const settingsIcon = document.querySelector('.settings-icon');
+    // Header sections
+    const headerDefault = document.getElementById('header-default');
+    const headerRecording = document.getElementById('header-recording');
+    const recTimer = document.getElementById('rec-timer');
+
+    // Layout sections
+    const tagline = document.getElementById('tagline');
+    const tabsWrapper = document.getElementById('tabs-wrapper');
+    const settingsContent = document.getElementById('settings-content');
+    const recordingActions = document.getElementById('recording-actions');
+    const processingBanner = document.getElementById('processing-banner');
+
+    // Timer interval reference
+    let timerInterval = null;
+
+    // ═══════════════════════════════════════════
+    // SETTINGS GEAR → Options page
+    // ═══════════════════════════════════════════
+    const settingsIcon = document.getElementById('settings-icon');
     if (settingsIcon) {
         settingsIcon.addEventListener('click', () => {
             if (chrome.runtime.openOptionsPage) {
@@ -28,7 +49,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
-    // --- Lógica de Abas ---
+    // ═══════════════════════════════════════════
+    // TAB LOGIC (Segmented Control)
+    // ═══════════════════════════════════════════
     const tabs = document.querySelectorAll('.tab');
     const tabContents = document.querySelectorAll('.tab-content');
 
@@ -39,7 +62,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             tab.classList.add('active');
             const targetId = tab.getAttribute('data-tab');
-            document.getElementById(targetId).classList.add('active');
+            const targetEl = document.getElementById(targetId);
+            targetEl.classList.add('active');
+
+            // Trigger fade-in animation
+            targetEl.style.animation = 'none';
+            targetEl.offsetHeight; // force reflow
+            targetEl.style.animation = '';
 
             if (targetId === 'tab-practice') {
                 carregarModulosPratica();
@@ -47,13 +76,21 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     });
 
-    // --- Lógica do Modo Prática ---
+    // ═══════════════════════════════════════════
+    // PRACTICE MODE LOGIC
+    // ═══════════════════════════════════════════
     async function carregarModulosPratica() {
         const container = document.getElementById('practice-modules-container');
-        container.innerHTML = '<p style="font-size: 12px; color: #64748b;">Buscando módulos...</p>';
+
+        // Show skeleton loading
+        container.innerHTML = `
+            <div class="skeleton-card"><div class="skeleton-line w-70"></div><div class="skeleton-line w-45"></div></div>
+            <div class="skeleton-card"><div class="skeleton-line w-70"></div><div class="skeleton-line w-45"></div></div>
+            <div class="skeleton-card"><div class="skeleton-line w-70"></div><div class="skeleton-line w-45"></div></div>
+        `;
 
         try {
-            // Descobrir domínio da aba ativa
+            // Discover active tab domain
             const tabsChrome = await chrome.tabs.query({ active: true, currentWindow: true });
             let dominio = "";
             if (tabsChrome[0] && tabsChrome[0].url) {
@@ -73,7 +110,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             const data = await res.json();
 
             if (data.total === 0) {
-                container.innerHTML = '<p style="font-size: 12px; color: #64748b;">Nenhum módulo encontrado para este site.</p>';
+                container.innerHTML = '<p class="modules-message">Nenhum módulo encontrado para este site.</p>';
                 return;
             }
 
@@ -89,7 +126,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 container.appendChild(div);
             });
         } catch (e) {
-            container.innerHTML = `<p style="font-size: 12px; color: #ef4444;">Erro: ${e.message}</p>`;
+            container.innerHTML = `<p class="modules-error">Erro: ${e.message}</p>`;
         }
     }
 
@@ -109,110 +146,210 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
-    // --- Lógica Visual dos Toggles ---
+    // ═══════════════════════════════════════════
+    // TOGGLE VISUAL LOGIC
+    // ═══════════════════════════════════════════
     function updateTogglesUI() {
+        // Mic icon state
         if (toggleMic.checked) {
-            iconMic.style.color = '#0b5ce3';
-            iconMic.style.background = '#eff6ff';
-            iconMic.style.borderColor = '#bfdbfe';
-            
-            toggleAi.checked = false; // Desativa IA se ativar Mic
-            iconAi.style.color = '#64748b';
-            iconAi.style.background = '#f8fafc';
-            iconAi.style.borderColor = '#f1f5f9';
+            iconMic.classList.add('active');
+            toggleAi.checked = false;
+            iconAi.classList.remove('active');
+            cardAi.classList.remove('glow-active');
         } else {
-            iconMic.style.color = '#64748b';
-            iconMic.style.background = '#f8fafc';
-            iconMic.style.borderColor = '#f1f5f9';
+            iconMic.classList.remove('active');
         }
-        
+
+        // AI icon state
         if (toggleAi.checked) {
-            iconAi.style.color = '#0b5ce3';
-            iconAi.style.background = '#eff6ff';
-            iconAi.style.borderColor = '#bfdbfe';
-            
+            iconAi.classList.add('active');
+            cardAi.classList.add('glow-active');
             toggleMic.checked = false;
-            iconMic.style.color = '#64748b';
-            iconMic.style.background = '#f8fafc';
-            iconMic.style.borderColor = '#f1f5f9';
+            iconMic.classList.remove('active');
+        } else {
+            iconAi.classList.remove('active');
+            cardAi.classList.remove('glow-active');
         }
     }
 
     toggleMic.addEventListener('change', () => {
-        if(toggleMic.checked) toggleAi.checked = false;
+        if (toggleMic.checked) toggleAi.checked = false;
         else toggleAi.checked = true;
         updateTogglesUI();
         chrome.storage.local.set({ useMic: toggleMic.checked, useAi: toggleAi.checked });
     });
 
     toggleAi.addEventListener('change', () => {
-        if(toggleAi.checked) toggleMic.checked = false;
+        if (toggleAi.checked) toggleMic.checked = false;
         else toggleMic.checked = true;
         updateTogglesUI();
         chrome.storage.local.set({ useMic: toggleMic.checked, useAi: toggleAi.checked });
     });
 
-    // Restaurar estado salvo dos botões
+    // Restore saved toggle states
     chrome.storage.local.get(['useMic', 'useAi'], (res) => {
-        if(res.useMic !== undefined) toggleMic.checked = res.useMic;
-        if(res.useAi !== undefined) toggleAi.checked = res.useAi;
+        if (res.useMic !== undefined) toggleMic.checked = res.useMic;
+        if (res.useAi !== undefined) toggleAi.checked = res.useAi;
         updateTogglesUI();
     });
 
-    const btnForceStop = document.getElementById('btn-force-stop');
+    // ═══════════════════════════════════════════
+    // LIVE RECORDING TIMER
+    // ═══════════════════════════════════════════
+    function formatTime(seconds) {
+        const mins = Math.floor(seconds / 60);
+        const secs = Math.floor(seconds % 60);
+        return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+    }
 
-    // Recupera o estado real ao abrir o popup
-    chrome.runtime.sendMessage({action: 'get_status'}, (response) => {
+    function startTimer() {
+        if (timerInterval) clearInterval(timerInterval);
+
+        chrome.storage.local.get(['recordingStartTime'], (res) => {
+            const startTime = res.recordingStartTime || Date.now();
+
+            function updateTimer() {
+                const elapsed = (Date.now() - startTime) / 1000;
+                if (recTimer) recTimer.textContent = formatTime(elapsed);
+            }
+
+            updateTimer(); // immediate update
+            timerInterval = setInterval(updateTimer, 1000);
+        });
+    }
+
+    function stopTimer() {
+        if (timerInterval) {
+            clearInterval(timerInterval);
+            timerInterval = null;
+        }
+    }
+
+    // ═══════════════════════════════════════════
+    // STATE TRANSITIONS
+    // ═══════════════════════════════════════════
+    function enterRecordingState() {
+        // Header: switch to recording mode
+        headerDefault.style.display = 'none';
+        headerRecording.style.display = 'flex';
+        if (tagline) tagline.style.display = 'none';
+        if (tabsWrapper) tabsWrapper.style.display = 'none';
+
+        // Hide settings, show recording actions
+        settingsContent.style.display = 'none';
+        btnStart.style.display = 'none';
+        recordingActions.classList.add('active');
+        btnForceStop.style.display = 'none';
+        processingBanner.classList.remove('active');
+
+        // Start the live timer
+        startTimer();
+    }
+
+    function enterProcessingState() {
+        // Reset header
+        headerDefault.style.display = 'flex';
+        headerRecording.style.display = 'none';
+        if (tagline) tagline.style.display = '';
+        if (tabsWrapper) tabsWrapper.style.display = '';
+        settingsContent.style.display = '';
+
+        // Show processing UI
+        processingBanner.classList.add('active');
+        btnStart.disabled = true;
+        btnStart.classList.remove('pulse-anim');
+        btnStart.innerHTML = `
+            <div class="processing-spinner" style="width:14px;height:14px;border-width:2px;border-color:#fff;border-top-color:transparent;"></div>
+            Processando...
+        `;
+        btnStart.style.opacity = '0.7';
+        btnStart.style.cursor = 'not-allowed';
+
+        // Disable all toggles
+        toggleMic.disabled = true;
+        toggleAi.disabled = true;
+        toggleCam.disabled = true;
+
+        // Show force stop, hide recording actions
+        btnForceStop.style.display = 'flex';
+        recordingActions.classList.remove('active');
+
+        stopTimer();
+    }
+
+    function enterIdleState() {
+        // Reset header
+        headerDefault.style.display = 'flex';
+        headerRecording.style.display = 'none';
+        if (tagline) tagline.style.display = '';
+        if (tabsWrapper) tabsWrapper.style.display = '';
+        settingsContent.style.display = '';
+
+        // Reset buttons
+        btnStart.disabled = false;
+        btnStart.classList.add('pulse-anim');
+        btnStart.innerHTML = `
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"></circle>
+              <circle cx="12" cy="12" r="4" fill="currentColor" stroke="none"></circle>
+            </svg>
+            Gravar Agora
+        `;
+        btnStart.style.opacity = '';
+        btnStart.style.cursor = '';
+        btnStart.style.display = 'flex';
+
+        // Hide recording/processing UI
+        recordingActions.classList.remove('active');
+        btnForceStop.style.display = 'none';
+        processingBanner.classList.remove('active');
+
+        // Re-enable toggles
+        toggleMic.disabled = false;
+        toggleAi.disabled = false;
+        // toggleCam stays disabled (Em breve)
+
+        stopTimer();
+    }
+
+    // ═══════════════════════════════════════════
+    // RECOVER STATE ON POPUP OPEN
+    // ═══════════════════════════════════════════
+    chrome.runtime.sendMessage({ action: 'get_status' }, (response) => {
         if (response && response.isRecording) {
-            document.querySelector('.header h2').innerHTML = "<span style='color: #f12546;'>🔴</span> Gravando Tela...";
-            document.querySelector('.content').style.display = 'none'; // Esconde as configurações
-            
-            btnStart.style.display = 'none';
-            btnStop.style.display = 'flex';
-            btnAbort.style.display = 'flex';
-            btnForceStop.style.display = 'none';
+            enterRecordingState();
         }
     });
 
-    // Bloqueia se estiver processando
+    // Check if processing
     chrome.storage.local.get(['isProcessing'], (res) => {
         if (res.isProcessing) {
-            btnStart.disabled = true;
-            btnStart.innerHTML = `<span class="capture-spin" style="display:inline-block; margin-right:8px; width:14px; height:14px; border:2px solid #fff; border-top-color:transparent; border-radius:50%; vertical-align:middle; animation: capture-spin 1s linear infinite;"></span> Processando vídeo anterior...`;
-            btnStart.style.opacity = '0.7';
-            btnStart.style.cursor = 'not-allowed';
-            
-            toggleMic.disabled = true;
-            toggleAi.disabled = true;
-            toggleCam.disabled = true;
-            
-            btnForceStop.style.display = 'flex'; // Exibe o botão de forçar parada
-
-            const style = document.createElement("style");
-            style.innerHTML = `@keyframes capture-spin { 100% { transform: rotate(360deg); } }`;
-            document.head.appendChild(style);
+            enterProcessingState();
         } else {
             btnForceStop.style.display = 'none';
         }
     });
 
+    // ═══════════════════════════════════════════
+    // BUTTON ACTIONS
+    // ═══════════════════════════════════════════
     btnStart.addEventListener('click', () => {
-        chrome.runtime.sendMessage({action: 'start_recording'});
-        window.close(); // Fecha o popup imediatamente após iniciar para ser frictionless
+        chrome.runtime.sendMessage({ action: 'start_recording' });
+        window.close(); // Close popup immediately for frictionless UX
     });
 
     btnStop.addEventListener('click', () => {
-        chrome.runtime.sendMessage({action: 'stop_recording'});
+        chrome.runtime.sendMessage({ action: 'stop_recording' });
         window.close();
     });
 
     btnAbort.addEventListener('click', () => {
-        chrome.runtime.sendMessage({action: 'abort_recording'});
+        chrome.runtime.sendMessage({ action: 'abort_recording' });
         window.close();
     });
 
     btnForceStop.addEventListener('click', () => {
-        chrome.runtime.sendMessage({action: 'abort_processing'});
+        chrome.runtime.sendMessage({ action: 'abort_processing' });
         window.close();
     });
 });

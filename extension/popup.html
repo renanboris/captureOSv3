@@ -1,230 +1,695 @@
 <!DOCTYPE html>
-<html>
+<html lang="pt-BR">
 <head>
   <meta charset="utf-8">
   <title>Capture OS v3</title>
   <style>
+    /* ═══════════════════════════════════════════
+       DESIGN TOKENS — Adaptive Theme
+    ═══════════════════════════════════════════ */
+    :root {
+      --bg-primary: #FFFFFF;
+      --bg-secondary: #F8FAFC;
+      --bg-glass: rgba(0, 0, 0, 0.03);
+      --border-glass: rgba(0, 0, 0, 0.08);
+      --border-default: #E2E8F0;
+      --text-primary: #0F172A;
+      --text-secondary: #64748B;
+      --text-muted: #94A3B8;
+      --accent-blue: #3B82F6;
+      --accent-purple: #7C3AED;
+      --record-red: #EF4444;
+      --success: #10B981;
+      --warning: #F59E0B;
+      --error: #EF4444;
+      --icon-active-bg: #EFF6FF;
+      --icon-active-border: #BFDBFE;
+      --icon-active-color: #3B82F6;
+      --icon-default-bg: #F8FAFC;
+      --icon-default-border: #F1F5F9;
+      --icon-default-color: #64748B;
+      --toggle-off: #CBD5E1;
+      --toggle-on: #3B82F6;
+      --card-bg: rgba(248, 250, 252, 0.6);
+      --card-border: rgba(0, 0, 0, 0.06);
+      --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+      --btn-stop-bg: #0F172A;
+      --btn-abort-bg: #FFFFFF;
+      --btn-abort-color: #64748B;
+      --btn-abort-border: #E2E8F0;
+      --btn-abort-hover-bg: #F8FAFC;
+      --processing-bg: rgba(59, 130, 246, 0.06);
+      --processing-border: rgba(59, 130, 246, 0.15);
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg-primary: #0F172A;
+        --bg-secondary: #1E293B;
+        --bg-glass: rgba(255, 255, 255, 0.05);
+        --border-glass: rgba(255, 255, 255, 0.08);
+        --border-default: #334155;
+        --text-primary: #F8FAFC;
+        --text-secondary: #94A3B8;
+        --text-muted: #64748B;
+        --icon-active-bg: rgba(59, 130, 246, 0.15);
+        --icon-active-border: rgba(59, 130, 246, 0.3);
+        --icon-active-color: #60A5FA;
+        --icon-default-bg: rgba(255, 255, 255, 0.05);
+        --icon-default-border: rgba(255, 255, 255, 0.08);
+        --icon-default-color: #94A3B8;
+        --toggle-off: #475569;
+        --toggle-on: #3B82F6;
+        --card-bg: rgba(30, 41, 59, 0.6);
+        --card-border: rgba(255, 255, 255, 0.06);
+        --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+        --btn-stop-bg: #F8FAFC;
+        --btn-abort-bg: #1E293B;
+        --btn-abort-color: #94A3B8;
+        --btn-abort-border: #334155;
+        --btn-abort-hover-bg: #334155;
+        --processing-bg: rgba(59, 130, 246, 0.1);
+        --processing-border: rgba(59, 130, 246, 0.2);
+      }
+    }
+
+    /* ═══════════════════════════════════════════
+       RESET & BASE
+    ═══════════════════════════════════════════ */
+    *, *::before, *::after { box-sizing: border-box; }
+
     body {
       width: 320px;
-      font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
       padding: 0;
       margin: 0;
-      background: #ffffff;
-      color: #0f172a;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
     }
+
+    /* ═══════════════════════════════════════════
+       HEADER
+    ═══════════════════════════════════════════ */
     .header {
-      padding: 16px 20px;
-      border-bottom: 1px solid #f1f5f9;
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--border-default);
       display: flex;
       justify-content: space-between;
+      align-items: center;
+      background: var(--bg-primary);
+    }
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .header-sparkle {
+      color: var(--accent-blue);
+      display: flex;
       align-items: center;
     }
     .header h2 {
       margin: 0;
-      font-size: 16px;
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--text-primary);
+      letter-spacing: -0.01em;
+    }
+    .version-pill {
+      font-size: 10px;
       font-weight: 600;
+      color: var(--accent-blue);
+      background: var(--icon-active-bg);
+      border: 1px solid var(--icon-active-border);
+      padding: 2px 7px;
+      border-radius: 20px;
+      letter-spacing: 0.02em;
     }
     .settings-icon {
-      color: #94a3b8;
+      color: var(--text-muted);
       cursor: pointer;
-      transition: color 0.2s;
+      transition: color 0.2s, transform 0.2s;
+      display: flex;
+      align-items: center;
+      padding: 4px;
+      border-radius: 6px;
     }
-    .settings-icon:hover { color: #0f172a; }
-    
+    .settings-icon:hover {
+      color: var(--text-primary);
+      transform: rotate(30deg);
+    }
+
+    .tagline {
+      padding: 0 20px;
+      margin: 10px 0 0 0;
+      font-size: 12px;
+      color: var(--text-muted);
+      font-weight: 400;
+    }
+
+    /* ═══════════════════════════════════════════
+       RECORDING HEADER STATE
+    ═══════════════════════════════════════════ */
+    .header-recording {
+      display: none;
+      align-items: center;
+      gap: 8px;
+    }
+    .header-recording .rec-dot {
+      width: 8px;
+      height: 8px;
+      background: var(--record-red);
+      border-radius: 50%;
+      animation: pulse-dot 1.4s ease-in-out infinite;
+    }
+    .header-recording .rec-label {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--record-red);
+    }
+    .header-recording .rec-timer {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      font-variant-numeric: tabular-nums;
+      margin-left: auto;
+    }
+
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(0.85); }
+    }
+
+    /* ═══════════════════════════════════════════
+       SEGMENTED CONTROL (Tabs)
+    ═══════════════════════════════════════════ */
+    .tabs-wrapper {
+      padding: 12px 20px 0;
+    }
+    .tabs {
+      display: flex;
+      background: var(--bg-glass);
+      border: 1px solid var(--border-glass);
+      border-radius: 10px;
+      padding: 3px;
+      gap: 2px;
+    }
+    .tab {
+      flex: 1;
+      text-align: center;
+      padding: 8px 0;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      cursor: pointer;
+      border-radius: 8px;
+      transition: all 0.25s ease;
+      user-select: none;
+      border: 1px solid transparent;
+    }
+    .tab:hover:not(.active) {
+      color: var(--text-primary);
+      background: var(--bg-glass);
+    }
+    .tab.active {
+      color: var(--text-primary);
+      background: var(--bg-primary);
+      border: 1px solid var(--border-glass);
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+    }
+    .tab-content {
+      display: none;
+      animation: fadeIn 0.25s ease;
+    }
+    .tab-content.active {
+      display: block;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ═══════════════════════════════════════════
+       CONTENT AREA
+    ═══════════════════════════════════════════ */
     .content {
-      padding: 20px;
+      padding: 16px 20px;
     }
-    
-    .setting-row {
+
+    /* ═══════════════════════════════════════════
+       SETTING CARDS (Glassmorphism)
+    ═══════════════════════════════════════════ */
+    .setting-card {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      margin-bottom: 16px;
+      padding: 12px 14px;
+      margin-bottom: 10px;
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      box-shadow: var(--card-shadow);
+      transition: border-color 0.25s ease, box-shadow 0.25s ease;
     }
+    .setting-card:last-child {
+      margin-bottom: 0;
+    }
+    .setting-card:hover {
+      border-color: var(--border-default);
+    }
+    .setting-card.disabled-card {
+      opacity: 0.55;
+    }
+    .setting-card.glow-active {
+      border-color: var(--icon-active-border);
+      box-shadow: var(--card-shadow), 0 0 0 3px var(--icon-active-bg);
+    }
+
     .setting-info {
       display: flex;
       align-items: center;
       gap: 12px;
+      min-width: 0;
     }
     .icon-box {
-      width: 38px;
-      height: 38px;
+      width: 36px;
+      height: 36px;
+      min-width: 36px;
       border-radius: 10px;
-      background: #f8fafc;
+      background: var(--icon-default-bg);
       display: flex;
       align-items: center;
       justify-content: center;
-      color: #64748b;
-      border: 1px solid #f1f5f9;
-      transition: all 0.2s;
+      color: var(--icon-default-color);
+      border: 1px solid var(--icon-default-border);
+      transition: all 0.3s ease;
+    }
+    .icon-box.active {
+      color: var(--icon-active-color);
+      background: var(--icon-active-bg);
+      border-color: var(--icon-active-border);
+    }
+    .setting-text {
+      min-width: 0;
     }
     .setting-text h3 {
       margin: 0;
-      font-size: 14px;
+      font-size: 13px;
       font-weight: 600;
-      color: #1e293b;
+      color: var(--text-primary);
+      line-height: 1.3;
     }
     .setting-text p {
       margin: 2px 0 0 0;
-      font-size: 11px;
-      color: #94a3b8;
+      font-size: 10.5px;
+      color: var(--text-muted);
+      line-height: 1.3;
     }
-    
-    /* Toggles iOS Style */
+
+    /* ═══════════════════════════════════════════
+       TOGGLE SWITCHES (iOS Style)
+    ═══════════════════════════════════════════ */
     .switch {
       position: relative;
       display: inline-block;
-      width: 44px;
+      width: 42px;
       height: 24px;
+      flex-shrink: 0;
     }
     .switch input { opacity: 0; width: 0; height: 0; }
     .slider {
-      position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0;
-      background-color: #cbd5e1;
-      transition: .3s;
+      position: absolute;
+      cursor: pointer;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background-color: var(--toggle-off);
+      transition: background-color 0.3s, box-shadow 0.3s;
       border-radius: 24px;
     }
     .slider:before {
-      position: absolute; content: ""; height: 20px; width: 20px; left: 2px; bottom: 2px;
+      position: absolute;
+      content: "";
+      height: 20px;
+      width: 20px;
+      left: 2px;
+      bottom: 2px;
       background-color: white;
-      transition: .3s;
+      transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
       border-radius: 50%;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.15);
     }
-    input:checked + .slider { background-color: #0b5ce3; }
-    input:checked + .slider:before { transform: translateX(20px); }
-    input:disabled + .slider { opacity: 0.5; cursor: not-allowed; }
+    input:checked + .slider {
+      background-color: var(--toggle-on);
+    }
+    input:checked + .slider:before {
+      transform: translateX(18px);
+    }
+    input:disabled + .slider {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
 
-    /* Footer / Record Button */
+    /* ═══════════════════════════════════════════
+       FOOTER / ACTION AREA
+    ═══════════════════════════════════════════ */
     .footer {
-      padding: 20px;
-      background: #f8fafc;
-      border-top: 1px solid #f1f5f9;
+      padding: 16px 20px 20px;
+      border-top: 1px solid var(--border-default);
+      background: var(--bg-secondary);
     }
-    
+
+    /* ═══════════════════════════════════════════
+       RECORD BUTTON — Gradient + Pulse
+    ═══════════════════════════════════════════ */
     .btn-record {
       width: 100%;
-      padding: 14px;
-      background: #f12546; /* Vimeo Red */
+      padding: 13px 16px;
+      background: linear-gradient(135deg, #EF4444 0%, #F97316 100%);
       color: white;
       border: none;
-      border-radius: 10px;
-      font-size: 15px;
+      border-radius: 12px;
+      font-size: 14px;
       font-weight: 600;
       cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
       gap: 8px;
-      transition: all 0.2s;
-      box-shadow: 0 4px 12px rgba(241, 37, 70, 0.25);
+      transition: all 0.25s ease;
+      box-shadow: 0 4px 14px rgba(239, 68, 68, 0.3);
+      font-family: inherit;
+      letter-spacing: -0.01em;
+      position: relative;
+      overflow: hidden;
     }
-    .btn-record:hover {
-      background: #d61835;
+    .btn-record::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: 12px;
+      background: linear-gradient(135deg, rgba(255,255,255,0.15) 0%, transparent 50%);
+      opacity: 0;
+      transition: opacity 0.25s;
+    }
+    .btn-record:hover:not(:disabled) {
       transform: translateY(-1px);
-      box-shadow: 0 6px 16px rgba(241, 37, 70, 0.3);
+      box-shadow: 0 6px 20px rgba(239, 68, 68, 0.4);
     }
-    
+    .btn-record:hover:not(:disabled)::before {
+      opacity: 1;
+    }
+    .btn-record:active:not(:disabled) {
+      transform: translateY(0px);
+      box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3);
+    }
+    .btn-record:disabled {
+      cursor: not-allowed;
+      opacity: 0.7;
+    }
+    .btn-record svg {
+      flex-shrink: 0;
+    }
+
+    @keyframes pulse-record {
+      0%, 100% { box-shadow: 0 4px 14px rgba(239, 68, 68, 0.3); }
+      50% { box-shadow: 0 4px 24px rgba(239, 68, 68, 0.5), 0 0 0 6px rgba(239, 68, 68, 0.08); }
+    }
+    .btn-record.pulse-anim {
+      animation: pulse-record 2s ease-in-out infinite;
+    }
+
+    /* ═══════════════════════════════════════════
+       STOP BUTTON
+    ═══════════════════════════════════════════ */
     .btn-stop {
-      background: #0f172a;
-      box-shadow: 0 4px 12px rgba(15, 23, 42, 0.2);
+      background: var(--btn-stop-bg);
+      box-shadow: 0 4px 12px rgba(15, 23, 42, 0.15);
       display: none;
     }
-    .btn-stop:hover { 
-      background: #1e293b; 
-      box-shadow: 0 6px 16px rgba(15, 23, 42, 0.3);
+    .btn-stop::before { display: none; }
+    .btn-stop:hover:not(:disabled) {
+      box-shadow: 0 6px 16px rgba(15, 23, 42, 0.25);
+      opacity: 0.9;
     }
-    
-    .btn-abort {
-      background: #ffffff;
-      color: #64748b;
-      border: 1px solid #e2e8f0;
-      box-shadow: none;
+
+    @media (prefers-color-scheme: dark) {
+      .btn-stop { color: #0F172A; }
+    }
+
+    /* ═══════════════════════════════════════════
+       ABORT / SECONDARY BUTTON
+    ═══════════════════════════════════════════ */
+    .btn-secondary {
+      width: 100%;
+      padding: 11px 16px;
+      background: var(--btn-abort-bg);
+      color: var(--btn-abort-color);
+      border: 1px solid var(--btn-abort-border);
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
       display: none;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: all 0.2s;
       margin-top: 8px;
+      box-shadow: none;
+      font-family: inherit;
     }
-    .btn-abort:hover {
-      background: #f8fafc;
-      color: #ef4444;
-      border-color: #fca5a5;
+    .btn-secondary:hover {
+      background: var(--btn-abort-hover-bg);
+      color: var(--error);
+      border-color: #FCA5A5;
     }
-    
-    /* Tabs for Popup */
-    .tabs {
+    .btn-secondary svg {
+      flex-shrink: 0;
+    }
+
+    /* ═══════════════════════════════════════════
+       PROCESSING STATE
+    ═══════════════════════════════════════════ */
+    .processing-banner {
+      display: none;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 14px;
+      margin-bottom: 12px;
+      background: var(--processing-bg);
+      border: 1px solid var(--processing-border);
+      border-radius: 10px;
+    }
+    .processing-banner.active {
       display: flex;
-      border-bottom: 1px solid #e2e8f0;
     }
-    .tab {
+    .processing-spinner {
+      width: 16px;
+      height: 16px;
+      border: 2px solid var(--accent-blue);
+      border-top-color: transparent;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      flex-shrink: 0;
+    }
+    .processing-text {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--accent-blue);
+    }
+
+    @keyframes spin {
+      100% { transform: rotate(360deg); }
+    }
+
+    /* ═══════════════════════════════════════════
+       RECORDING ACTIONS
+    ═══════════════════════════════════════════ */
+    .recording-actions {
+      display: none;
+      gap: 8px;
+    }
+    .recording-actions.active {
+      display: flex;
+    }
+    .recording-actions .btn-action {
       flex: 1;
-      text-align: center;
-      padding: 12px 0;
+      padding: 11px 12px;
+      border-radius: 10px;
       font-size: 13px;
       font-weight: 600;
-      color: #64748b;
       cursor: pointer;
-      border-bottom: 2px solid transparent;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      transition: all 0.2s;
+      font-family: inherit;
+      border: none;
     }
-    .tab.active {
-      color: #0b5ce3;
-      border-bottom: 2px solid #0b5ce3;
+    .btn-action.stop-action {
+      background: var(--btn-stop-bg);
+      color: white;
+      box-shadow: 0 2px 8px rgba(15, 23, 42, 0.15);
     }
-    .tab-content {
-      display: none;
+    .btn-action.stop-action:hover {
+      opacity: 0.9;
     }
-    .tab-content.active {
-      display: block;
+    @media (prefers-color-scheme: dark) {
+      .btn-action.stop-action { color: #0F172A; background: #F8FAFC; }
     }
-    
-    /* Módulos de prática */
+    .btn-action.discard-action {
+      background: transparent;
+      color: var(--text-secondary);
+      border: 1px solid var(--border-default);
+    }
+    .btn-action.discard-action:hover {
+      color: var(--error);
+      border-color: #FCA5A5;
+      background: rgba(239, 68, 68, 0.05);
+    }
+
+    /* ═══════════════════════════════════════════
+       PRACTICE MODULES
+    ═══════════════════════════════════════════ */
+    .practice-header {
+      margin: 0 0 12px 0;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
     .module-item {
-        padding: 10px 12px;
-        border: 1px solid #e2e8f0;
-        border-radius: 8px;
-        margin-bottom: 8px;
-        cursor: pointer;
-        transition: background 0.15s ease, border-color 0.15s ease;
+      padding: 12px 14px;
+      border: 1px solid var(--card-border);
+      border-radius: 10px;
+      margin-bottom: 8px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      background: var(--card-bg);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
     }
     .module-item:hover {
-        background: #f8fafc;
-        border-color: #cbd5e1;
+      background: var(--bg-glass);
+      border-color: var(--border-default);
+      transform: translateY(-1px);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
     }
     .module-title {
-        font-size: 13px;
-        font-weight: 600;
-        color: #1e293b;
-        margin-bottom: 2px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 3px;
     }
     .module-meta {
-        font-size: 11px;
-        color: #94a3b8;
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    /* Skeleton Loader */
+    .skeleton-card {
+      padding: 14px;
+      border: 1px solid var(--card-border);
+      border-radius: 10px;
+      margin-bottom: 8px;
+    }
+    .skeleton-line {
+      height: 10px;
+      border-radius: 5px;
+      background: linear-gradient(90deg, var(--bg-glass) 25%, var(--border-glass) 50%, var(--bg-glass) 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.5s ease-in-out infinite;
+    }
+    .skeleton-line.w-70 { width: 70%; margin-bottom: 8px; height: 12px; }
+    .skeleton-line.w-45 { width: 45%; }
+
+    @keyframes shimmer {
+      0% { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+
+    .modules-message {
+      font-size: 12px;
+      color: var(--text-secondary);
+      text-align: center;
+      padding: 20px 0;
+    }
+    .modules-error {
+      font-size: 12px;
+      color: var(--error);
+      text-align: center;
+      padding: 20px 0;
+    }
+
+    /* ═══════════════════════════════════════════
+       UTILITY / TRANSITIONS
+    ═══════════════════════════════════════════ */
+    .hidden { display: none !important; }
+
+    .state-transition {
+      animation: fadeIn 0.3s ease;
     }
   </style>
 </head>
 <body>
 
-  <!-- Header -->
+  <!-- ════════════════════ HEADER ════════════════════ -->
   <div class="header">
-    <h2>Capture OS v3</h2>
-    <div class="settings-icon">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+    <div class="header-left" id="header-default">
+      <span class="header-sparkle">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2L9.5 9.5 2 12l7.5 2.5L12 22l2.5-7.5L22 12l-7.5-2.5L12 2z"/>
+        </svg>
+      </span>
+      <h2>Capture OS</h2>
+      <span class="version-pill">v3</span>
+    </div>
+
+    <!-- Recording header (shown during recording) -->
+    <div class="header-recording" id="header-recording">
+      <svg width="8" height="8" viewBox="0 0 8 8" fill="none" class="rec-dot-svg">
+        <circle cx="4" cy="4" r="4" fill="#EF4444"/>
+      </svg>
+      <span class="rec-label">Gravando</span>
+      <span class="rec-timer" id="rec-timer">00:00</span>
+    </div>
+
+    <div class="settings-icon" id="settings-icon" title="Configurações">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="3"></circle>
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+      </svg>
     </div>
   </div>
 
-  <div class="tabs">
-    <div class="tab active" data-tab="tab-record">Gravar</div>
-    <div class="tab" data-tab="tab-practice">Modo Prática</div>
+  <p class="tagline" id="tagline">Gravação inteligente de tela</p>
+
+  <!-- ════════════════════ SEGMENTED TABS ════════════════════ -->
+  <div class="tabs-wrapper" id="tabs-wrapper">
+    <div class="tabs">
+      <div class="tab active" data-tab="tab-record">Gravar</div>
+      <div class="tab" data-tab="tab-practice">Modo Prática</div>
+    </div>
   </div>
 
-  <!-- Tab Gravação -->
+  <!-- ════════════════════ TAB: RECORD ════════════════════ -->
   <div id="tab-record" class="tab-content active">
-    <!-- Configurations -->
-    <div class="content">
-      
-      <!-- Tela Inteira (Fixo) -->
-      <div class="setting-row">
+    <div class="content" id="settings-content">
+
+      <!-- Capturar Tela (always on, disabled) -->
+      <div class="setting-card disabled-card">
         <div class="setting-info">
-          <div class="icon-box">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>
+          <div class="icon-box active">
+            <!-- Monitor icon -->
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+              <line x1="8" y1="21" x2="16" y2="21"></line>
+              <line x1="12" y1="17" x2="12" y2="21"></line>
+            </svg>
           </div>
           <div class="setting-text">
             <h3>Capturar Tela</h3>
@@ -238,14 +703,20 @@
       </div>
 
       <!-- Microfone -->
-      <div class="setting-row">
+      <div class="setting-card" id="card-mic">
         <div class="setting-info">
           <div class="icon-box" id="icon-mic">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg>
+            <!-- Mic icon -->
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+              <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+              <line x1="12" y1="19" x2="12" y2="23"></line>
+              <line x1="8" y1="23" x2="16" y2="23"></line>
+            </svg>
           </div>
           <div class="setting-text">
             <h3>Microfone</h3>
-            <p>Gravar com sua voz (Modo B)</p>
+            <p>Narração manual (Modo B)</p>
           </div>
         </div>
         <label class="switch">
@@ -254,15 +725,19 @@
         </label>
       </div>
 
-      <!-- Câmera -->
-      <div class="setting-row">
+      <!-- Câmera Web (disabled, "Em breve") -->
+      <div class="setting-card disabled-card">
         <div class="setting-info">
           <div class="icon-box" id="icon-cam">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 7l-7 5 7 5V7z"></path><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>
+            <!-- Camera icon -->
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M23 7l-7 5 7 5V7z"></path>
+              <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
+            </svg>
           </div>
           <div class="setting-text">
             <h3>Câmera Web</h3>
-            <p>O seu rosto na gravação (Em Breve)</p>
+            <p>Em breve</p>
           </div>
         </div>
         <label class="switch">
@@ -271,15 +746,18 @@
         </label>
       </div>
 
-      <!-- Narração IA -->
-      <div class="setting-row" style="margin-bottom: 0;">
+      <!-- Narrador IA -->
+      <div class="setting-card" id="card-ai">
         <div class="setting-info">
-          <div class="icon-box" id="icon-ai" style="color: #0b5ce3; background: #eff6ff; border-color: #bfdbfe;">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path></svg>
+          <div class="icon-box active" id="icon-ai">
+            <!-- Sparkle/Star icon -->
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 2L9.5 9.5 2 12l7.5 2.5L12 22l2.5-7.5L22 12l-7.5-2.5L12 2z"/>
+            </svg>
           </div>
           <div class="setting-text">
             <h3>Narrador IA</h3>
-            <p>Automação por Inteligência Mágica</p>
+            <p>Automação por IA</p>
           </div>
         </div>
         <label class="switch">
@@ -291,29 +769,73 @@
     </div>
 
     <!-- Footer Actions -->
-    <div class="footer">
-      <button id="btn-start" class="btn-record">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="3" fill="currentColor"></circle></svg>
+    <div class="footer" id="footer-actions">
+      <!-- Processing banner -->
+      <div class="processing-banner" id="processing-banner">
+        <div class="processing-spinner"></div>
+        <span class="processing-text">Processando vídeo anterior...</span>
+      </div>
+
+      <!-- Default: Record button -->
+      <button id="btn-start" class="btn-record pulse-anim">
+        <!-- Record circle icon -->
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"></circle>
+          <circle cx="12" cy="12" r="4" fill="currentColor" stroke="none"></circle>
+        </svg>
         Gravar Agora
       </button>
-      <button id="btn-stop" class="btn-record btn-stop">
-        ⏹ Finalizar Gravação
-      </button>
-      <button id="btn-abort" class="btn-record btn-abort">
-        🗑️ Descartar Gravação
-      </button>
-      <button id="btn-force-stop" class="btn-record btn-abort">
-        🛑 Forçar Parada do Processamento
+
+      <!-- Recording state: Stop + Discard side by side -->
+      <div class="recording-actions" id="recording-actions">
+        <button id="btn-stop" class="btn-action stop-action">
+          <!-- Square stop icon -->
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+            <rect x="4" y="4" width="16" height="16" rx="2"/>
+          </svg>
+          Finalizar
+        </button>
+        <button id="btn-abort" class="btn-action discard-action">
+          <!-- Trash icon -->
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="3 6 5 6 21 6"></polyline>
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+          </svg>
+          Descartar
+        </button>
+      </div>
+
+      <!-- Force stop processing -->
+      <button id="btn-force-stop" class="btn-secondary">
+        <!-- X-circle / force stop icon -->
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"></circle>
+          <line x1="15" y1="9" x2="9" y2="15"></line>
+          <line x1="9" y1="9" x2="15" y2="15"></line>
+        </svg>
+        Forçar Parada
       </button>
     </div>
   </div>
 
-  <!-- Tab Practice -->
+  <!-- ════════════════════ TAB: PRACTICE ════════════════════ -->
   <div id="tab-practice" class="tab-content">
     <div class="content">
-      <h3 style="margin-top: 0; font-size: 14px; color: #1e293b;">Módulos para esta página</h3>
+      <h3 class="practice-header">Módulos para esta página</h3>
       <div id="practice-modules-container">
-        <p style="font-size: 12px; color: #64748b;">Carregando...</p>
+        <!-- Skeleton loading (default state) -->
+        <div class="skeleton-card">
+          <div class="skeleton-line w-70"></div>
+          <div class="skeleton-line w-45"></div>
+        </div>
+        <div class="skeleton-card">
+          <div class="skeleton-line w-70"></div>
+          <div class="skeleton-line w-45"></div>
+        </div>
+        <div class="skeleton-card">
+          <div class="skeleton-line w-70"></div>
+          <div class="skeleton-line w-45"></div>
+        </div>
       </div>
     </div>
   </div>

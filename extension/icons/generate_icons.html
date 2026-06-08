@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Generate Capture OS Icons</title>
+  <style>
+    body { font-family: system-ui; background: #f0f0f0; padding: 40px; text-align: center; }
+    canvas { border: 1px solid #ccc; margin: 10px; background: white; }
+    .row { display: flex; gap: 20px; justify-content: center; align-items: end; margin: 20px 0; }
+    .icon-group { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+    label { font-size: 13px; font-weight: 600; color: #333; }
+    button { padding: 12px 24px; background: #3B82F6; color: white; border: none; border-radius: 8px; font-size: 14px; cursor: pointer; margin: 10px; }
+    button:hover { background: #2563EB; }
+    .instructions { max-width: 600px; margin: 0 auto 30px; text-align: left; font-size: 14px; color: #555; line-height: 1.6; }
+  </style>
+</head>
+<body>
+  <h1>Capture OS v3 — Icon Generator</h1>
+  <div class="instructions">
+    <p><strong>Instruções:</strong> Clique em "Gerar Ícones" para desenhar. Depois clique em cada botão "Baixar" para salvar os PNGs. Salve cada arquivo na pasta <code>extension/icons/</code> com o nome correspondente.</p>
+  </div>
+
+  <div class="row">
+    <div class="icon-group">
+      <label>128×128</label>
+      <canvas id="c128" width="128" height="128"></canvas>
+      <button onclick="download('c128', 'icon-128.png')">Baixar 128</button>
+    </div>
+    <div class="icon-group">
+      <label>48×48</label>
+      <canvas id="c48" width="48" height="48"></canvas>
+      <button onclick="download('c48', 'icon-48.png')">Baixar 48</button>
+    </div>
+    <div class="icon-group">
+      <label>32×32</label>
+      <canvas id="c32" width="32" height="32"></canvas>
+      <button onclick="download('c32', 'icon-32.png')">Baixar 32</button>
+    </div>
+    <div class="icon-group">
+      <label>16×16</label>
+      <canvas id="c16" width="16" height="16"></canvas>
+      <button onclick="download('c16', 'icon-16.png')">Baixar 16</button>
+    </div>
+  </div>
+
+  <button onclick="generateAll()" style="font-size: 16px; padding: 14px 32px; margin-top: 20px;">🎨 Gerar Ícones</button>
+
+  <script>
+    function drawIcon(ctx, size) {
+      const s = size;
+      ctx.clearRect(0, 0, s, s);
+
+      // === Background: rounded square with gradient ===
+      const pad = s * 0.06;
+      const r = s * 0.22; // corner radius
+      const grad = ctx.createLinearGradient(0, 0, s, s);
+      grad.addColorStop(0, '#3B82F6');  // blue
+      grad.addColorStop(1, '#6366F1');  // indigo
+
+      ctx.beginPath();
+      roundedRect(ctx, pad, pad, s - pad * 2, s - pad * 2, r);
+      ctx.fillStyle = grad;
+      ctx.fill();
+
+      // === Monitor/Screen shape (white, centered) ===
+      const screenW = s * 0.48;
+      const screenH = s * 0.34;
+      const screenX = (s - screenW) / 2;
+      const screenY = s * 0.24;
+      const screenR = s * 0.06;
+
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+      ctx.beginPath();
+      roundedRect(ctx, screenX, screenY, screenW, screenH, screenR);
+      ctx.fill();
+
+      // Screen stand (small line)
+      const standW = s * 0.02;
+      const standH = s * 0.08;
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+      ctx.fillRect(s / 2 - standW / 2, screenY + screenH, standW, standH);
+
+      // Screen base
+      const baseW = s * 0.16;
+      const baseH = s * 0.025;
+      const baseR = s * 0.012;
+      ctx.beginPath();
+      roundedRect(ctx, s / 2 - baseW / 2, screenY + screenH + standH, baseW, baseH, baseR);
+      ctx.fill();
+
+      // === AI Sparkle (4-point star, top-right) ===
+      const sparkleX = s * 0.72;
+      const sparkleY = s * 0.28;
+      const sparkleSize = s * 0.11;
+      drawSparkle(ctx, sparkleX, sparkleY, sparkleSize, 'rgba(255, 255, 255, 0.95)');
+
+      // Small secondary sparkle
+      if (size >= 32) {
+        const sparkle2X = s * 0.80;
+        const sparkle2Y = s * 0.18;
+        const sparkle2Size = s * 0.055;
+        drawSparkle(ctx, sparkle2X, sparkle2Y, sparkle2Size, 'rgba(255, 255, 255, 0.7)');
+      }
+
+      // === Crosshair dot inside the screen ===
+      if (size >= 32) {
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(s / 2, screenY + screenH / 2, s * 0.035, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    function drawSparkle(ctx, cx, cy, size, color) {
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      // 4-point star
+      const points = 4;
+      const outerR = size;
+      const innerR = size * 0.3;
+      for (let i = 0; i < points * 2; i++) {
+        const angle = (i * Math.PI) / points - Math.PI / 2;
+        const radius = i % 2 === 0 ? outerR : innerR;
+        const x = cx + Math.cos(angle) * radius;
+        const y = cy + Math.sin(angle) * radius;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    function roundedRect(ctx, x, y, w, h, r) {
+      r = Math.min(r, w / 2, h / 2);
+      ctx.moveTo(x + r, y);
+      ctx.lineTo(x + w - r, y);
+      ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+      ctx.lineTo(x + w, y + h - r);
+      ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+      ctx.lineTo(x + r, y + h);
+      ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+      ctx.lineTo(x, y + r);
+      ctx.quadraticCurveTo(x, y, x + r, y);
+    }
+
+    function generateAll() {
+      [128, 48, 32, 16].forEach(size => {
+        const canvas = document.getElementById('c' + size);
+        const ctx = canvas.getContext('2d');
+        drawIcon(ctx, size);
+      });
+    }
+
+    function download(canvasId, filename) {
+      const canvas = document.getElementById(canvasId);
+      const link = document.createElement('a');
+      link.download = filename;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    }
+
+    // Auto-generate on load
+    window.onload = generateAll;
+  </script>
+</body>
+</html>

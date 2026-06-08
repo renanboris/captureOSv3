@@ -199,22 +199,47 @@ let blinkInterval = null;
 let isDotVisible = true;
 let activePollInterval = null;
 
-function drawCameraIcon(ctx, color) {
+function drawScreenIcon(ctx, color) {
     ctx.fillStyle = color;
-    // Corpo da câmera
+    // Monitor/screen body (rounded rectangle)
     ctx.beginPath();
     if (ctx.roundRect) {
-        ctx.roundRect(1, 4, 9, 8, 2);
+        ctx.roundRect(1, 3, 10, 7, 1.5);
     } else {
-        ctx.rect(1, 4, 9, 8);
+        ctx.rect(1, 3, 10, 7);
     }
     ctx.fill();
-    // Lente (Triângulo)
+    // Monitor stand
+    ctx.fillRect(5, 10, 2, 1.5);
+    // Monitor base
     ctx.beginPath();
-    ctx.moveTo(10, 6.5);
-    ctx.lineTo(15, 3.5);
-    ctx.lineTo(15, 12.5);
-    ctx.lineTo(10, 9.5);
+    if (ctx.roundRect) {
+        ctx.roundRect(3.5, 11.5, 5, 1.2, 0.5);
+    } else {
+        ctx.rect(3.5, 11.5, 5, 1.2);
+    }
+    ctx.fill();
+    // AI Sparkle (4-point star, top-right)
+    drawSparkle(ctx, 13, 4, 2.5, color);
+    // Small secondary sparkle
+    drawSparkle(ctx, 14.5, 1.8, 1.2, color);
+}
+
+function drawSparkle(ctx, cx, cy, size, color) {
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    const points = 4;
+    const outerR = size;
+    const innerR = size * 0.3;
+    for (let i = 0; i < points * 2; i++) {
+        const angle = (i * Math.PI) / points - Math.PI / 2;
+        const radius = i % 2 === 0 ? outerR : innerR;
+        const x = cx + Math.cos(angle) * radius;
+        const y = cy + Math.sin(angle) * radius;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
     ctx.fill();
 }
 
@@ -224,13 +249,13 @@ function setStaticIcon() {
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, 16, 16);
     
-    drawCameraIcon(ctx, '#0b5ce3'); // Azul Clean
+    drawScreenIcon(ctx, '#3B82F6'); // Accent Blue
     
     chrome.action.setIcon({ imageData: ctx.getImageData(0, 0, 16, 16) });
 }
 
 function startBlinkingBadge() {
-    chrome.action.setBadgeText({ text: "" }); // Remove o texto
+    chrome.action.setBadgeText({ text: "" });
     if (blinkInterval) clearInterval(blinkInterval);
     
     blinkInterval = setInterval(() => {
@@ -239,24 +264,30 @@ function startBlinkingBadge() {
         const ctx = canvas.getContext('2d');
         ctx.clearRect(0, 0, 16, 16);
         
-        // Base da câmera desativada (cinza) para destacar o REC
-        drawCameraIcon(ctx, '#64748b'); 
+        // Base do ícone desativado (cinza) para destacar o REC
+        drawScreenIcon(ctx, '#64748b');
         
-        // Notification Badge Pulsante (Canto superior direito)
+        // Recording dot pulsante — maior e mais visível
         if (isDotVisible) {
-            ctx.fillStyle = '#FF3B30';
+            // Glow externo
+            ctx.fillStyle = 'rgba(239, 68, 68, 0.3)';
+            ctx.beginPath();
+            ctx.arc(13, 3, 5, 0, 2 * Math.PI);
+            ctx.fill();
+            // Dot principal vermelho
+            ctx.fillStyle = '#EF4444';
             ctx.beginPath();
             ctx.arc(13, 3, 3, 0, 2 * Math.PI);
-            ctx.fill();
-            
-            ctx.fillStyle = 'rgba(255, 59, 48, 0.4)';
-            ctx.beginPath();
-            ctx.arc(13, 3, 4.5, 0, 2 * Math.PI);
             ctx.fill();
         } else {
-            ctx.fillStyle = 'rgba(255, 59, 48, 0.15)';
+            // Fase dim — vermelho escuro, ainda visível
+            ctx.fillStyle = 'rgba(220, 38, 38, 0.25)';
             ctx.beginPath();
-            ctx.arc(13, 3, 3, 0, 2 * Math.PI);
+            ctx.arc(13, 3, 4, 0, 2 * Math.PI);
+            ctx.fill();
+            ctx.fillStyle = '#DC2626';
+            ctx.beginPath();
+            ctx.arc(13, 3, 2, 0, 2 * Math.PI);
             ctx.fill();
         }
         
