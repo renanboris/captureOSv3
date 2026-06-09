@@ -13,6 +13,16 @@ logger = logging.getLogger(__name__)
 FPS = 30
 FRAME_DUR = 1.0 / FPS
 
+# Overlay / Moldura — configuração
+OVERLAY_DIR = os.path.join(os.path.dirname(__file__), "overlays")
+DEFAULT_OVERLAY = os.path.join(OVERLAY_DIR, "slide.png")
+
+# Dimensões do "buraco" na moldura onde o vídeo encaixa
+OVERLAY_VIDEO_X = 54
+OVERLAY_VIDEO_Y = 31
+OVERLAY_VIDEO_W = 1811
+OVERLAY_VIDEO_H = 1019
+
 
 def _get_media_duration(file_path: str) -> float:
     """Obtém a duração de um arquivo de mídia usando ffprobe."""
@@ -98,7 +108,8 @@ def _calculate_segments(timeline_events: list, video_duration: float) -> tuple:
     return segments, audio_delays
 
 
-def _build_filter_complex(segments: list, audio_delays: list, n_audio_inputs: int) -> str:
+def _build_filter_complex(segments: list, audio_delays: list, n_audio_inputs: int,
+                          overlay_input_idx: int | None = None) -> str:
     """
     Constrói o filter_complex do FFmpeg para composição em passada única.
     
@@ -106,6 +117,7 @@ def _build_filter_complex(segments: list, audio_delays: list, n_audio_inputs: in
     - trim + setpts para extrair segmentos de vídeo
     - trim + tpad(clone) para criar freeze frames
     - concat para juntar todos os segmentos
+    - scale + overlay para aplicar moldura (se overlay_input_idx fornecido)
     - adelay + amix para posicionar e mixar áudios TTS
     """
     filter_chains = []
@@ -139,8 +151,33 @@ def _build_filter_complex(segments: list, audio_delays: list, n_audio_inputs: in
     n_segs = len(seg_labels)
     concat_input = "".join(seg_labels)
     filter_chains.append(
-        f"{concat_input} concat=n={n_segs}:v=1:a=0 [vout]"
+        f"{concat_input} concat=n={n_segs}:v=1:a=0 [vconcat]"
     )
+
+    # Aplicar moldura (overlay) se configurado
+    if overlay_input_idx is not None:
+        # Escalar o vídeo para caber no buraco da moldura
+        filter_chains.append(
+            f"[vconcat] scale={OVERLAY_VIDEO_W}:{OVERLAY_VIDEO_H}:force_original_aspect_ratio=decrease,"
+            f" pad={OVERLAY_VIDEO_W}:{OVERLAY_VIDEO_H}:(ow-iw)/2:(oh-ih)/2:color=black,"
+            f" setpts=PTS-STARTPTS [vscaled]"
+        )
+        # Criar canvas 1920x1080 preto, posicionar vídeo escalado nele
+        filter_chains.append(
+            f"[vscaled] pad=1920:1080:{OVERLAY_VIDEO_X}:{OVERLAY_VIDEO_Y}:color=black [vpadded]"
+        )
+        # Sobrepor a moldura (com alpha) por cima do vídeo
+        filter_chains.append(
+            f"[{overlay_input_idx}:v] format=rgba [ovr]"
+        )
+        filter_chains.append(
+            f"[vpadded][ovr] overlay=0:0:format=auto [vout]"
+        )
+    else:
+        # Sem overlay — renomeia vconcat para vout
+        filter_chains.append(
+            f"[vconcat] null [vout]"
+        )
 
     # Processar áudios TTS (posicionar cada um no timestamp correto)
     if audio_delays:
@@ -171,12 +208,19 @@ def _build_filter_complex(segments: list, audio_delays: list, n_audio_inputs: in
     return ";\n".join(filter_chains)
 
 
-def compose_video_with_freeze_frames(input_webm: str, output_mp4: str, timeline_events: list):
+def compose_video_with_freeze_frames(input_webm: str, output_mp4: str, timeline_events: list,
+                                     overlay_path: str | None = DEFAULT_OVERLAY):
     """
     Compõe vídeo final com freeze frames e narração TTS.
     
     Pipeline otimizada: FFmpeg puro com filter_complex (passada única).
     Fallback: MoviePy (código legado) se o FFmpeg falhar.
+    
+    Args:
+        input_webm: Caminho do vídeo de entrada (.webm)
+        output_mp4: Caminho do vídeo de saída (.mp4)
+        timeline_events: Lista de eventos com timestamp e audio_path
+        overlay_path: Caminho do PNG da moldura (None para desativar)
     
     timeline_events = [
         {"timestamp": 2.5, "audio_path": "audios/passo_1.mp3"},
@@ -225,12 +269,21 @@ def compose_video_with_freeze_frames(input_webm: str, output_mp4: str, timeline_
         return False
 
     # Construir filter_complex
-    filter_complex = _build_filter_complex(segments, audio_delays, len(valid_events))
+    # Determinar se overlay está ativo
+    use_overlay = overlay_path and os.path.exists(overlay_path)
+    overlay_input_idx = None
 
-    # Montar inputs FFmpeg: vídeo + todos os áudios
+    # Montar inputs FFmpeg: vídeo + todos os áudios + overlay (se houver)
     inputs = ["-i", input_webm]
     for event in valid_events:
         inputs.extend(["-i", event["audio_path"]])
+
+    if use_overlay:
+        inputs.extend(["-i", overlay_path])
+        overlay_input_idx = 1 + len(valid_events)  # último input
+
+    filter_complex = _build_filter_complex(segments, audio_delays, len(valid_events),
+                                           overlay_input_idx=overlay_input_idx)
 
     # Determinar mapeamento de áudio
     has_audio = len(audio_delays) > 0
@@ -262,6 +315,8 @@ def compose_video_with_freeze_frames(input_webm: str, output_mp4: str, timeline_
         print("Iniciando renderização FFmpeg (passada única)...")
         print(f"  Segmentos de vídeo: {len(segments)}")
         print(f"  Faixas de áudio: {len(audio_delays)}")
+        if use_overlay:
+            print(f"  Overlay: {os.path.basename(overlay_path)}")
 
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
 
@@ -269,13 +324,13 @@ def compose_video_with_freeze_frames(input_webm: str, output_mp4: str, timeline_
             logger.error(f"FFmpeg retornou código {result.returncode}")
             logger.error(f"FFmpeg stderr: {result.stderr[-2000:]}")
             print("[AVISO] FFmpeg filter_complex falhou. Tentando fallback MoviePy...")
-            return _compose_legacy_moviepy(input_webm, output_mp4, timeline_events)
+            return _compose_legacy_moviepy(input_webm, output_mp4, timeline_events, overlay_path)
 
         # Verificar se o arquivo foi criado
         if not os.path.exists(output_mp4) or os.path.getsize(output_mp4) < 1000:
             logger.error("Arquivo de saída não foi gerado corretamente.")
             print("[AVISO] Saída inválida. Tentando fallback MoviePy...")
-            return _compose_legacy_moviepy(input_webm, output_mp4, timeline_events)
+            return _compose_legacy_moviepy(input_webm, output_mp4, timeline_events, overlay_path)
 
         output_size_mb = os.path.getsize(output_mp4) / (1024 * 1024)
         print(f"[OK] Renderização concluída! ({output_size_mb:.1f} MB)")
@@ -285,12 +340,12 @@ def compose_video_with_freeze_frames(input_webm: str, output_mp4: str, timeline_
     except subprocess.TimeoutExpired:
         logger.error("FFmpeg excedeu o timeout de 600 segundos.")
         print("[AVISO] Timeout FFmpeg. Tentando fallback MoviePy...")
-        return _compose_legacy_moviepy(input_webm, output_mp4, timeline_events)
+        return _compose_legacy_moviepy(input_webm, output_mp4, timeline_events, overlay_path)
 
     except Exception as e:
         logger.error(f"Erro na execução do FFmpeg: {e}")
         print(f"[AVISO] Erro FFmpeg: {e}. Tentando fallback MoviePy...")
-        return _compose_legacy_moviepy(input_webm, output_mp4, timeline_events)
+        return _compose_legacy_moviepy(input_webm, output_mp4, timeline_events, overlay_path)
 
 
 def _simple_convert(input_webm: str, output_mp4: str) -> bool:
@@ -310,7 +365,8 @@ def _simple_convert(input_webm: str, output_mp4: str) -> bool:
         return False
 
 
-def _compose_legacy_moviepy(input_webm: str, output_mp4: str, timeline_events: list):
+def _compose_legacy_moviepy(input_webm: str, output_mp4: str, timeline_events: list,
+                            overlay_path: str | None = DEFAULT_OVERLAY):
     """
     Fallback: composição via MoviePy.
     Usado automaticamente se o pipeline FFmpeg puro falhar.
@@ -319,7 +375,8 @@ def _compose_legacy_moviepy(input_webm: str, output_mp4: str, timeline_events: l
     the FFmpeg path and this fallback produce identical (segments, audio_delays).
     """
     try:
-        from moviepy import VideoFileClip, AudioFileClip, CompositeAudioClip, concatenate_videoclips
+        from moviepy import (VideoFileClip, AudioFileClip, CompositeAudioClip,
+                             CompositeVideoClip, ImageClip, concatenate_videoclips)
     except ImportError:
         logger.error("MoviePy não instalado. Não é possível usar fallback.")
         return False
@@ -405,6 +462,19 @@ def _compose_legacy_moviepy(input_webm: str, output_mp4: str, timeline_events: l
             return False
 
         final_video = concatenate_videoclips(clips)
+
+        # Aplicar moldura (overlay) se configurado
+        use_overlay = overlay_path and os.path.exists(overlay_path)
+        if use_overlay:
+            print(f"[Fallback MoviePy] Aplicando overlay: {os.path.basename(overlay_path)}")
+            overlay_clip = ImageClip(overlay_path).with_duration(final_video.duration)
+            # Redimensionar vídeo para caber no buraco da moldura
+            final_video = final_video.resized((OVERLAY_VIDEO_W, OVERLAY_VIDEO_H))
+            # Compor: vídeo posicionado + moldura por cima
+            final_video = CompositeVideoClip([
+                final_video.with_position((OVERLAY_VIDEO_X, OVERLAY_VIDEO_Y)),
+                overlay_clip
+            ], size=(1920, 1080))
 
         if audio_clips:
             final_video = final_video.with_audio(CompositeAudioClip(audio_clips))

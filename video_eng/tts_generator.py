@@ -30,6 +30,7 @@ async def gerar_audio(texto: str, output_path: str, voz: str = "pt-BR-FranciscaN
     texto_falado = re.sub(r"(?i)\bsenior\b", "Sênior", texto_falado)
     texto_falado = re.sub(r"\bX\b", "Éks", texto_falado)
     texto_falado = re.sub(r"(?i)\btemplates?\b", lambda m: "têmpleits" if m.group().lower().endswith("s") else "têmpleit", texto_falado)
+    texto_falado = re.sub(r"(?i)\bsign\b", "sáin", texto_falado)
     
     # Anti-engasgos do TTS
     texto_falado = texto_falado.replace("_", " ")

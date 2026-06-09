@@ -342,7 +342,7 @@ import os
 import subprocess
 from unittest.mock import patch, MagicMock
 
-from video_eng.time_bender import compose_video_with_freeze_frames
+from video_eng.time_bender import compose_video_with_freeze_frames, DEFAULT_OVERLAY
 
 
 class TestRoutingEmptyOrAllInvalidTimeline:
@@ -461,7 +461,7 @@ class TestRoutingFFmpegFailureFallback:
             "input.webm", "output.mp4", timeline
         )
         assert result is True
-        mock_moviepy.assert_called_once_with("input.webm", "output.mp4", timeline)
+        mock_moviepy.assert_called_once_with("input.webm", "output.mp4", timeline, DEFAULT_OVERLAY)
 
     @patch("video_eng.time_bender._compose_legacy_moviepy", return_value=True)
     @patch("subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="ffmpeg", timeout=600))
@@ -478,7 +478,7 @@ class TestRoutingFFmpegFailureFallback:
             "input.webm", "output.mp4", timeline
         )
         assert result is True
-        mock_moviepy.assert_called_once_with("input.webm", "output.mp4", timeline)
+        mock_moviepy.assert_called_once_with("input.webm", "output.mp4", timeline, DEFAULT_OVERLAY)
 
     @patch("video_eng.time_bender._compose_legacy_moviepy", return_value=True)
     @patch("subprocess.run", side_effect=OSError("FFmpeg binary not found"))
@@ -495,7 +495,7 @@ class TestRoutingFFmpegFailureFallback:
             "input.webm", "output.mp4", timeline
         )
         assert result is True
-        mock_moviepy.assert_called_once_with("input.webm", "output.mp4", timeline)
+        mock_moviepy.assert_called_once_with("input.webm", "output.mp4", timeline, DEFAULT_OVERLAY)
 
     @patch("video_eng.time_bender._compose_legacy_moviepy", return_value=True)
     @patch("subprocess.run")
@@ -518,7 +518,7 @@ class TestRoutingFFmpegFailureFallback:
             "input.webm", "output.mp4", timeline
         )
         assert result is True
-        mock_moviepy.assert_called_once_with("input.webm", "output.mp4", timeline)
+        mock_moviepy.assert_called_once_with("input.webm", "output.mp4", timeline, DEFAULT_OVERLAY)
 
 
 class TestPublicSurfaceUnchanged:
