@@ -10,7 +10,14 @@
     <div class="editor-container">
         <header>
             <h1>Revisão de Roteiro</h1>
-            <div style="display: flex; gap: 12px;">
+            <div style="display: flex; gap: 16px; align-items: center;">
+                <label id="overlay-toggle-label" title="Aplica uma moldura decorativa ao redor do vídeo" style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 14px; font-weight: 600; color: #475569; user-select: none;">
+                    <span class="overlay-switch">
+                        <input type="checkbox" id="toggle-overlay" checked>
+                        <span class="overlay-slider"></span>
+                    </span>
+                    Moldura
+                </label>
                 <button id="btn-cancel" class="btn-secondary" style="background: white; border: 1px solid #cbd5e1; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 14px; color: #64748b;">Cancelar</button>
                 <button id="btn-render" class="btn-primary">Finalizar e Gerar Vídeo</button>
             </div>

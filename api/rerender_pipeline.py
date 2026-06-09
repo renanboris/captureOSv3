@@ -2,7 +2,7 @@ import os
 import logging
 import asyncio
 from video_eng.tts_generator import gerar_audio
-from video_eng.time_bender import compose_video_with_freeze_frames
+from video_eng.time_bender import compose_video_with_freeze_frames, DEFAULT_OVERLAY
 from api.status_manager import update_status
 
 logger = logging.getLogger("uvicorn.error")
@@ -17,11 +17,17 @@ def is_loading_step(passo: dict) -> bool:
     return passo.get("_simlink", {}).get("action") == "navigation"
 
 
-async def rerenderizar_com_roteiro_aprovado(session_id: str, roteiro_aprovado: list):
+async def rerenderizar_com_roteiro_aprovado(session_id: str, roteiro_aprovado: list,
+                                            usar_overlay: bool = True):
     """
     Pipeline parcial para re-renderização pós-editor.
     Pula a parte visual/Aura.
     Gera apenas o TTS (Passo 3) e o Vídeo final (Passo 4).
+
+    Args:
+        session_id: ID da sessão
+        roteiro_aprovado: roteiro editado/aprovado
+        usar_overlay: se True, aplica a moldura (overlay) no vídeo final
     """
     raw_webm_path = f"data/raw_videos/{session_id}_raw.webm"
     final_mp4_path = f"data/videos_gerados/{session_id}_final.mp4"
@@ -109,12 +115,15 @@ async def rerenderizar_com_roteiro_aprovado(session_id: str, roteiro_aprovado: l
             
     # --- 4. RENDERIZAÇÃO DE VÍDEO ---
     update_status(session_id, "rendering_final", "🎬 Renderizando seu vídeo final aprovado...")
-    
+
+    overlay_path = DEFAULT_OVERLAY if usar_overlay else None
+
     await asyncio.to_thread(
         compose_video_with_freeze_frames,
         raw_webm_path,
         final_mp4_path,
-        timeline_events
+        timeline_events,
+        overlay_path
     )
     
     # --- 5. GERAÇÃO DE ARTEFATOS PARALELOS ---

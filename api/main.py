@@ -235,6 +235,7 @@ class RoteiroEditadoPayload(BaseModel):
     roteiro: List[Dict[str, Any]]
     modo_input: str = "A"
     aprovado: bool = False
+    usar_overlay: bool = True
 
 class TTSPreviewPayload(BaseModel):
     texto: str
@@ -387,7 +388,9 @@ async def save_roteiro(session_id: str, payload: RoteiroEditadoPayload):
             return {"status": "ok", "message": "Já está renderizando"}
         
         update_status(session_id, "rendering_final", "Renderizando vídeo final com roteiro aprovado...")
-        task = asyncio.create_task(rerenderizar_com_roteiro_aprovado(session_id, payload.roteiro))
+        task = asyncio.create_task(
+            rerenderizar_com_roteiro_aprovado(session_id, payload.roteiro, payload.usar_overlay)
+        )
         active_tasks[session_id] = task
         task.add_done_callback(_task_exception_handler)
         task.add_done_callback(lambda t: active_tasks.pop(session_id, None))

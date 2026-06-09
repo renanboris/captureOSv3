@@ -15,13 +15,53 @@ FRAME_DUR = 1.0 / FPS
 
 # Overlay / Moldura — configuração
 OVERLAY_DIR = os.path.join(os.path.dirname(__file__), "overlays")
-DEFAULT_OVERLAY = os.path.join(OVERLAY_DIR, "slide.png")
+DEFAULT_OVERLAY = os.path.join(OVERLAY_DIR, "intro.png")
 
-# Dimensões do "buraco" na moldura onde o vídeo encaixa
-OVERLAY_VIDEO_X = 54
-OVERLAY_VIDEO_Y = 31
-OVERLAY_VIDEO_W = 1811
-OVERLAY_VIDEO_H = 1019
+# Cache de detecção do buraco transparente por caminho de overlay
+_overlay_hole_cache = {}
+
+
+def _detect_overlay_hole(overlay_path: str):
+    """
+    Detecta automaticamente o "buraco" transparente da moldura lendo o canal alpha.
+
+    Retorna uma tupla (hx, hy, hw, hh, canvas_w, canvas_h) onde:
+        (hx, hy)         — canto superior esquerdo da área transparente
+        (hw, hh)         — largura e altura da área transparente (onde o vídeo encaixa)
+        (canvas_w, h)    — dimensões totais da moldura
+
+    Retorna None se não houver área transparente ou se a detecção falhar
+    (ex: Pillow indisponível). O resultado é cacheado por caminho.
+    """
+    if overlay_path in _overlay_hole_cache:
+        return _overlay_hole_cache[overlay_path]
+
+    result = None
+    try:
+        from PIL import Image
+        img = Image.open(overlay_path)
+        canvas_w, canvas_h = img.size
+        if img.mode != "RGBA":
+            img = img.convert("RGBA")
+        alpha = img.split()[3]
+        # Máscara: 255 onde totalmente transparente (alpha==0), 0 caso contrário.
+        # point() e getbbox() são implementados em C (rápidos).
+        mask = alpha.point(lambda a: 255 if a == 0 else 0)
+        bbox = mask.getbbox()  # (left, upper, right, lower) ou None
+        if bbox:
+            x, y, right, lower = bbox
+            result = (x, y, right - x, lower - y, canvas_w, canvas_h)
+            logger.info(
+                f"Buraco do overlay detectado em {os.path.basename(overlay_path)}: "
+                f"pos=({x},{y}) tam={right - x}x{lower - y} canvas={canvas_w}x{canvas_h}"
+            )
+        else:
+            logger.warning(f"Overlay {overlay_path} não tem área transparente — overlay ignorado.")
+    except Exception as e:
+        logger.warning(f"Falha ao detectar buraco do overlay {overlay_path}: {e}")
+
+    _overlay_hole_cache[overlay_path] = result
+    return result
 
 
 def _get_media_duration(file_path: str) -> float:
@@ -109,7 +149,8 @@ def _calculate_segments(timeline_events: list, video_duration: float) -> tuple:
 
 
 def _build_filter_complex(segments: list, audio_delays: list, n_audio_inputs: int,
-                          overlay_input_idx: int | None = None) -> str:
+                          overlay_input_idx: int | None = None,
+                          overlay_hole: tuple | None = None) -> str:
     """
     Constrói o filter_complex do FFmpeg para composição em passada única.
     
@@ -117,8 +158,14 @@ def _build_filter_complex(segments: list, audio_delays: list, n_audio_inputs: in
     - trim + setpts para extrair segmentos de vídeo
     - trim + tpad(clone) para criar freeze frames
     - concat para juntar todos os segmentos
-    - scale + overlay para aplicar moldura (se overlay_input_idx fornecido)
+    - scale(cover) + crop + pad + overlay para aplicar moldura (se overlay fornecido)
     - adelay + amix para posicionar e mixar áudios TTS
+
+    Estratégia de moldura (cover por altura): o vídeo é escalado para COBRIR o
+    buraco preservando o aspecto, centralizado e recortado à dimensão exata do
+    buraco. Como o vídeo capturado é mais "largo", isso equivale a escalar pela
+    altura e deixar as laterais transbordarem — a moldura opaca por cima esconde
+    o excesso. Sem tarja preta e sem distorção.
     """
     filter_chains = []
     seg_labels = []
@@ -155,23 +202,19 @@ def _build_filter_complex(segments: list, audio_delays: list, n_audio_inputs: in
     )
 
     # Aplicar moldura (overlay) se configurado
-    if overlay_input_idx is not None:
-        # Escalar o vídeo para caber no buraco da moldura
+    if overlay_input_idx is not None and overlay_hole is not None:
+        hx, hy, hw, hh, cw, ch = overlay_hole
+        # 1. Escalar o vídeo pela altura do buraco (preserva aspecto)
         filter_chains.append(
-            f"[vconcat] scale={OVERLAY_VIDEO_W}:{OVERLAY_VIDEO_H}:force_original_aspect_ratio=decrease,"
-            f" pad={OVERLAY_VIDEO_W}:{OVERLAY_VIDEO_H}:(ow-iw)/2:(oh-ih)/2:color=black,"
-            f" setpts=PTS-STARTPTS [vscaled]"
+            f"[vconcat] scale=-2:{hh},setsar=1,setpts=PTS-STARTPTS [vscaled]"
         )
-        # Criar canvas 1920x1080 preto, posicionar vídeo escalado nele
-        filter_chains.append(
-            f"[vscaled] pad=1920:1080:{OVERLAY_VIDEO_X}:{OVERLAY_VIDEO_Y}:color=black [vpadded]"
-        )
-        # Sobrepor a moldura (com alpha) por cima do vídeo
+        # 2. Moldura como BASE, vídeo posicionado POR CIMA centralizado no buraco
+        #    x = hx + (hw - video_w) / 2  →  usa expressão nativa do FFmpeg
         filter_chains.append(
             f"[{overlay_input_idx}:v] format=rgba [ovr]"
         )
         filter_chains.append(
-            f"[vpadded][ovr] overlay=0:0:format=auto [vout]"
+            f"[ovr][vscaled] overlay={hx}+(({hw}-overlay_w)/2):{hy}:format=auto [vout]"
         )
     else:
         # Sem overlay — renomeia vconcat para vout
@@ -269,8 +312,12 @@ def compose_video_with_freeze_frames(input_webm: str, output_mp4: str, timeline_
         return False
 
     # Construir filter_complex
-    # Determinar se overlay está ativo
-    use_overlay = overlay_path and os.path.exists(overlay_path)
+    # Determinar se overlay está ativo e detectar a geometria do buraco
+    use_overlay = bool(overlay_path and os.path.exists(overlay_path))
+    overlay_hole = _detect_overlay_hole(overlay_path) if use_overlay else None
+    # Se a detecção falhar (sem área transparente / Pillow ausente), desativa o overlay
+    if use_overlay and overlay_hole is None:
+        use_overlay = False
     overlay_input_idx = None
 
     # Montar inputs FFmpeg: vídeo + todos os áudios + overlay (se houver)
@@ -283,7 +330,8 @@ def compose_video_with_freeze_frames(input_webm: str, output_mp4: str, timeline_
         overlay_input_idx = 1 + len(valid_events)  # último input
 
     filter_complex = _build_filter_complex(segments, audio_delays, len(valid_events),
-                                           overlay_input_idx=overlay_input_idx)
+                                           overlay_input_idx=overlay_input_idx,
+                                           overlay_hole=overlay_hole)
 
     # Determinar mapeamento de áudio
     has_audio = len(audio_delays) > 0
@@ -464,17 +512,22 @@ def _compose_legacy_moviepy(input_webm: str, output_mp4: str, timeline_events: l
         final_video = concatenate_videoclips(clips)
 
         # Aplicar moldura (overlay) se configurado
-        use_overlay = overlay_path and os.path.exists(overlay_path)
-        if use_overlay:
+        use_overlay = bool(overlay_path and os.path.exists(overlay_path))
+        overlay_hole = _detect_overlay_hole(overlay_path) if use_overlay else None
+        if use_overlay and overlay_hole is not None:
+            hx, hy, hw, hh, cw, ch = overlay_hole
             print(f"[Fallback MoviePy] Aplicando overlay: {os.path.basename(overlay_path)}")
             overlay_clip = ImageClip(overlay_path).with_duration(final_video.duration)
-            # Redimensionar vídeo para caber no buraco da moldura
-            final_video = final_video.resized((OVERLAY_VIDEO_W, OVERLAY_VIDEO_H))
-            # Compor: vídeo posicionado + moldura por cima
+            # Escalar pela altura do buraco preservando aspecto
+            scale = hh / final_video.h
+            scaled = final_video.resized(scale)
+            # Centralizar horizontalmente no canvas, posicionar no topo do buraco
+            pos_x = (cw - scaled.w) / 2
+            pos_y = hy
             final_video = CompositeVideoClip([
-                final_video.with_position((OVERLAY_VIDEO_X, OVERLAY_VIDEO_Y)),
-                overlay_clip
-            ], size=(1920, 1080))
+                overlay_clip,                         # moldura como base
+                scaled.with_position((pos_x, pos_y))  # vídeo por cima
+            ], size=(cw, ch))
 
         if audio_clips:
             final_video = final_video.with_audio(CompositeAudioClip(audio_clips))

@@ -206,10 +206,13 @@ document.getElementById('btn-render').addEventListener('click', async () => {
         passo.micro_narracao = textoUnificado;
     });
 
+    const usarOverlay = document.getElementById('toggle-overlay')?.checked ?? true;
+
     const payload = {
         roteiro: roteiroAtual,
         modo_input: "A",   // "C" estava incorreto — o editor edita roteiros de Modo A/B
-        aprovado: true
+        aprovado: true,
+        usar_overlay: usarOverlay
     };
 
     const btn = document.getElementById('btn-render');
