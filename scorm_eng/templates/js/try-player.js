@@ -40,6 +40,12 @@ async function iniciarPlayer() {
         
         state.modulo = dados;
         
+        // Atualiza moduloId usando session_id do pacote SCORM se ainda estiver como 'default'
+        if (window.moduloId === 'default' && dados.session_id) {
+            window.moduloId = dados.session_id;
+        }
+        console.log(`[SCORM] Modo: ${ScormAPI.isLMS ? 'LMS' : 'Standalone'}, moduloId: ${window.moduloId}`);
+        
         // Setup inicial HUD
         document.getElementById('passo-header').innerText = `Passo 1 de ${state.modulo.total_passos}`;
         document.getElementById('ancora-texto').innerText = state.modulo.titulo || "Prática Iniciada";
@@ -90,14 +96,21 @@ function salvarProgresso() {
 }
 
 function getScreenshotUrl(hotspot) {
-    if (ScormAPI.isLMS || (!window.moduloId || window.moduloId === 'default')) {
-        // SCORM mode
+    if (ScormAPI.isLMS) {
+        // SCORM mode - usa caminho relativo dentro do pacote SCORM
         return `screenshots/${hotspot.screenshot_filename}`;
     } else {
-        // Standalone mode, use the backend path
-        const pathParts = hotspot.screenshot_path.split('/');
-        const fileName = pathParts[pathParts.length - 1];
-        return `/screenshots/${state.modulo.session_id}/${fileName}`;
+        // Standalone mode - verifica se tem parâmetro 'modulo' na URL
+        const urlModulo = urlParams.get('modulo');
+        if (urlModulo && urlModulo !== 'default') {
+            // Simlink mode - usa o backend path
+            const pathParts = hotspot.screenshot_path.split('/');
+            const fileName = pathParts[pathParts.length - 1];
+            return `/screenshots/${state.modulo.session_id}/${fileName}`;
+        } else {
+            // SCORM standalone sem parâmetro - usa caminho relativo
+            return `screenshots/${hotspot.screenshot_filename}`;
+        }
     }
 }
 
@@ -201,12 +214,21 @@ function narrarInstrucao(hotspot) {
 
     let audioUrl = null;
     if (hotspot && hotspot.audio_filename) {
-        if (ScormAPI.isLMS || (!window.moduloId || window.moduloId === 'default')) {
+        if (ScormAPI.isLMS) {
+            // SCORM mode - usa caminho relativo dentro do pacote SCORM
             audioUrl = `audios/${hotspot.audio_filename}`;
         } else {
-            const pathParts = hotspot.audio_path.split('/');
-            const fileName = pathParts[pathParts.length - 1];
-            audioUrl = `/audios/${state.modulo.session_id}/${fileName}`;
+            // Standalone mode - verifica se tem parâmetro 'modulo' na URL
+            const urlModulo = urlParams.get('modulo');
+            if (urlModulo && urlModulo !== 'default') {
+                // Simlink mode - usa o backend path
+                const pathParts = hotspot.audio_path.split('/');
+                const fileName = pathParts[pathParts.length - 1];
+                audioUrl = `/audios/${state.modulo.session_id}/${fileName}`;
+            } else {
+                // SCORM standalone sem parâmetro - usa caminho relativo
+                audioUrl = `audios/${hotspot.audio_filename}`;
+            }
         }
     }
 
@@ -310,9 +332,10 @@ function concluirModulo() {
     ScormAPI.save();
     ScormAPI.quit();
     
-    if (!ScormAPI.isLMS && window.moduloId && window.moduloId !== 'default') {
-        // Envia para o backend
-        fetch(`/api/v1/simlink/${window.moduloId}/conclusao`, {
+    // Envia conclusão para o backend apenas em modo Simlink (com parâmetro modulo na URL)
+    const urlModulo = urlParams.get('modulo');
+    if (!ScormAPI.isLMS && urlModulo && urlModulo !== 'default') {
+        fetch(`/api/v1/simlink/${urlModulo}/conclusao`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ xp: state.xpTotal, historico: state.historico, completado: true })
