@@ -21,6 +21,13 @@ def construir_modulo_simlink(roteiro_enriquecido: list, session_id: str, video_u
         if not simlink_data.get("xpath") and not simlink_data.get("coordinates"):
             logger.warning(f"Passo {num} sem dados de hotspot — pulando")
             continue
+
+        # Pular passos sem conteúdo textual (loading/navegação vazia)
+        ancora = passo.get("ancora", "").strip()
+        micro = passo.get("micro_narracao", "").strip()
+        if not ancora and not micro:
+            logger.info(f"Passo {num} sem texto (ancora/micro vazio) — pulando do simlink")
+            continue
             
         audio_path = f"data/audios/{session_id}/passo_{idx+1}_final.mp3"
 

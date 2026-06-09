@@ -181,6 +181,24 @@ async def _renderizar_exportacao_impl(payload: dict, session_id: str):
             passo = idx + 1
             event_data = ev.get('eventData', {})
             a11y_tree = event_data.get('a11y_tree', [])
+
+            # Filtrar eventos de navigation/loading — não precisam de Vision AI
+            action = event_data.get("action", "click")
+            if action == "navigation":
+                return {
+                    "passo": passo,
+                    "timestamp": ev.get("timestamp"),
+                    "intencao_original": "",
+                    "_simlink": {
+                        "xpath": "",
+                        "selector": "",
+                        "coordinates": {},
+                        "target_text": "",
+                        "action": "navigation",
+                        "url": event_data.get("url", ""),
+                        "screenshot_path": ""
+                    }
+                }
             
             b64_data = ev.get('screenshotData', '')
             if not b64_data and ev.get('screenshot'):

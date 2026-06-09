@@ -449,24 +449,10 @@
         } else if (msg.action === "update_toast") {
             let span = document.getElementById("capture-os-toast-msg");
             if (span) {
-                span.innerHTML = `<b>Capture OS:</b> ${msg.msg}`;
+                span.textContent = msg.msg;
             } else {
-                // Se o usuário trocou de aba, o toast sumiu. Vamos reconstruí-lo!
-                const toast = document.createElement("div");
-                toast.id = "capture-os-toast";
-                toast.style.cssText = `
-                    position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
-                    background: #fef08a; color: #854d0e; padding: 12px 24px;
-                    border-radius: 8px; font-family: sans-serif; font-size: 14px;
-                    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); z-index: 999999;
-                    display: flex; align-items: center; gap: 8px;
-                `;
-                toast.innerHTML = `<div class="capture-spinner"></div><span id="capture-os-toast-msg"><b>Capture OS:</b> ${msg.msg}</span>
-                <style>
-                    .capture-spinner { width: 16px; height: 16px; border: 2px solid #ca8a04; border-top-color: transparent; border-radius: 50%; animation: capture-spin 1s linear infinite; }
-                    @keyframes capture-spin { to { transform: rotate(360deg); } }
-                </style>`;
-                document.body.appendChild(toast);
+                // Se o usuário navegou, o toast sumiu. Recria com o design moderno.
+                showToast("processing", msg.msg);
             }
         } else if (msg.action === "show_player_modal") {
             let toast = document.getElementById("capture-os-toast");
@@ -647,7 +633,7 @@
                                 <circle cx="12" cy="12" r="10" stroke="${_isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)'}" stroke-width="2.5" fill="none"></circle>
                                 <path d="M12 2a10 10 0 0 1 10 10" stroke="#3B82F6" stroke-width="2.5" stroke-linecap="round" fill="none"></path>
                             </svg>
-                            <span id="capture-os-toast-msg" style="font-size: 14px;">Processando...</span>
+                            <span id="capture-os-toast-msg" style="font-size: 14px;">${msg || 'Processando...'}</span>
                         </div>
                         <button id="capture-os-cancel-btn" style="background: ${_isDark ? 'rgba(239,68,68,0.1)' : 'rgba(239,68,68,0.08)'}; border: none; color: #ef4444; font-size: 13px; font-weight: 600; cursor: pointer; padding: 5px 12px; border-radius: 8px; transition: all 0.2s;">Cancelar</button>
                     </div>

@@ -45,6 +45,12 @@ def gerar_pdf(roteiro: list, output_path: str, titulo: str = "Tutorial Gerado pe
                     elements.append(Paragraph(ancora, estilo_ancora))
                 continue
 
+            # Pular passos sem conteúdo textual (loading/navegação vazia)
+            ancora = passo.get("ancora", "").strip()
+            micro = passo.get("micro_narracao", "").strip()
+            if not ancora and not micro:
+                continue
+
             elements.append(Paragraph(f"Passo {num}", estilo_passo_num))
 
             # Screenshot (caminho local salvo em _simlink)
@@ -61,8 +67,6 @@ def gerar_pdf(roteiro: list, output_path: str, titulo: str = "Tutorial Gerado pe
                 except Exception as e:
                     logger.warning(f"Screenshot do passo {num} não pôde ser inserido: {e}")
 
-            ancora = passo.get("ancora", "")
-            micro = passo.get("micro_narracao", "")
             if ancora:
                 elements.append(Paragraph(ancora, estilo_ancora))
             if micro:
