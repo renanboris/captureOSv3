@@ -18,6 +18,9 @@ __pycache__/
 legacy_repos_tmp/
 data/
 
+# Google Service Account keys
+gen-lang-client-*.json
+
 # Dados de sessão (não versionar — risco de vazamento de dados reais).
 # Escopado a arquivos de sessão; NÃO ignora JSON de configuração rastreado.
 session*_steps.json

@@ -4,6 +4,7 @@ from google import genai
 from google.genai import types as genai_types
 from config.settings import get_settings
 from config.prompt_loader import load_system_instruction
+from config.genai_client import get_genai_client
 
 logger = logging.getLogger(__name__)
 
@@ -20,8 +21,11 @@ async def avaliar_acao_sandbox(roteiro: list, passo_esperado: int, action_data: 
     passo_atual_dados = roteiro[passo_esperado - 1]
 
     settings = get_settings()
-    if not settings.google_api_key:
-        return {"is_correct": True, "hint": "Sem API Key para avaliar"}
+
+    try:
+        client = get_genai_client()
+    except RuntimeError:
+        return {"is_correct": True, "hint": "Sem credenciais Google AI para avaliar"}
 
     simlink_data = passo_atual_dados.get('_simlink', {})
     expected_text = simlink_data.get('target_text', '')
@@ -55,7 +59,6 @@ Seletor clicado: {action_data.get('css_selector')}
 </ACAO_DO_ALUNO>"""
 
     try:
-        client = genai.Client(api_key=settings.google_api_key)
         response = await client.aio.models.generate_content(
             model="gemini-2.5-flash",
             contents=user_content,

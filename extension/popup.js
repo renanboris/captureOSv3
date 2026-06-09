@@ -73,6 +73,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (targetId === 'tab-practice') {
                 carregarModulosPratica();
             }
+            if (targetId === 'tab-roteiros') {
+                carregarRoteiros();
+            }
         });
     });
 
@@ -144,6 +147,111 @@ document.addEventListener('DOMContentLoaded', async () => {
                 alert("Erro ao iniciar sessão de prática: " + (response.error || "desconhecido"));
             }
         });
+    }
+
+    // ═══════════════════════════════════════════
+    // ROTEIROS TAB LOGIC
+    // ═══════════════════════════════════════════
+    async function carregarRoteiros() {
+        const container = document.getElementById('roteiros-container');
+
+        container.innerHTML = `
+            <div class="skeleton-card"><div class="skeleton-line w-70"></div><div class="skeleton-line w-45"></div></div>
+            <div class="skeleton-card"><div class="skeleton-line w-70"></div><div class="skeleton-line w-45"></div></div>
+            <div class="skeleton-card"><div class="skeleton-line w-70"></div><div class="skeleton-line w-45"></div></div>
+        `;
+
+        try {
+            const resStorage = await chrome.storage.local.get(['backendUrl', 'authToken']);
+            const backendUrl = resStorage.backendUrl || ("http://" + "localhost" + ":8000");
+            const headers = {};
+            if (resStorage.authToken) headers['Authorization'] = `Bearer ${resStorage.authToken}`;
+
+            const res = await fetch(`${backendUrl}/api/v1/roteiros`, { headers });
+            if (!res.ok) throw new Error("Falha ao buscar roteiros");
+            const data = await res.json();
+
+            if (data.total === 0) {
+                container.innerHTML = '<p class="modules-message">Nenhum roteiro gerado ainda. Grave uma sessão para começar.</p>';
+                return;
+            }
+
+            container.innerHTML = '';
+            data.roteiros.forEach(rot => {
+                const statusLabel = {
+                    'completed': 'Finalizado',
+                    'roteiro_pronto': 'Pronto p/ editar',
+                    'rendering_final': 'Renderizando...',
+                    'processing': 'Processando...',
+                    'failed': 'Erro',
+                    'error': 'Erro',
+                }[rot.status] || rot.status;
+
+                const statusClass = rot.status || 'unknown';
+
+                const div = document.createElement('div');
+                div.className = 'module-item';
+                div.innerHTML = `
+                    <div class="module-row-top">
+                        <div class="module-title-area">
+                            <div class="module-row">
+                                <div class="module-title">${rot.titulo}</div>
+                                <span class="roteiro-status ${statusClass}">${statusLabel}</span>
+                            </div>
+                            <div class="module-meta">${rot.total_passos} passos • ${rot.criado_em ? new Date(rot.criado_em).toLocaleDateString('pt-BR') : ''}</div>
+                        </div>
+                        <button class="btn-delete-roteiro" title="Excluir roteiro" data-session="${rot.session_id}">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <line x1="18" y1="6" x2="6" y2="18"></line>
+                                <line x1="6" y1="6" x2="18" y2="18"></line>
+                            </svg>
+                        </button>
+                    </div>
+                `;
+
+                // Click no card (exceto no botão X) abre o editor
+                div.querySelector('.module-title-area').style.cursor = 'pointer';
+                div.querySelector('.module-title-area').onclick = () => abrirEditorRoteiro(rot.session_id, backendUrl);
+
+                // Click no X exclui
+                div.querySelector('.btn-delete-roteiro').onclick = async (e) => {
+                    e.stopPropagation();
+                    if (!confirm(`Excluir roteiro "${rot.titulo}"?`)) return;
+                    await excluirRoteiro(rot.session_id, backendUrl, headers);
+                    carregarRoteiros(); // Recarrega a lista
+                };
+
+                container.appendChild(div);
+            });
+        } catch (e) {
+            container.innerHTML = `<p class="modules-error">Erro: ${e.message}</p>`;
+        }
+    }
+
+    function abrirEditorRoteiro(sessionId, backendUrl) {
+        // Abre o editor modal na aba ativa do Chrome
+        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+            if (tabs[0]) {
+                chrome.tabs.sendMessage(tabs[0].id, {
+                    action: "show_editor_modal",
+                    session_id: sessionId,
+                    backendUrl: backendUrl
+                });
+                window.close();
+            }
+        });
+    }
+
+    async function excluirRoteiro(sessionId, backendUrl, headers) {
+        try {
+            const res = await fetch(`${backendUrl}/api/v1/roteiros/${sessionId}`, {
+                method: 'DELETE',
+                headers: headers
+            });
+            if (!res.ok) throw new Error("Falha ao excluir");
+        } catch (e) {
+            alert("Erro ao excluir roteiro: " + e.message);
+        }
     }
 
     // ═══════════════════════════════════════════

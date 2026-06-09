@@ -2,17 +2,20 @@ import json, logging
 from google import genai
 from google.genai import types as genai_types
 from config.prompt_loader import load_system_instruction
+from config.genai_client import get_genai_client
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("uvicorn.error")
 
 PROMPT_QUIZ = "quiz_generator.v1.txt"
 
 
-async def gerar_quiz(roteiro: list, api_key: str, num_questoes: int = 3) -> list:
+async def gerar_quiz(roteiro: list, api_key: str = "", num_questoes: int = 3) -> list:
     """
     Gera quiz de múltipla escolha a partir do roteiro aprovado.
     """
-    if not api_key:
+    try:
+        client = get_genai_client()
+    except RuntimeError:
         return []
 
     texto_roteiro = "\n".join([
@@ -30,7 +33,7 @@ async def gerar_quiz(roteiro: list, api_key: str, num_questoes: int = 3) -> list
 </TUTORIAL>"""
 
     try:
-        client = genai.Client(api_key=api_key)
+        logger.info("Quiz: chamando Gemini API...")
         response = await client.aio.models.generate_content(
             model="gemini-2.5-flash",
             contents=user_content,
@@ -40,6 +43,7 @@ async def gerar_quiz(roteiro: list, api_key: str, num_questoes: int = 3) -> list
                 temperature=0.4
             )
         )
+        logger.info("Quiz: resposta recebida da API.")
         return json.loads(response.text)
     except Exception as e:
         logger.error(f"Erro ao gerar quiz: {e}")

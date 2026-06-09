@@ -807,10 +807,14 @@
                 if (passo.passo === 0) { badge = svgBulb; badgeStyle = `background: ${_isDark ? 'rgba(59,130,246,0.15)' : '#eff6ff'}; color: #3B82F6;`; }
                 else if (passo.passo === 999) { badge = svgCheck; badgeStyle = `background: ${_isDark ? 'rgba(16,185,129,0.15)' : '#ecfdf5'}; color: #10B981;`; }
                 
+                const stepText = passo.ancora || passo.intencao_original || '';
+                // Pular passos sem texto
+                if (!stepText.trim()) return;
+
                 stepsHtml += `
                     <div class="step-item">
                         <div class="step-num" style="${badgeStyle}">${badge}</div>
-                        <div class="step-text">${passo.intencao_original}</div>
+                        <div class="step-text">${stepText}</div>
                     </div>
                 `;
             });
@@ -1072,7 +1076,7 @@
         copyBtn.addEventListener('click', () => {
             let texto = "Roteiro do Tutorial:\n\n";
             if (roteiro && roteiro.length > 0) {
-                roteiro.forEach(p => { texto += `${p.passo}. ${p.intencao_original}\n`; });
+                roteiro.forEach(p => { texto += `${p.passo}. ${p.ancora || p.intencao_original || ''}\n`; });
             } else {
                 texto += "Nenhum roteiro detalhado gerado.\n";
             }

@@ -9,6 +9,7 @@ from openai import AsyncOpenAI
 from api.status_manager import update_status
 from api.rag_engine import buscar_contexto_multi_namespace
 from config.prompt_loader import load_system_instruction
+from config.genai_client import get_genai_client
 
 logger = logging.getLogger(__name__)
 
@@ -67,14 +68,14 @@ def _strip_code_fences(texto: str) -> str:
 
 async def processar_intencao(image_bytes: bytes, event_data: dict, a11y_tree: list, session_id: str = None) -> dict:
     load_dotenv()
-    api_key = os.getenv("GOOGLE_API_KEY", "")
-    if not api_key:
-        return {"intencao": "Configurar GOOGLE_API_KEY", "jargao": "Desconhecido"}
+
+    try:
+        client = get_genai_client()
+    except RuntimeError:
+        return {"intencao": "Configurar credenciais Google AI", "jargao": "Desconhecido"}
 
     if session_id:
         update_status(session_id, "processing", "Analisando intenção do usuário com IA...")
-
-    client = genai.Client(api_key=api_key)
     action_value_str = (
         f"Conteúdo da ação (texto/tecla): '{event_data.get('action_value')}'"
         if event_data.get('action_value') else ""
@@ -155,12 +156,12 @@ async def enriquecer_narrativa(roteiro_bruto: list, transcricao_instrutor: str =
     Olha o cenário completo de cliques e gera a âncora (Big Picture) e a micro narração (Instrução exata).
     """
     load_dotenv()
-    api_key = os.getenv("GOOGLE_API_KEY", "")
-    if not api_key:
-        logger.error("Sem API KEY para enriquecimento")
-        return roteiro_bruto
 
-    client = genai.Client(api_key=api_key)
+    try:
+        client = get_genai_client()
+    except RuntimeError:
+        logger.error("Sem credenciais Google AI para enriquecimento")
+        return roteiro_bruto
 
     # Extrai o "Objetivo" com base nos primeiros passos gravados (RAG Reverso)
     resumo_passos = " ".join([p.get('intencao_original', '') for p in roteiro_bruto[:3]])
@@ -293,11 +294,11 @@ async def regerar_passo_isolado(passo_alvo: dict, passo_anterior: dict = None, p
     levando em consideração o contexto dos passos adjacentes.
     """
     load_dotenv()
-    api_key = os.getenv("GOOGLE_API_KEY", "")
-    if not api_key:
-        return passo_alvo
 
-    client = genai.Client(api_key=api_key)
+    try:
+        client = get_genai_client()
+    except RuntimeError:
+        return passo_alvo
 
     contexto = ""
     if passo_anterior:

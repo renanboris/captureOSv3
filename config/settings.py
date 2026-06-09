@@ -18,6 +18,9 @@ class Settings(BaseSettings):
 
     # IA
     google_api_key: str = ""
+    google_application_credentials: str = ""
+    google_cloud_project: str = ""
+    google_cloud_location: str = "us-central1"
     openai_api_key: str = ""
     pinecone_api_key: str = ""
     pinecone_index_name: str = ""

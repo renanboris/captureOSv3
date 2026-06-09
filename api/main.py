@@ -55,6 +55,20 @@ if not settings.jwt_secret or settings.jwt_secret == _DEV_SECRET:
 
 active_tasks: Dict[str, asyncio.Task] = {}
 
+
+def _task_exception_handler(task: asyncio.Task):
+    """Log unhandled exceptions from background pipeline tasks."""
+    try:
+        exc = task.exception()
+    except asyncio.CancelledError:
+        return
+    if exc:
+        import traceback
+        tb = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+        logging.getLogger("uvicorn.error").error(
+            f"[PIPELINE ERROR] Background task failed:\n{tb}"
+        )
+
 app = FastAPI(title="Capture OS v3 Ingestion API")
 
 app.add_middleware(
@@ -297,6 +311,7 @@ async def ingest_capture(
 
     task = asyncio.create_task(renderizar_exportacao(payload_dict))
     active_tasks[session_id] = task
+    task.add_done_callback(_task_exception_handler)
     task.add_done_callback(lambda t: active_tasks.pop(session_id, None))
 
     return {"status": "ok", "session_id": session_id}
@@ -374,6 +389,7 @@ async def save_roteiro(session_id: str, payload: RoteiroEditadoPayload):
         update_status(session_id, "rendering_final", "Renderizando vídeo final com roteiro aprovado...")
         task = asyncio.create_task(rerenderizar_com_roteiro_aprovado(session_id, payload.roteiro))
         active_tasks[session_id] = task
+        task.add_done_callback(_task_exception_handler)
         task.add_done_callback(lambda t: active_tasks.pop(session_id, None))
         
     return {"status": "ok"}
@@ -486,6 +502,142 @@ async def get_simlink_modulo(modulo_id: str):
     if mod is None:
         raise HTTPException(status_code=404, detail="Módulo Simlink não encontrado")
     return mod
+
+
+@app.get("/api/v1/roteiros", dependencies=_auth_deps)
+async def listar_roteiros(limit: int = 0, offset: int = 0):
+    """Lista roteiros salvos com metadados básicos para a aba Roteiros da extensão.
+
+    Returns session_id, número de passos, status atual, e data de modificação.
+    Ordenados do mais recente ao mais antigo.
+    """
+    import glob
+
+    def _load_roteiros() -> list:
+        result = []
+        for filepath in glob.glob("data/roteiros/*.json"):
+            # Ignorar .jsonl
+            if filepath.endswith(".jsonl"):
+                continue
+            try:
+                with open(filepath, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+
+                session_id = data.get("session_id", "")
+                roteiro = data.get("roteiro", [])
+
+                # Derivar título do primeiro passo com âncora ou intenção
+                titulo = ""
+                for p in roteiro:
+                    if str(p.get("passo", 0)) in ("0", "999"):
+                        continue
+                    ancora = p.get("ancora", "").strip()
+                    if ancora:
+                        titulo = ancora
+                        break
+                    intencao = p.get("intencao_original", "").strip()
+                    if intencao and not titulo:
+                        titulo = intencao
+                if not titulo:
+                    titulo = f"Sessão {session_id[-8:]}" if session_id else "Sem título"
+
+                # Buscar status atual
+                status_data = get_status(session_id)
+                status = status_data.get("status", "unknown")
+
+                # Data de modificação do arquivo
+                import pathlib
+                mtime = pathlib.Path(filepath).stat().st_mtime
+                from datetime import datetime
+                criado_em = datetime.fromtimestamp(mtime).isoformat()
+
+                # Contar passos reais (excluindo 0 e 999)
+                passos_reais = [p for p in roteiro if p.get("passo", 0) not in (0, 999)]
+
+                result.append({
+                    "session_id": session_id,
+                    "titulo": titulo,
+                    "total_passos": len(passos_reais),
+                    "status": status,
+                    "criado_em": criado_em,
+                })
+            except Exception as e:
+                logger.warning(f"Erro ao ler roteiro {filepath}: {e}")
+
+        # Mais recente primeiro
+        result.sort(key=lambda r: r.get("criado_em", ""), reverse=True)
+        return result
+
+    roteiros = await asyncio.to_thread(_load_roteiros)
+    total = len(roteiros)
+
+    if limit > 0:
+        roteiros = roteiros[offset: offset + limit]
+    elif offset > 0:
+        roteiros = roteiros[offset:]
+
+    return {"roteiros": roteiros, "total": total, "count": len(roteiros), "offset": offset, "limit": limit}
+
+
+@app.delete("/api/v1/roteiros/{session_id}", dependencies=_auth_deps)
+async def excluir_roteiro(session_id: str):
+    """Remove um roteiro e seus artefatos associados (vídeo, áudios, PDF, etc)."""
+    import shutil
+
+    removidos = []
+
+    # Roteiro JSON/JSONL
+    for ext in (".json", ".jsonl"):
+        path = f"data/roteiros/{session_id}{ext}"
+        if os.path.exists(path):
+            os.remove(path)
+            removidos.append(path)
+
+    # Status
+    status_path = f"data/status/{session_id}.json"
+    if os.path.exists(status_path):
+        os.remove(status_path)
+        removidos.append(status_path)
+
+    # Vídeo final
+    video_path = f"data/videos_gerados/{session_id}_final.mp4"
+    if os.path.exists(video_path):
+        os.remove(video_path)
+        removidos.append(video_path)
+
+    # Vídeo raw
+    raw_path = f"data/raw_videos/{session_id}_raw.webm"
+    if os.path.exists(raw_path):
+        os.remove(raw_path)
+        removidos.append(raw_path)
+
+    # Áudios
+    audios_dir = f"data/audios/{session_id}"
+    if os.path.isdir(audios_dir):
+        shutil.rmtree(audios_dir)
+        removidos.append(audios_dir)
+
+    # Artefatos (PDF, transcrição, quiz)
+    artifacts_dir = f"data/artifacts/{session_id}"
+    if os.path.isdir(artifacts_dir):
+        shutil.rmtree(artifacts_dir)
+        removidos.append(artifacts_dir)
+
+    # Simlink módulo
+    simlink_path = f"data/simlink/{session_id}.json"
+    if os.path.exists(simlink_path):
+        os.remove(simlink_path)
+        removidos.append(simlink_path)
+
+    # SCORM
+    scorm_path = f"data/scorm/{session_id}.zip"
+    if os.path.exists(scorm_path):
+        os.remove(scorm_path)
+        removidos.append(scorm_path)
+
+    logger.info(f"Roteiro {session_id} excluído. Arquivos removidos: {len(removidos)}")
+    return {"status": "ok", "removidos": len(removidos)}
+
 
 @app.get("/api/v1/modulos", dependencies=_auth_deps)
 async def listar_modulos(dominio: str = "", limit: int = 0, offset: int = 0):

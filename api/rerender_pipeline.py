@@ -5,7 +5,7 @@ from video_eng.tts_generator import gerar_audio
 from video_eng.time_bender import compose_video_with_freeze_frames
 from api.status_manager import update_status
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("uvicorn.error")
 
 
 def is_loading_step(passo: dict) -> bool:
@@ -52,6 +52,9 @@ async def rerenderizar_com_roteiro_aprovado(session_id: str, roteiro_aprovado: l
     tts_tasks = []
     last_computed_ts = 5.0  # fallback para passo final se não houver eventos anteriores
 
+    # Palavras/frases que indicam passo sem conteúdo útil para narração
+    _SKIP_TEXTS = {"", "vazio", "(vazio)", "loading", "carregando", "-"}
+
     for idx, passo in enumerate(roteiro_aprovado):
         timestamp_ms = passo.get("timestamp", 0)
         ancora = passo.get("ancora", "").strip()
@@ -59,7 +62,8 @@ async def rerenderizar_com_roteiro_aprovado(session_id: str, roteiro_aprovado: l
         
         intencao_combinada = f"{ancora} {micro}".strip()
         
-        if not intencao_combinada:
+        # Pular passos sem texto ou com placeholder
+        if not intencao_combinada or intencao_combinada.lower() in _SKIP_TEXTS:
             continue
         
         if timestamp_ms == 0 and passo.get("passo") == 0:
@@ -115,6 +119,7 @@ async def rerenderizar_com_roteiro_aprovado(session_id: str, roteiro_aprovado: l
     
     # --- 5. GERAÇÃO DE ARTEFATOS PARALELOS ---
     update_status(session_id, "rendering_final", "📄 Gerando materiais de apoio...")
+    logger.info(f"[{session_id}] Iniciando geração de materiais de apoio...")
 
     os.makedirs(f"data/artifacts/{session_id}", exist_ok=True)
     pdf_path = f"data/artifacts/{session_id}/apostila.pdf"
@@ -129,13 +134,24 @@ async def rerenderizar_com_roteiro_aprovado(session_id: str, roteiro_aprovado: l
     settings = get_settings()
 
     # Rodar PDF e transcrição em paralelo
+    logger.info(f"[{session_id}] Gerando PDF e transcrição...")
     await asyncio.gather(
         asyncio.to_thread(gerar_pdf, roteiro_aprovado, pdf_path, f"Tutorial — Sessão {session_id}"),
         asyncio.to_thread(gerar_transcricao, roteiro_aprovado, transcript_path)
     )
+    logger.info(f"[{session_id}] PDF e transcrição concluídos.")
 
-    # Quiz
-    quiz_data = await gerar_quiz(roteiro_aprovado, settings.google_api_key)
+    # Quiz (com timeout de 60s para não travar o pipeline)
+    logger.info(f"[{session_id}] Gerando quiz via IA...")
+    quiz_data = []
+    try:
+        quiz_data = await asyncio.wait_for(gerar_quiz(roteiro_aprovado), timeout=60.0)
+        logger.info(f"[{session_id}] Quiz gerado com sucesso ({len(quiz_data)} questões).")
+    except asyncio.TimeoutError:
+        logger.error(f"[{session_id}] Quiz timeout (60s) — pulando geração de quiz.")
+    except Exception as e:
+        logger.error(f"[{session_id}] Erro ao gerar quiz: {e}")
+
     quiz_path = f"data/artifacts/{session_id}/quiz.json"
     if quiz_data:
         with open(quiz_path, "w", encoding="utf-8") as f:
