@@ -803,6 +803,39 @@ async def evaluate_sandbox(payload: SandboxActionPayload):
         
     return result
 
+@app.post("/api/v1/session/{session_id}/scorm/rebuild", dependencies=_auth_deps)
+async def rebuild_scorm(session_id: str):
+    """Regenera o pacote SCORM para uma sessão já processada, sem re-renderizar o vídeo.
+
+    Útil para aplicar atualizações dos templates (try-player.js, index.html)
+    a SCORMs já gerados.
+    """
+    simlink_path = f"data/simlink/{session_id}.json"
+    if not os.path.exists(simlink_path):
+        raise HTTPException(status_code=404, detail="Módulo Simlink não encontrado para esta sessão")
+
+    import json as _json
+    from contracts.simlink_models import SimlinkModulo
+    from scorm_eng.scorm_builder import gerar_scorm
+
+    with open(simlink_path, "r", encoding="utf-8") as f:
+        mod_data = _json.load(f)
+
+    try:
+        simlink_modulo = SimlinkModulo(**mod_data)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao carregar módulo Simlink: {e}")
+
+    titulo = mod_data.get("titulo", f"Tutorial — Sessão {session_id}")
+    scorm_path = await gerar_scorm(simlink_modulo, session_id, titulo)
+    logger.info(f"SCORM regenerado em: {scorm_path}")
+
+    return {
+        "status": "ok",
+        "scorm_download_url": f"{settings.backend_url}/scorm/{session_id}.zip"
+    }
+
+
 @app.post("/api/v1/sandbox/reset", dependencies=_auth_deps)
 async def reset_sandbox(payload: dict):
     """Reseta o estado do sandbox para uma sessão (usado ao iniciar nova prática)."""

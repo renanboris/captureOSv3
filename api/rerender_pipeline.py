@@ -179,7 +179,7 @@ async def rerenderizar_com_roteiro_aprovado(session_id: str, roteiro_aprovado: l
         # NOVO: Gerar pacote SCORM (TRY mode) automaticamente
         from scorm_eng.scorm_builder import gerar_scorm
         titulo = f"Tutorial — Sessão {session_id}"
-        scorm_path = gerar_scorm(simlink_modulo, session_id, titulo)
+        scorm_path = await gerar_scorm(simlink_modulo, session_id, titulo)
         logger.info(f"Pacote SCORM gerado em: {scorm_path}")
         
     except Exception as e:

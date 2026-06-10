@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Quiz_Component Core Structure (Task 4.1)</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; background: #f5f5f5; }
+        h1 { color: #333; }
+        .pass  { background:#d4edda; color:#155724; border:1px solid #c3e6cb; border-radius:4px; padding:10px; margin:5px 0; }
+        .fail  { background:#f8d7da; color:#721c24; border:1px solid #f5c6cb; border-radius:4px; padding:10px; margin:5px 0; }
+        .section { margin: 20px 0 6px; font-weight: bold; font-size: 1.05rem; color: #444; }
+        #summary { background:#e7f3ff; border:2px solid #007bff; border-radius:4px; padding:20px; margin-top:20px; }
+        code { background:#eee; padding:1px 4px; border-radius:3px; font-size:0.95em; }
+    </style>
+</head>
+<body>
+    <h1>Quiz_Component Core Structure – Unit Tests</h1>
+    <p><em>Validates: Requirements 5.1, 6.4, 6.5</em></p>
+    <div id="results"></div>
+    <div id="summary"></div>
+
+    <!-- ── Minimal stubs so QuizComponent can be loaded without the full player ── -->
+    <script>
+        // Stub ScormAPI
+        var ScormAPI = {
+            isLMS: false,
+            _store: {},
+            init: function() { return true; },
+            get: function(k) { return this._store[k] || null; },
+            set: function(k, v) { this._store[k] = String(v); return true; },
+            save: function() { return true; },
+            quit:  function() { return true; }
+        };
+
+        // Stub global state used by saveQuizScore
+        var state = { xpTotal: 0 };
+
+        // Stub DOM elements referenced at module load time
+        document.body.insertAdjacentHTML('beforeend', '<div id="simulacao-container" style="display:none"></div>');
+    </script>
+
+    <!-- ── Inline the QuizComponent extracted from try-player.js ── -->
+    <script>
+        /**
+         * Quiz_Component — manages end-of-module multiple-choice quiz
+         * Requirements: 5.1, 6.4, 6.5
+         */
+        const QuizComponent = {
+            data: [],
+            currentIndex: 0,
+            userAnswers: [],
+
+            init() {
+                if (typeof QUIZ_DATA === 'undefined') {
+                    console.warn('[Quiz_Component] quiz.js not found, skipping quiz');
+                    return false;
+                }
+
+                if (!this.validateQuizData(QUIZ_DATA)) {
+                    console.error('[Quiz_Component] Invalid quiz data structure');
+                    return false;
+                }
+
+                this.data = QUIZ_DATA;
+                this.currentIndex = 0;
+                this.userAnswers = new Array(this.data.length).fill(null);
+                return true;
+            },
+
+            validateQuizData(data) {
+                if (!Array.isArray(data) || data.length === 0) return false;
+                return data.every(q =>
+                    q.pergunta &&
+                    typeof q.pergunta === 'string' &&
+                    Array.isArray(q.opcoes) &&
+                    q.opcoes.length === 4 &&
+                    q.opcoes.every(o => typeof o === 'string') &&
+                    typeof q.correta === 'number' &&
+                    Number.isInteger(q.correta) &&
+                    q.correta >= 0 &&
+                    q.correta < 4
+                );
+            },
+
+            render()       { /* Task 4.2 */ },
+            selectAnswer(i){ this.userAnswers[this.currentIndex] = i; },
+            next() {
+                if (this.currentIndex < this.data.length - 1) {
+                    this.currentIndex++;
+                    this.render();
+                } else {
+                    this.showResults();
+                }
+            },
+            calculateScore() {
+                if (this.data.length === 0) return 0;
+                let correct = 0;
+                this.data.forEach((q, i) => {
+                    if (this.userAnswers[i] === q.correta) correct++;
+                });
+                return Math.round((correct / this.data.length) * 100);
+            },
+            showResults()  { /* Task 4.3 */ },
+            saveQuizScore(percentage) {
+                const currentRaw = ScormAPI.get('cmi.core.score.raw');
+                const xpSimulation = parseInt(currentRaw) || state.xpTotal;
+                const combinedScore = `${xpSimulation}|${percentage}`;
+                ScormAPI.set('cmi.core.score.raw', combinedScore);
+
+                let suspendData = {};
+                try {
+                    suspendData = JSON.parse(ScormAPI.get('cmi.suspend_data') || '{}');
+                } catch (e) { /* use empty object on parse failure */ }
+
+                suspendData.quizAnswers = this.userAnswers;
+                suspendData.quizScore = percentage;
+                ScormAPI.set('cmi.suspend_data', JSON.stringify(suspendData));
+                ScormAPI.save();
+            }
+        };
+    </script>
+
+    <!-- ── Test runner ── -->
+    <script>
+        const results = document.getElementById('results');
+        let passed = 0, failed = 0;
+
+        function assert(label, condition, details) {
+            const div = document.createElement('div');
+            div.className = condition ? 'pass' : 'fail';
+            div.innerHTML = `<strong>${condition ? '✓' : '✗'} ${label}</strong>${details ? '<br>' + details : ''}`;
+            results.appendChild(div);
+            condition ? passed++ : failed++;
+        }
+
+        function section(title) {
+            const d = document.createElement('div');
+            d.className = 'section';
+            d.textContent = title;
+            results.appendChild(d);
+        }
+
+        // ── Helper: minimal valid question ──────────────────────────────────────
+        const VALID_Q = {
+            pergunta: 'Qual o objetivo do botão Salvar?',
+            opcoes: ['Persistir dados', 'Fechar janela', 'Enviar e-mail', 'Validar campos'],
+            correta: 0,
+            explicacao: 'O botão Salvar persiste os dados.'
+        };
+
+        function makeValidData(n = 1) {
+            return Array.from({ length: n }, (_, i) => ({
+                pergunta: `Pergunta ${i + 1}`,
+                opcoes: ['Opção A', 'Opção B', 'Opção C', 'Opção D'],
+                correta: i % 4,
+                explicacao: `Explicação ${i + 1}`
+            }));
+        }
+
+        // ═══════════════════════════════════════════════════════════════════════
+        //  1. Property existence
+        // ═══════════════════════════════════════════════════════════════════════
+        section('1. Core Properties');
+
+        assert('data property exists and is initially an array',
+            Array.isArray(QuizComponent.data),
+            `Type: ${typeof QuizComponent.data}`);
+
+        assert('currentIndex property exists and is initially 0',
+            QuizComponent.currentIndex === 0,
+            `Value: ${QuizComponent.currentIndex}`);
+
+        assert('userAnswers property exists and is initially an array',
+            Array.isArray(QuizComponent.userAnswers),
+            `Type: ${typeof QuizComponent.userAnswers}`);
+
+        // ═══════════════════════════════════════════════════════════════════════
+        //  2. validateQuizData – valid inputs
+        // ═══════════════════════════════════════════════════════════════════════
+        section('2. validateQuizData – Valid Inputs');
+
+        assert('Returns true for a single valid question',
+            QuizComponent.validateQuizData([VALID_Q]),
+            'Valid question with all required fields');
+
+        assert('Returns true for multiple valid questions',
+            QuizComponent.validateQuizData(makeValidData(3)),
+            '3 valid questions');
+
+        assert('Accepts correta = 0',
+            QuizComponent.validateQuizData([{ ...VALID_Q, correta: 0 }]),
+            'Boundary: first option');
+
+        assert('Accepts correta = 3',
+            QuizComponent.validateQuizData([{ ...VALID_Q, correta: 3 }]),
+            'Boundary: last option');
+
+        // ═══════════════════════════════════════════════════════════════════════
+        //  3. validateQuizData – invalid inputs
+        // ═══════════════════════════════════════════════════════════════════════
+        section('3. validateQuizData – Invalid / Malformed Inputs (Req 6.4, 6.5)');
+
+        assert('Returns false for empty array',
+            !QuizComponent.validateQuizData([]),
+            'Empty array should be rejected');
+
+        assert('Returns false for null',
+            !QuizComponent.validateQuizData(null),
+            'null should be rejected');
+
+        assert('Returns false for undefined',
+            !QuizComponent.validateQuizData(undefined),
+            'undefined should be rejected');
+
+        assert('Returns false for non-array (object)',
+            !QuizComponent.validateQuizData({ pergunta: 'x' }),
+            'Plain object should be rejected');
+
+        assert('Returns false when pergunta is missing',
+            !QuizComponent.validateQuizData([{ opcoes: ['a','b','c','d'], correta: 0 }]),
+            'Missing pergunta field');
+
+        assert('Returns false when pergunta is empty string',
+            !QuizComponent.validateQuizData([{ ...VALID_Q, pergunta: '' }]),
+            'Empty pergunta should be rejected');
+
+        assert('Returns false when opcoes has fewer than 4 items',
+            !QuizComponent.validateQuizData([{ ...VALID_Q, opcoes: ['a','b','c'] }]),
+            'Only 3 options provided');
+
+        assert('Returns false when opcoes has more than 4 items',
+            !QuizComponent.validateQuizData([{ ...VALID_Q, opcoes: ['a','b','c','d','e'] }]),
+            '5 options provided');
+
+        assert('Returns false when an opção is not a string',
+            !QuizComponent.validateQuizData([{ ...VALID_Q, opcoes: ['a', 'b', 'c', 42] }]),
+            'Fourth option is a number');
+
+        assert('Returns false when correta is missing',
+            !QuizComponent.validateQuizData([{ pergunta: 'Q', opcoes: ['a','b','c','d'] }]),
+            'Missing correta field');
+
+        assert('Returns false when correta is -1 (out of range)',
+            !QuizComponent.validateQuizData([{ ...VALID_Q, correta: -1 }]),
+            'correta = -1');
+
+        assert('Returns false when correta is 4 (out of range)',
+            !QuizComponent.validateQuizData([{ ...VALID_Q, correta: 4 }]),
+            'correta = 4');
+
+        assert('Returns false when correta is a float',
+            !QuizComponent.validateQuizData([{ ...VALID_Q, correta: 1.5 }]),
+            'correta = 1.5 (not integer)');
+
+        assert('Returns false when correta is a string',
+            !QuizComponent.validateQuizData([{ ...VALID_Q, correta: '0' }]),
+            'correta = "0" (string)');
+
+        // ═══════════════════════════════════════════════════════════════════════
+        //  4. init() – QUIZ_DATA undefined (simulates missing quiz.js)
+        // ═══════════════════════════════════════════════════════════════════════
+        section('4. init() – QUIZ_DATA undefined (Req 6.4, 6.5)');
+
+        // Ensure QUIZ_DATA is NOT defined
+        if (typeof QUIZ_DATA !== 'undefined') {
+            // Can't truly undefine a global, skip this test group
+            assert('QUIZ_DATA is undefined before init tests',
+                false, 'QUIZ_DATA is already defined — skipping undefined tests');
+        } else {
+            const initResult = QuizComponent.init();
+            assert('init() returns false when QUIZ_DATA is undefined',
+                initResult === false,
+                `Returned: ${initResult}`);
+
+            assert('data remains empty after failed init',
+                QuizComponent.data.length === 0,
+                `data.length: ${QuizComponent.data.length}`);
+
+            assert('userAnswers remains empty after failed init',
+                QuizComponent.userAnswers.length === 0,
+                `userAnswers.length: ${QuizComponent.userAnswers.length}`);
+        }
+
+        // ═══════════════════════════════════════════════════════════════════════
+        //  5. init() – with valid QUIZ_DATA
+        // ═══════════════════════════════════════════════════════════════════════
+        section('5. init() – Valid QUIZ_DATA (Req 5.1, 6.4)');
+
+        // Inject QUIZ_DATA globally
+        window.QUIZ_DATA = makeValidData(3);
+
+        const initOk = QuizComponent.init();
+        assert('init() returns true with valid QUIZ_DATA',
+            initOk === true,
+            `Returned: ${initOk}`);
+
+        assert('data is populated after successful init',
+            QuizComponent.data.length === 3,
+            `data.length: ${QuizComponent.data.length}, expected: 3`);
+
+        assert('currentIndex is reset to 0 on init',
+            QuizComponent.currentIndex === 0,
+            `currentIndex: ${QuizComponent.currentIndex}`);
+
+        assert('userAnswers length matches question count after init',
+            QuizComponent.userAnswers.length === 3,
+            `userAnswers.length: ${QuizComponent.userAnswers.length}, expected: 3`);
+
+        assert('userAnswers are all null after init (no pre-selection)',
+            QuizComponent.userAnswers.every(a => a === null),
+            `userAnswers: ${JSON.stringify(QuizComponent.userAnswers)}`);
+
+        // ═══════════════════════════════════════════════════════════════════════
+        //  6. init() – with malformed QUIZ_DATA
+        // ═══════════════════════════════════════════════════════════════════════
+        section('6. init() – Malformed QUIZ_DATA (Req 6.5)');
+
+        // Reset state
+        QuizComponent.data = [];
+        QuizComponent.userAnswers = [];
+
+        window.QUIZ_DATA = [{ pergunta: 'Bad question' /* missing opcoes, correta */ }];
+
+        const initBad = QuizComponent.init();
+        assert('init() returns false when QUIZ_DATA is malformed',
+            initBad === false,
+            `Returned: ${initBad}`);
+
+        assert('data remains empty after malformed init',
+            QuizComponent.data.length === 0,
+            `data.length: ${QuizComponent.data.length}`);
+
+        // ═══════════════════════════════════════════════════════════════════════
+        //  7. init() re-initialises state correctly (idempotency)
+        // ═══════════════════════════════════════════════════════════════════════
+        section('7. init() Re-initialisation');
+
+        window.QUIZ_DATA = makeValidData(5);
+        QuizComponent.currentIndex = 3;                          // Simulate mid-quiz state
+        QuizComponent.userAnswers = [0, 1, null, null, null];
+
+        const reinitOk = QuizComponent.init();
+        assert('Re-init returns true with valid data',
+            reinitOk === true,
+            `Returned: ${reinitOk}`);
+
+        assert('currentIndex is reset to 0 on re-init',
+            QuizComponent.currentIndex === 0,
+            `currentIndex: ${QuizComponent.currentIndex}`);
+
+        assert('userAnswers is reset to all-null on re-init',
+            QuizComponent.userAnswers.every(a => a === null),
+            `userAnswers: ${JSON.stringify(QuizComponent.userAnswers)}`);
+
+        assert('data length is updated on re-init',
+            QuizComponent.data.length === 5,
+            `data.length: ${QuizComponent.data.length}, expected: 5`);
+
+        // ═══════════════════════════════════════════════════════════════════════
+        //  Summary
+        // ═══════════════════════════════════════════════════════════════════════
+        const allPassed = failed === 0;
+        document.getElementById('summary').innerHTML = `
+            <h2>${allPassed ? '🎉 All Tests Passed' : '⚠️ Some Tests Failed'}</h2>
+            <p><strong>Passed:</strong> ${passed} &nbsp; <strong>Failed:</strong> ${failed}</p>
+            <p><strong>Requirements validated:</strong> 5.1, 6.4, 6.5</p>
+            <ul>
+                <li>Req 5.1 — Quiz component renders one question at a time (data loaded correctly)</li>
+                <li>Req 6.4 — Try_Player validates presence and structure of QUIZ_DATA before rendering</li>
+                <li>Req 6.5 — Malformed QUIZ_DATA causes <code>init()</code> to return <code>false</code> (skips quiz)</li>
+            </ul>
+        `;
+        document.getElementById('summary').style.borderColor = allPassed ? '#28a745' : '#dc3545';
+    </script>
+</body>
+</html>

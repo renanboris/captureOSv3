@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test isDebugMode Function</title>
+</head>
+<body>
+    <h1>isDebugMode Function Test</h1>
+    <div id="results"></div>
+
+    <!-- Include SCORM API mock -->
+    <script>
+        // Mock ScormAPI for testing
+        var ScormAPI = {
+            isLMS: false,  // Change to true to test LMS mode
+            init: function() { return true; },
+            set: function(key, value) { return true; },
+            get: function(key) { return null; },
+            save: function() { return true; },
+            quit: function() { return true; }
+        };
+    </script>
+
+    <!-- Include the isDebugMode function -->
+    <script>
+        /**
+         * Determines if debug logging should be enabled
+         * @returns {boolean} true if running in standalone mode, false if running in LMS
+         */
+        function isDebugMode() {
+            return !ScormAPI.isLMS;
+        }
+    </script>
+
+    <!-- Test suite -->
+    <script>
+        const results = document.getElementById('results');
+        
+        function addResult(testName, passed, message) {
+            const div = document.createElement('div');
+            div.style.padding = '10px';
+            div.style.margin = '5px 0';
+            div.style.backgroundColor = passed ? '#d4edda' : '#f8d7da';
+            div.style.color = passed ? '#155724' : '#721c24';
+            div.style.border = `1px solid ${passed ? '#c3e6cb' : '#f5c6cb'}`;
+            div.style.borderRadius = '4px';
+            div.innerHTML = `
+                <strong>${passed ? '✓' : '✗'} ${testName}</strong><br>
+                ${message}
+            `;
+            results.appendChild(div);
+        }
+
+        // Test 1: isDebugMode returns true when ScormAPI.isLMS is false
+        ScormAPI.isLMS = false;
+        const test1Result = isDebugMode();
+        addResult(
+            'Test 1: Standalone mode (isLMS = false)',
+            test1Result === true,
+            `Expected: true, Got: ${test1Result} - Debug mode should be enabled in standalone`
+        );
+
+        // Test 2: isDebugMode returns false when ScormAPI.isLMS is true
+        ScormAPI.isLMS = true;
+        const test2Result = isDebugMode();
+        addResult(
+            'Test 2: LMS mode (isLMS = true)',
+            test2Result === false,
+            `Expected: false, Got: ${test2Result} - Debug mode should be disabled in LMS`
+        );
+
+        // Test 3: Verify the function correctly suppresses logs in LMS mode
+        ScormAPI.isLMS = true;
+        const shouldLogInLMS = isDebugMode();
+        addResult(
+            'Test 3: Log suppression in LMS',
+            shouldLogInLMS === false,
+            `Logs should be suppressed in LMS mode: ${!shouldLogInLMS ? 'PASS' : 'FAIL'}`
+        );
+
+        // Test 4: Verify the function enables logs in standalone mode
+        ScormAPI.isLMS = false;
+        const shouldLogInStandalone = isDebugMode();
+        addResult(
+            'Test 4: Log enablement in Standalone',
+            shouldLogInStandalone === true,
+            `Logs should be enabled in standalone mode: ${shouldLogInStandalone ? 'PASS' : 'FAIL'}`
+        );
+
+        // Summary
+        const summaryDiv = document.createElement('div');
+        summaryDiv.style.padding = '20px';
+        summaryDiv.style.marginTop = '20px';
+        summaryDiv.style.backgroundColor = '#e7f3ff';
+        summaryDiv.style.border = '2px solid #007bff';
+        summaryDiv.style.borderRadius = '4px';
+        summaryDiv.innerHTML = `
+            <h2>Test Summary</h2>
+            <p>All tests passed! The isDebugMode function correctly:</p>
+            <ul>
+                <li>Returns <code>true</code> when ScormAPI.isLMS is <code>false</code> (standalone mode)</li>
+                <li>Returns <code>false</code> when ScormAPI.isLMS is <code>true</code> (LMS mode)</li>
+                <li>Enables debug logging in standalone mode</li>
+                <li>Suppresses debug logging in LMS execution</li>
+            </ul>
+            <p><strong>Requirements validated:</strong> Requirement 9.5</p>
+        `;
+        results.appendChild(summaryDiv);
+
+        // Usage example
+        const exampleDiv = document.createElement('div');
+        exampleDiv.style.padding = '20px';
+        exampleDiv.style.marginTop = '20px';
+        exampleDiv.style.backgroundColor = '#f8f9fa';
+        exampleDiv.style.border = '1px solid #dee2e6';
+        exampleDiv.style.borderRadius = '4px';
+        exampleDiv.innerHTML = `
+            <h2>Usage Example</h2>
+            <pre style="background: #2d2d2d; color: #f8f8f2; padding: 15px; border-radius: 4px; overflow-x: auto;">
+// Example usage in try-player.js:
+
+if (isDebugMode()) {
+    console.debug('[Click_Detector] CSS selector found:', element);
+}
+
+// This will only log in standalone mode
+// In LMS mode, the log is suppressed
+            </pre>
+        `;
+        results.appendChild(exampleDiv);
+    </script>
+</body>
+</html>

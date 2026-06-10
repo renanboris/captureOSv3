@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test: getElementByXPath Helper Function</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .test-container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .test-result {
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 4px;
+        }
+        .pass {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .fail {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        #test-element {
+            padding: 10px;
+            background: #e9ecef;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>Test Suite: getElementByXPath Helper Function</h1>
+    <p><strong>Requirements:</strong> 1.1, 1.2, 1.3</p>
+    
+    <!-- Test Elements -->
+    <div class="test-container">
+        <h2>Test Elements</h2>
+        <div id="test-element" data-testid="main-test">Test Element</div>
+        <button id="test-button" class="btn-primary">Test Button</button>
+        <input id="test-input" type="text" value="test value" />
+    </div>
+    
+    <!-- Test Results -->
+    <div class="test-container">
+        <h2>Test Results</h2>
+        <div id="test-results"></div>
+    </div>
+
+    <script>
+        /**
+         * Helper function to evaluate XPath expressions and locate DOM elements
+         * @param {string} xpath - The XPath expression to evaluate
+         * @returns {Element|null} - The matching element or null if not found or on error
+         */
+        function getElementByXPath(xpath) {
+            try {
+                const result = document.evaluate(
+                    xpath,
+                    document,
+                    null,
+                    XPathResult.FIRST_ORDERED_NODE_TYPE,
+                    null
+                );
+                return result.singleNodeValue;
+            } catch (e) {
+                console.warn(`[Click_Detector] XPath evaluation error: ${e.message}`);
+                return null;
+            }
+        }
+
+        // Test runner
+        const testResults = [];
+
+        function runTest(name, testFn) {
+            try {
+                const result = testFn();
+                testResults.push({ name, passed: result.passed, message: result.message });
+            } catch (e) {
+                testResults.push({ name, passed: false, message: `Exception: ${e.message}` });
+            }
+        }
+
+        function displayResults() {
+            const container = document.getElementById('test-results');
+            let html = '';
+            let passed = 0;
+            let failed = 0;
+
+            testResults.forEach(result => {
+                const cssClass = result.passed ? 'pass' : 'fail';
+                html += `<div class="test-result ${cssClass}">
+                    <strong>${result.passed ? '✓' : '✗'} ${result.name}</strong><br>
+                    ${result.message}
+                </div>`;
+                if (result.passed) passed++;
+                else failed++;
+            });
+
+            html = `<p><strong>Total:</strong> ${testResults.length} | <strong>Passed:</strong> ${passed} | <strong>Failed:</strong> ${failed}</p>` + html;
+            container.innerHTML = html;
+        }
+
+        // Test 1: Valid XPath returns correct element
+        runTest('Test 1.1: Valid XPath by ID', () => {
+            const element = getElementByXPath('//*[@id="test-element"]');
+            const passed = element !== null && element.id === 'test-element';
+            return {
+                passed,
+                message: passed ? 'Successfully located element by XPath ID selector' : 'Failed to locate element'
+            };
+        });
+
+        // Test 2: Valid XPath with attribute selector
+        runTest('Test 1.2: Valid XPath by attribute', () => {
+            const element = getElementByXPath('//*[@data-testid="main-test"]');
+            const passed = element !== null && element.getAttribute('data-testid') === 'main-test';
+            return {
+                passed,
+                message: passed ? 'Successfully located element by XPath attribute selector' : 'Failed to locate element by attribute'
+            };
+        });
+
+        // Test 3: Valid XPath with class
+        runTest('Test 1.3: Valid XPath by class', () => {
+            const element = getElementByXPath('//button[@class="btn-primary"]');
+            const passed = element !== null && element.classList.contains('btn-primary');
+            return {
+                passed,
+                message: passed ? 'Successfully located element by XPath class selector' : 'Failed to locate element by class'
+            };
+        });
+
+        // Test 4: Invalid XPath returns null
+        runTest('Test 2.1: Invalid XPath syntax returns null', () => {
+            const element = getElementByXPath('//[@invalid syntax]');
+            const passed = element === null;
+            return {
+                passed,
+                message: passed ? 'Correctly returned null for invalid XPath syntax' : 'Should have returned null for invalid syntax'
+            };
+        });
+
+        // Test 5: Non-existent element returns null
+        runTest('Test 2.2: Non-existent element returns null', () => {
+            const element = getElementByXPath('//*[@id="non-existent-element"]');
+            const passed = element === null;
+            return {
+                passed,
+                message: passed ? 'Correctly returned null for non-existent element' : 'Should have returned null for non-existent element'
+            };
+        });
+
+        // Test 6: Empty string returns null
+        runTest('Test 2.3: Empty XPath returns null', () => {
+            const element = getElementByXPath('');
+            const passed = element === null;
+            return {
+                passed,
+                message: passed ? 'Correctly returned null for empty XPath' : 'Should have returned null for empty XPath'
+            };
+        });
+
+        // Test 7: Complex XPath expression
+        runTest('Test 3.1: Complex XPath with descendant', () => {
+            const element = getElementByXPath('//div[@class="test-container"]//button');
+            const passed = element !== null && element.id === 'test-button';
+            return {
+                passed,
+                message: passed ? 'Successfully evaluated complex XPath with descendant' : 'Failed to evaluate complex XPath'
+            };
+        });
+
+        // Test 8: XPath with text matching
+        runTest('Test 3.2: XPath with text matching', () => {
+            const element = getElementByXPath('//div[contains(text(), "Test Element")]');
+            const passed = element !== null && element.textContent.includes('Test Element');
+            return {
+                passed,
+                message: passed ? 'Successfully evaluated XPath with text matching' : 'Failed text matching XPath'
+            };
+        });
+
+        // Test 9: Error handling with console warning
+        runTest('Test 4.1: Console warning on error', () => {
+            const originalWarn = console.warn;
+            let warnCalled = false;
+            console.warn = (msg) => {
+                if (msg.includes('[Click_Detector] XPath evaluation error:')) {
+                    warnCalled = true;
+                }
+            };
+            
+            getElementByXPath('//[@invalid]');
+            console.warn = originalWarn;
+            
+            return {
+                passed: warnCalled,
+                message: warnCalled ? 'Console warning correctly logged on XPath error' : 'Console warning was not logged'
+            };
+        });
+
+        // Display all results
+        displayResults();
+    </script>
+</body>
+</html>
