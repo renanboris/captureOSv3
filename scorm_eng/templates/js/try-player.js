@@ -174,6 +174,25 @@ async function iniciarPlayer() {
         }
         console.log(`[SCORM] Modo: ${ScormAPI.isLMS ? 'LMS' : 'Standalone'}, moduloId: ${window.moduloId}`);
         
+        // Reproduzir áudio de introdução (passo 0) se disponível
+        if (state.modulo.intro_audio_filename) {
+            const introUrl = ScormAPI.isLMS
+                ? `audios/${state.modulo.intro_audio_filename}`
+                : (() => {
+                    const urlModulo = urlParams.get('modulo');
+                    if (urlModulo && urlModulo !== 'default') {
+                        return `/audios/${state.modulo.session_id}/${state.modulo.intro_audio_filename}`;
+                    }
+                    return `audios/${state.modulo.intro_audio_filename}`;
+                })();
+            currentAudio = new Audio(introUrl);
+            currentAudio.play().catch(e => {
+                console.warn('[Try_Player] Intro audio blocked, falling back to TTS', e);
+                const introTexto = state.modulo.titulo || 'Bem-vindo ao treinamento!';
+                narrarFallback(introTexto);
+            });
+        }
+        
         // Setup inicial HUD
         document.getElementById('passo-header').innerText = `Passo 1 de ${state.modulo.total_passos}`;
         document.getElementById('ancora-texto').innerText = state.modulo.titulo || "Prática Iniciada";
@@ -193,8 +212,9 @@ async function iniciarPlayer() {
         // Verifica se já passou
         const lessonStatus = ScormAPI.get("cmi.core.lesson_status");
         if (lessonStatus === "passed" || lessonStatus === "completed") {
-            // Se já concluiu, podemos apenas renderizar a conclusão
-            // ou deixar rever
+            // Já concluiu — mostra tela de conclusão diretamente com opção de reiniciar
+            mostrarTelaConclusao(state.xpTotal, /* jaConcluidoAntes */ true);
+            return;
         } else {
             ScormAPI.set("cmi.core.lesson_status", "incomplete");
             ScormAPI.save();
@@ -1050,28 +1070,79 @@ const QuizComponent = {
     }
 };
 
+function reiniciarTreinamento() {
+    // Limpa estado SCORM persistido
+    ScormAPI.set("cmi.suspend_data", "");
+    ScormAPI.set("cmi.core.lesson_location", "0");
+    ScormAPI.set("cmi.core.lesson_status", "incomplete");
+    ScormAPI.set("cmi.core.score.raw", "0");
+    ScormAPI.save();
+
+    // Reseta estado em memória
+    state.passoAtual = 0;
+    state.xpTotal = 0;
+    state.tentativasNoPasso = 0;
+    state.sequenciaPerfeita = true;
+    state.historico = [];
+
+    // Restaura o container de simulação e reinicia
+    const simulacaoEl = document.getElementById('simulacao-container');
+    simulacaoEl.innerHTML = '<img id="imagem-bg" src="" alt="Simulação"><div id="overlay-cliques"></div>';
+
+    // Re-attach click listener
+    document.getElementById('overlay-cliques').addEventListener('click', (e) => {
+        const hotspot = state.modulo.hotspots[state.passoAtual];
+        if (!hotspot) return;
+        const result = detectClickMatch(e, hotspot);
+        if (result.matched) { onAcerto(hotspot); } else { onErro(hotspot); }
+    });
+
+    renderizarPassoAtual();
+}
+
+function mostrarTelaConclusao(xpFinal, jaConcluidoAntes) {
+    document.getElementById('sandbox-xp').innerText = `${xpFinal} XP`;
+    document.getElementById('passo-header').innerText = 'Concluído';
+    document.getElementById('ancora-texto').innerText = 'Parabéns, treinamento finalizado com sucesso!';
+
+    const aviso = jaConcluidoAntes
+        ? `<div style="font-size:0.9rem; color:#f59e0b; margin-top:8px;">Você já completou este treinamento anteriormente.</div>`
+        : '';
+
+    document.getElementById('simulacao-container').innerHTML = `
+        <div style="padding: 50px; text-align: center; color: white; width: 100%; height: 100%;
+                    display: flex; flex-direction: column; justify-content: center; align-items: center;
+                    background: #1a1a2e; box-sizing: border-box;">
+            <div style="font-size: 3rem; margin-bottom: 16px;">🏆</div>
+            <h2 style="font-size: 2rem; color: #10b981; margin: 0 0 12px;">Parabéns!</h2>
+            <p style="font-size: 1.1rem; color: #cbd5e1; margin: 0 0 6px;">Treinamento finalizado com sucesso!</p>
+            <p style="font-size: 1.3rem; font-weight: 700; color: #f1f5f9; margin: 0 0 4px;">XP Final: ${xpFinal}</p>
+            ${aviso}
+            <button
+                onclick="reiniciarTreinamento()"
+                style="margin-top: 28px; padding: 12px 32px; border-radius: 8px; border: none;
+                       font-size: 0.95rem; font-weight: 600; cursor: pointer;
+                       background: #6366f1; color: white; transition: background 0.15s ease;"
+                onmouseover="this.style.background='#4f46e5'"
+                onmouseout="this.style.background='#6366f1'"
+            >🔄 Reiniciar Treinamento</button>
+        </div>
+    `;
+}
+
 function concluirModulo() {
     if (state.sequenciaPerfeita) {
         state.xpTotal += XP_RULES.BONUS_SEQUENCIA_PERFEITA;
     }
-    document.getElementById('sandbox-xp').innerText = `${state.xpTotal} XP`;
-    document.getElementById('passo-header').innerText = `Concluído`;
-    document.getElementById('ancora-texto').innerText = `Treinamento finalizado com sucesso!`;
-    
-    document.getElementById('simulacao-container').innerHTML = `
-        <div style="padding: 50px; text-align: center; color: white; width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center;">
-            <h2 style="font-size: 2rem; color: #10b981;">Treinamento Concluído!</h2>
-            <p style="font-size: 1.2rem;">Seu XP Final: ${state.xpTotal}</p>
-        </div>
-    `;
-    
+
+    mostrarTelaConclusao(state.xpTotal, false);
     salvarProgresso();
-    
+
     const passed = state.xpTotal >= (state.modulo.xp_max * 0.6);
     ScormAPI.set("cmi.core.lesson_status", passed ? "passed" : "failed");
     ScormAPI.save();
     ScormAPI.quit();
-    
+
     // Envia conclusão para o backend apenas em modo Simlink (com parâmetro modulo na URL)
     const urlModulo = urlParams.get('modulo');
     if (!ScormAPI.isLMS && urlModulo && urlModulo !== 'default') {

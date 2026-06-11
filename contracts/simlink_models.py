@@ -28,3 +28,4 @@ class SimlinkModulo(BaseModel):
     criado_em: str
     lms_callback_url: Optional[str] = None  # URL do LMS para reportar conclusão
     lms_callback_token: Optional[str] = None
+    intro_audio_filename: Optional[str] = None  # áudio da narração de abertura (passo 0)

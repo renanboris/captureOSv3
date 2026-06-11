@@ -171,17 +171,32 @@ async def rerenderizar_com_roteiro_aprovado(session_id: str, roteiro_aprovado: l
     try:
         video_url = f"{settings.backend_url}/videos_gerados/{session_id}_final.mp4"
         simlink_modulo = construir_modulo_simlink(roteiro_aprovado, session_id, video_url)
+
+        # Anexar áudio de intro (passo 0 / boas-vindas) ao módulo
+        intro_audio_path = f"data/audios/{session_id}/passo_1_final.mp3"
+        if os.path.exists(intro_audio_path):
+            simlink_modulo.intro_audio_filename = os.path.basename(intro_audio_path)
+            logger.info(f"[{session_id}] Intro audio: {simlink_modulo.intro_audio_filename}")
+
         os.makedirs("data/simlink", exist_ok=True)
         with open(f"data/simlink/{session_id}.json", "w", encoding="utf-8") as f:
             import json
             json.dump(simlink_modulo.model_dump(), f, ensure_ascii=False, indent=2)
-            
-        # NOVO: Gerar pacote SCORM (TRY mode) automaticamente
+
+        # Gerar pacote SCORM: inclui quiz automaticamente se já foi gerado pela IA
         from scorm_eng.scorm_builder import gerar_scorm
         titulo = f"Tutorial — Sessão {session_id}"
-        scorm_path = await gerar_scorm(simlink_modulo, session_id, titulo)
-        logger.info(f"Pacote SCORM gerado em: {scorm_path}")
-        
+        quiz_path = f"data/artifacts/{session_id}/quiz.json"
+        incluir_quiz = os.path.exists(quiz_path) and os.path.getsize(quiz_path) > 10
+        scorm_path = await gerar_scorm(
+            simlink_modulo,
+            session_id,
+            titulo,
+            incluir_quiz=incluir_quiz,
+            quiz_data_path=quiz_path if incluir_quiz else None
+        )
+        logger.info(f"Pacote SCORM gerado em: {scorm_path} (quiz={'sim' if incluir_quiz else 'não'})")
+
     except Exception as e:
         logger.error(f"Erro ao atualizar Simlink/SCORM no rerender: {e}")
 

@@ -16,12 +16,14 @@ class ScormBuilder:
         titulo: str,
         incluir_quiz: bool = False,
         num_questoes_quiz: int = 3,
+        quiz_data_path: str | None = None,
     ):
         self.simlink_modulo = simlink_modulo
         self.session_id = session_id
         self.titulo = titulo
         self.incluir_quiz = incluir_quiz
         self.num_questoes_quiz = self._validate_num_questoes(num_questoes_quiz)
+        self.quiz_data_path = quiz_data_path  # pre-generated quiz JSON, bypasses LLM
         self.output_base = Path("data/scorm")
 
     def _validate_num_questoes(self, num: int) -> int:
@@ -180,7 +182,20 @@ class ScormBuilder:
         #     we know whether to include quiz.js in the manifest) ---
         quiz_data: list = []
         if self.incluir_quiz:
-            quiz_data = await self._generate_quiz()
+            if self.quiz_data_path and os.path.exists(self.quiz_data_path):
+                # Reuse pre-generated quiz (avoids an LLM call)
+                try:
+                    with open(self.quiz_data_path, "r", encoding="utf-8") as f:
+                        quiz_data = json.load(f)
+                    logger.info(
+                        f"[{self.session_id}] Quiz carregado de {self.quiz_data_path} "
+                        f"({len(quiz_data)} questões)."
+                    )
+                except Exception as e:
+                    logger.warning(f"[{self.session_id}] Falha ao ler quiz_data_path: {e}")
+            else:
+                # Fall back to LLM generation
+                quiz_data = await self._generate_quiz()
 
         include_quiz_in_package = bool(quiz_data)
 
@@ -207,6 +222,14 @@ class ScormBuilder:
                     filename = os.path.basename(hotspot.audio_path)
                     zipf.write(hotspot.audio_path, f"audios/{filename}")
 
+            # Pack intro audio if available (step 0 welcome narration)
+            intro_filename = getattr(self.simlink_modulo, 'intro_audio_filename', None)
+            if intro_filename:
+                intro_audio_path = f"data/audios/{self.session_id}/{intro_filename}"
+                if os.path.exists(intro_audio_path):
+                    zipf.write(intro_audio_path, f"audios/{intro_filename}")
+                    logger.info(f"[{self.session_id}] Intro audio empacotado: {intro_filename}")
+
             # 4. Templates (index.html, css/style.css, js/scorm-api.js, js/try-player.js)
             templates_dir = Path("scorm_eng/templates")
             for root, _, files in os.walk(templates_dir):
@@ -228,12 +251,16 @@ async def gerar_scorm(
     titulo: str,
     incluir_quiz: bool = False,
     num_questoes_quiz: int = 3,
+    quiz_data_path: str | None = None,
 ) -> str:
     """Empacota o modo Try num formato ZIP SCORM 1.2 navegável para plataformas LMS.
 
     Parâmetros opcionais:
-        incluir_quiz       -- quando True, invoca o Quiz_Generator ao final
-        num_questoes_quiz  -- número de questões a gerar (padrão 3, intervalo 1-10)
+        incluir_quiz       -- quando True, inclui quiz no pacote
+        num_questoes_quiz  -- número de questões a gerar via IA (usado apenas se
+                             quiz_data_path não for fornecido)
+        quiz_data_path     -- caminho para um quiz.json já gerado; quando fornecido,
+                             o Quiz_Generator NÃO é invocado (reusa o quiz existente)
 
     Requirements: 4.1, 7.1
     """
@@ -244,5 +271,6 @@ async def gerar_scorm(
         titulo,
         incluir_quiz=incluir_quiz,
         num_questoes_quiz=num_questoes_quiz,
+        quiz_data_path=quiz_data_path,
     )
     return await builder.build()

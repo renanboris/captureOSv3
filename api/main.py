@@ -808,7 +808,7 @@ async def rebuild_scorm(session_id: str):
     """Regenera o pacote SCORM para uma sessão já processada, sem re-renderizar o vídeo.
 
     Útil para aplicar atualizações dos templates (try-player.js, index.html)
-    a SCORMs já gerados.
+    a SCORMs já gerados. Inclui quiz automaticamente se quiz.json existir.
     """
     simlink_path = f"data/simlink/{session_id}.json"
     if not os.path.exists(simlink_path):
@@ -826,12 +826,30 @@ async def rebuild_scorm(session_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erro ao carregar módulo Simlink: {e}")
 
+    # Backfill intro audio if not yet in the stored simlink
+    if not simlink_modulo.intro_audio_filename:
+        intro_path = f"data/audios/{session_id}/passo_1_final.mp3"
+        if os.path.exists(intro_path):
+            simlink_modulo.intro_audio_filename = os.path.basename(intro_path)
+
     titulo = mod_data.get("titulo", f"Tutorial — Sessão {session_id}")
-    scorm_path = await gerar_scorm(simlink_modulo, session_id, titulo)
-    logger.info(f"SCORM regenerado em: {scorm_path}")
+
+    # Incluir quiz se já foi gerado
+    quiz_path = f"data/artifacts/{session_id}/quiz.json"
+    incluir_quiz = os.path.exists(quiz_path) and os.path.getsize(quiz_path) > 10
+
+    scorm_path = await gerar_scorm(
+        simlink_modulo,
+        session_id,
+        titulo,
+        incluir_quiz=incluir_quiz,
+        quiz_data_path=quiz_path if incluir_quiz else None
+    )
+    logger.info(f"SCORM regenerado em: {scorm_path} (quiz={'sim' if incluir_quiz else 'não'})")
 
     return {
         "status": "ok",
+        "quiz_incluido": incluir_quiz,
         "scorm_download_url": f"{settings.backend_url}/scorm/{session_id}.zip"
     }
 
