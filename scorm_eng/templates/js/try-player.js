@@ -52,7 +52,8 @@ let state = {
     xpTotal: 0,
     tentativasNoPasso: 0,
     sequenciaPerfeita: true,
-    historico: []
+    historico: [],
+    isTransitioning: false  // blocks double-click step skipping
 };
 
 const XP_RULES = {
@@ -470,6 +471,7 @@ function detectClickByCoordinates(event, hotspot) {
 }
 
 document.getElementById('overlay-cliques').addEventListener('click', (e) => {
+    if (state.isTransitioning) return;  // ignore clicks during step transition
     const hotspot = state.modulo.hotspots[state.passoAtual];
     if (!hotspot) return;
 
@@ -483,17 +485,18 @@ document.getElementById('overlay-cliques').addEventListener('click', (e) => {
 });
 
 function onAcerto(hotspot) {
+    state.isTransitioning = true;  // lock clicks until next step renders
     const xpGanho = [XP_RULES.ACERTO_PRIMEIRA, XP_RULES.ACERTO_SEGUNDA, XP_RULES.ACERTO_COM_DICA][Math.min(state.tentativasNoPasso, 2)];
     state.xpTotal += xpGanho;
     state.historico.push({ passo: hotspot.passo_num, tentativas: state.tentativasNoPasso + 1, xp: xpGanho });
     
     mostrarHighlight('success', hotspot);
-    // narrarFallback(hotspot.micro_narracao || "Muito bem!"); // REMOVIDO PARA EVITAR DUPLICIDADE COM A VOZ REAL
     
     salvarProgresso();
     
     setTimeout(() => {
         state.passoAtual++;
+        state.isTransitioning = false;
         renderizarPassoAtual();
     }, 1800);
 }
@@ -506,12 +509,12 @@ function onErro(hotspot) {
         mostrarFeedback(`Dica: procure por "${hotspot.target_text}"`);
     } else if (state.tentativasNoPasso === 2) {
         mostrarHighlight('hint', hotspot);
-        // narrarFallback("Está aqui. Vamos tentar!"); // REMOVIDO
     } else {
+        state.isTransitioning = true;  // lock during reveal auto-advance
         mostrarHighlight('reveal', hotspot);
-        // narrarFallback(hotspot.micro_narracao); // REMOVIDO
         setTimeout(() => {
             state.passoAtual++;
+            state.isTransitioning = false;
             renderizarPassoAtual();
         }, 2000);
     }
@@ -1084,6 +1087,11 @@ function reiniciarTreinamento() {
     state.tentativasNoPasso = 0;
     state.sequenciaPerfeita = true;
     state.historico = [];
+    state.isTransitioning = false;
+
+    // Restaura o HUD
+    const widget = document.getElementById('capture-os-sandbox-widget');
+    if (widget) widget.style.display = '';
 
     // Restaura o container de simulação e reinicia
     const simulacaoEl = document.getElementById('simulacao-container');
@@ -1091,6 +1099,7 @@ function reiniciarTreinamento() {
 
     // Re-attach click listener
     document.getElementById('overlay-cliques').addEventListener('click', (e) => {
+        if (state.isTransitioning) return;
         const hotspot = state.modulo.hotspots[state.passoAtual];
         if (!hotspot) return;
         const result = detectClickMatch(e, hotspot);
@@ -1104,6 +1113,10 @@ function mostrarTelaConclusao(xpFinal, jaConcluidoAntes) {
     document.getElementById('sandbox-xp').innerText = `${xpFinal} XP`;
     document.getElementById('passo-header').innerText = 'Concluído';
     document.getElementById('ancora-texto').innerText = 'Parabéns, treinamento finalizado com sucesso!';
+
+    // Ocultar o HUD — não é mais necessário na tela de conclusão
+    const widget = document.getElementById('capture-os-sandbox-widget');
+    if (widget) widget.style.display = 'none';
 
     const aviso = jaConcluidoAntes
         ? `<div style="font-size:0.9rem; color:#f59e0b; margin-top:8px;">Você já completou este treinamento anteriormente.</div>`
@@ -1128,6 +1141,9 @@ function mostrarTelaConclusao(xpFinal, jaConcluidoAntes) {
             >🔄 Reiniciar Treinamento</button>
         </div>
     `;
+
+    // Narrar conclusão
+    narrarFallback('Parabéns, treinamento finalizado com sucesso!');
 }
 
 function concluirModulo() {
