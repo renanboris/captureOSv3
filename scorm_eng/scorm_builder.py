@@ -26,6 +26,29 @@ class ScormBuilder:
         self.quiz_data_path = quiz_data_path  # pre-generated quiz JSON, bypasses LLM
         self.output_base = Path("data/scorm")
 
+    async def _generate_fixed_audios(self) -> None:
+        """Generate fixed narration audios using MiniMax TTS (cached after first run).
+
+        Produces two MP3s used by Try_Player:
+        - audios/scorm_conclusao.mp3  — played on completion screen
+        - audios/scorm_quiz_intro.mp3 — played on quiz transition screen
+        """
+        from video_eng.tts_generator import gerar_audio
+
+        fixed = [
+            ("Parabéns, treinamento finalizado com sucesso!", "scorm_conclusao.mp3"),
+            ("Muito bem! Agora vamos testar seu conhecimento com um quiz rápido.", "scorm_quiz_intro.mp3"),
+        ]
+        os.makedirs(f"data/audios/{self.session_id}", exist_ok=True)
+        for texto, filename in fixed:
+            dest = f"data/audios/{self.session_id}/{filename}"
+            if not os.path.exists(dest):
+                ok = await gerar_audio(texto, dest)
+                if ok:
+                    logger.info(f"[{self.session_id}] Audio fixo gerado: {filename}")
+                else:
+                    logger.warning(f"[{self.session_id}] Falha ao gerar audio fixo: {filename}")
+
     def _validate_num_questoes(self, num: int) -> int:
         """Validate and clamp num_questoes_quiz to the valid range [1, 10].
         
@@ -197,6 +220,9 @@ class ScormBuilder:
                 # Fall back to LLM generation
                 quiz_data = await self._generate_quiz()
 
+        # Generate fixed narration audios (conclusion + quiz transition)
+        await self._generate_fixed_audios()
+
         include_quiz_in_package = bool(quiz_data)
 
         with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
@@ -229,6 +255,12 @@ class ScormBuilder:
                 if os.path.exists(intro_audio_path):
                     zipf.write(intro_audio_path, f"audios/{intro_filename}")
                     logger.info(f"[{self.session_id}] Intro audio empacotado: {intro_filename}")
+
+            # Pack fixed narration audios (conclusion + quiz transition)
+            for fixed_filename in ("scorm_conclusao.mp3", "scorm_quiz_intro.mp3"):
+                fixed_path = f"data/audios/{self.session_id}/{fixed_filename}"
+                if os.path.exists(fixed_path):
+                    zipf.write(fixed_path, f"audios/{fixed_filename}")
 
             # 4. Templates (index.html, css/style.css, js/scorm-api.js, js/try-player.js)
             templates_dir = Path("scorm_eng/templates")

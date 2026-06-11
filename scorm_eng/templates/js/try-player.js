@@ -288,11 +288,42 @@ function getScreenshotUrl(hotspot) {
 }
 
 /**
+ * Plays a fixed narration audio from the audios/ folder (SCORM mode)
+ * or falls back to TTS if the file is not found.
+ * @param {string} filename - e.g. 'scorm_conclusao.mp3'
+ * @param {string} fallbackText - TTS text if file missing
+ */
+function tocarAudioFixo(filename, fallbackText) {
+    // Stop any currently playing audio first
+    if (currentAudio) {
+        currentAudio.pause();
+        currentAudio = null;
+    }
+    window.speechSynthesis && window.speechSynthesis.cancel();
+
+    const url = ScormAPI.isLMS
+        ? `audios/${filename}`
+        : (() => {
+            const urlModulo = urlParams.get('modulo');
+            return (urlModulo && urlModulo !== 'default')
+                ? `/audios/${state.modulo.session_id}/${filename}`
+                : `audios/${filename}`;
+        })();
+
+    currentAudio = new Audio(url);
+    currentAudio.play().catch(() => {
+        // File not in package — fall back to browser TTS
+        narrarFallback(fallbackText);
+    });
+}
+/**
  * Shows the quiz transition screen ("Quiz de Validação") when all simulation
  * steps are complete and QUIZ_DATA is available.
  * Requirements: 4.3, 4.4
  */
 function mostrarTransicaoQuiz() {
+    // Stop last step audio and play quiz-intro narration
+    tocarAudioFixo('scorm_quiz_intro.mp3', 'Muito bem! Agora vamos testar seu conhecimento com um quiz rápido.');
     const container = document.getElementById('simulacao-container');
     container.innerHTML = `
         <div id="quiz-transition-wrapper" style="
@@ -1142,8 +1173,8 @@ function mostrarTelaConclusao(xpFinal, jaConcluidoAntes) {
         </div>
     `;
 
-    // Narrar conclusão
-    narrarFallback('Parabéns, treinamento finalizado com sucesso!');
+    // Play conclusion narration via MiniMax (falls back to TTS if file missing)
+    tocarAudioFixo('scorm_conclusao.mp3', 'Parabéns, treinamento finalizado com sucesso!');
 }
 
 function concluirModulo() {
@@ -1151,7 +1182,7 @@ function concluirModulo() {
         state.xpTotal += XP_RULES.BONUS_SEQUENCIA_PERFEITA;
     }
 
-    mostrarTelaConclusao(state.xpTotal, false);
+    mostrarTelaConclusao(state.xpTotal, false);  // plays scorm_conclusao.mp3 internally
     salvarProgresso();
 
     const passed = state.xpTotal >= (state.modulo.xp_max * 0.6);
