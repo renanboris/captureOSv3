@@ -72,7 +72,20 @@ async function iniciarPlayer() {
             ScormAPI.save();
         }
         
-        renderizarPassoAtual();
+        // Prepara a imagem de fundo inicial
+        if (state.modulo && state.modulo.hotspots && state.modulo.hotspots.length > 0) {
+            const firstHotspot = state.modulo.hotspots[state.passoAtual];
+            document.getElementById('imagem-bg').src = getScreenshotUrl(firstHotspot);
+        }
+
+        // Aguarda clique no botão START para evitar bloqueio de autoplay de áudio pelo navegador
+        const startScreen = document.getElementById('start-screen');
+        const btnStart = document.getElementById('btn-start');
+        
+        btnStart.addEventListener('click', () => {
+            startScreen.classList.add('hidden');
+            renderizarPassoAtual();
+        });
     } catch (e) {
         document.getElementById('ancora-texto').innerText = `Erro: ${e.message}`;
     }

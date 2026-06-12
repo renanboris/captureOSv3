@@ -170,7 +170,16 @@ async def rerenderizar_com_roteiro_aprovado(session_id: str, roteiro_aprovado: l
     # Atualizar Módulo Simlink com o roteiro aprovado
     try:
         video_url = f"{settings.backend_url}/videos_gerados/{session_id}_final.mp4"
-        simlink_modulo = construir_modulo_simlink(roteiro_aprovado, session_id, video_url)
+        
+        # Encontrar um título amigável para evitar que o LMS leia o nome do arquivo (session_id)
+        titulo_amigavel = "Treinamento Prático"
+        for passo in roteiro_aprovado:
+            ancora = passo.get("ancora", "").strip()
+            if ancora and len(ancora) > 3:
+                titulo_amigavel = ancora
+                break
+
+        simlink_modulo = construir_modulo_simlink(roteiro_aprovado, session_id, video_url, titulo=titulo_amigavel)
         os.makedirs("data/simlink", exist_ok=True)
         with open(f"data/simlink/{session_id}.json", "w", encoding="utf-8") as f:
             import json
@@ -178,8 +187,7 @@ async def rerenderizar_com_roteiro_aprovado(session_id: str, roteiro_aprovado: l
             
         # NOVO: Gerar pacote SCORM (TRY mode) automaticamente
         from scorm_eng.scorm_builder import gerar_scorm
-        titulo = f"Tutorial — Sessão {session_id}"
-        scorm_path = gerar_scorm(simlink_modulo, session_id, titulo)
+        scorm_path = gerar_scorm(simlink_modulo, session_id, titulo_amigavel)
         logger.info(f"Pacote SCORM gerado em: {scorm_path}")
         
     except Exception as e:
