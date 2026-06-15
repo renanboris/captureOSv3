@@ -473,52 +473,55 @@
             const overlay = document.createElement("div");
             overlay.id = "capture-os-countdown";
             overlay.style.cssText = `
-                position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
-                background: #FFFFFF; z-index: 2147483647;
-                display: flex; align-items: center; justify-content: center; gap: 10px;
-                border: 1px solid #E5E7EB;
-                border-radius: 8px; padding: 10px 16px;
-                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-                box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-                transition: opacity 0.3s ease, transform 0.3s ease;
-                animation: _capture_slideDown 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+                position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+                background: rgba(0, 0, 0, 0.85); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+                z-index: 2147483647; display: flex; align-items: center; justify-content: center;
+                transition: opacity 0.3s ease; opacity: 0;
             `;
             
             const style = document.createElement('style');
             style.innerHTML = `
-                @keyframes _capture_slideDown {
-                    from { transform: translate(-50%, -20px); opacity: 0; }
-                    to { transform: translate(-50%, 0); opacity: 1; }
-                }
-                @keyframes _capture_pulse_dot {
-                    0% { transform: scale(0.95); opacity: 1; }
-                    50% { transform: scale(1.1); opacity: 0.6; }
-                    100% { transform: scale(0.95); opacity: 1; }
+                @keyframes _capture_pop {
+                    0% { transform: scale(0.5); opacity: 0; }
+                    30% { transform: scale(1.1); opacity: 1; }
+                    70% { transform: scale(1); opacity: 1; }
+                    100% { transform: scale(0.9); opacity: 0; }
                 }
             `;
             document.head.appendChild(style);
             
-            const dot = document.createElement("div");
-            dot.style.cssText = "width: 8px; height: 8px; background: #FF3B30; border-radius: 50%; animation: _capture_pulse_dot 1s infinite;";
+            const numberEl = document.createElement("div");
+            numberEl.style.cssText = "font-size: 160px; font-weight: 800; color: #FFFFFF; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; text-shadow: 0 12px 48px rgba(0,0,0,0.5); opacity: 0;";
 
-            const hint = document.createElement("div");
-            hint.innerHTML = "Preparando gravação...";
-            hint.style.cssText = "font-size: 13px; font-weight: 500; color: #111827;";
-
-            overlay.appendChild(dot);
-            overlay.appendChild(hint);
+            overlay.appendChild(numberEl);
             document.documentElement.appendChild(overlay);
 
-            setTimeout(() => {
-                overlay.style.opacity = "0";
-                overlay.style.transform = "translate(-50%, -20px)";
-                setTimeout(() => {
-                    overlay.remove();
-                    style.remove();
-                    if (chrome.runtime && chrome.runtime.sendMessage) {
-                        chrome.runtime.sendMessage({ action: 'start_recording_now' }).catch(() => {});
-                    }
-                }, 300);
+            // Animate opacity in
+            setTimeout(() => { overlay.style.opacity = "1"; }, 10);
+
+            let count = 3;
+            numberEl.innerText = count;
+            numberEl.style.animation = "_capture_pop 1s cubic-bezier(0.16, 1, 0.3, 1) forwards";
+
+            const interval = setInterval(() => {
+                count--;
+                if (count > 0) {
+                    numberEl.innerText = count;
+                    // Retrigger animation
+                    numberEl.style.animation = 'none';
+                    numberEl.offsetHeight; /* force reflow */
+                    numberEl.style.animation = "_capture_pop 1s cubic-bezier(0.16, 1, 0.3, 1) forwards";
+                } else {
+                    clearInterval(interval);
+                    overlay.style.opacity = "0";
+                    setTimeout(() => {
+                        overlay.remove();
+                        style.remove();
+                        if (chrome.runtime && chrome.runtime.sendMessage) {
+                            chrome.runtime.sendMessage({ action: 'start_recording_now' }).catch(() => {});
+                        }
+                    }, 300);
+                }
             }, 1000);
         }
     });
@@ -583,12 +586,12 @@
             toast.innerHTML = `
                 <div style="display: flex; flex-direction: column; width: 100%; gap: 10px;">
                     <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
-                        <div style="display: flex; align-items: center; gap: 14px;">
+                        <div style="display: flex; align-items: center; gap: 14px; flex: 1; min-width: 0; margin-right: 12px;">
                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" class="capture-spin" style="flex-shrink:0;">
                                 <circle cx="12" cy="12" r="10" stroke="#F3F4F6" stroke-width="2.5" fill="none"></circle>
                                 <path d="M12 2a10 10 0 0 1 10 10" stroke="#00998F" stroke-width="2.5" stroke-linecap="round" fill="none"></path>
                             </svg>
-                            <span id="capture-os-toast-msg" style="font-size: 14px;">${msg || 'Processando...'}</span>
+                            <span id="capture-os-toast-msg" style="font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${msg || 'Processando...'}</span>
                         </div>
                         <button id="capture-os-cancel-btn" style="background: #FEF2F2; border: none; color: #EF4444; font-size: 13px; font-weight: 600; cursor: pointer; padding: 5px 12px; border-radius: 8px; transition: all 0.2s;">Cancelar</button>
                     </div>

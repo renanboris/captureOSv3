@@ -164,22 +164,32 @@
       </svg>
       <h1>Capture OS v3</h1>
     </div>
-    <p class="sub">Defina o backend de produção e o token de autenticação.</p>
+    <p class="sub">Configure a URL do servidor backend da Senior.</p>
 
-    <label for="backendUrl">URL do Backend</label>
+    <label for="backendUrl">URL do Servidor (API)</label>
     <input type="text" id="backendUrl" placeholder="https://api.captureos.fly.dev" autocomplete="off">
-    <p class="hint">Endpoint do backend implantado. Em desenvolvimento, deixe em branco para usar o fallback local.</p>
+    <p class="hint">Deixe em branco para usar o servidor local (localhost:8000).</p>
 
-    <label for="authToken">Token de Autenticação (Bearer)</label>
-    <input type="password" id="authToken" placeholder="cole o JWT aqui" autocomplete="off">
-    <p class="hint">Enviado como cabeçalho Authorization: Bearer em todas as requisições ao backend.</p>
+    <div style="margin-top: 24px; padding-top: 24px; border-top: 1px solid var(--border-glass);">
+      <h3 style="font-size: 14px; margin: 0 0 12px 0;">Sua Conta</h3>
+      <div id="user-profile" style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
+        <div style="width: 32px; height: 32px; background: var(--bg-secondary); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 600; color: var(--text-secondary);" id="user-initial">?</div>
+        <div>
+          <div style="font-size: 13px; font-weight: 500;" id="user-email">Carregando...</div>
+          <div style="font-size: 11px; color: var(--text-muted);">Autenticado via Supabase</div>
+        </div>
+      </div>
+      <button id="btn-logout" class="btn" style="background: #FFFFFF; color: #EF4444; border: 1px solid #EF4444;">Fazer Logout</button>
+    </div>
 
-    <div class="actions">
-      <button id="save" class="btn">Salvar</button>
+    <div class="actions" style="margin-top: 24px;">
+      <button id="save" class="btn">Salvar URL</button>
       <span id="status"></span>
     </div>
   </div>
 
+  <script src="lib/supabase.min.js"></script>
+  <script src="supabase_config.js"></script>
   <script src="options.js"></script>
 </body>
 </html>

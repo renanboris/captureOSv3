@@ -598,6 +598,22 @@
 </head>
 <body>
 
+  <!-- ════════════════════ LOGIN OVERLAY ════════════════════ -->
+  <div id="login-overlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: var(--bg-primary); z-index: 9999; flex-direction: column; align-items: center; justify-content: center; padding: 24px;">
+    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--accent-primary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom: 16px;">
+      <path d="M12 2L9.5 9.5 2 12l7.5 2.5L12 22l2.5-7.5L22 12l-7.5-2.5L12 2z"/>
+    </svg>
+    <h2 style="margin: 0 0 8px 0; font-size: 18px; color: var(--text-primary);">Capture OS</h2>
+    <p style="margin: 0 0 24px 0; font-size: 13px; color: var(--text-secondary); text-align: center;">Faça login corporativo para acessar as gravações e a IA.</p>
+    
+    <div style="width: 100%; display: flex; flex-direction: column; gap: 12px;">
+      <input type="email" id="login-email" placeholder="Seu e-mail (@senior.com.br)" style="width: 100%; padding: 10px 12px; border: 1px solid var(--border-default); border-radius: 8px; font-size: 13px; outline: none;">
+      <input type="password" id="login-password" placeholder="Sua senha" style="width: 100%; padding: 10px 12px; border: 1px solid var(--border-default); border-radius: 8px; font-size: 13px; outline: none;">
+      <button id="btn-login" style="width: 100%; padding: 10px; background: var(--text-primary); color: white; border: none; border-radius: 8px; font-weight: 500; font-size: 13px; cursor: pointer;">Entrar</button>
+    </div>
+    <div id="login-error" style="color: var(--error); font-size: 12px; margin-top: 12px; text-align: center; display: none;">Erro ao fazer login</div>
+  </div>
+
   <!-- ════════════════════ HEADER ════════════════════ -->
   <div class="header">
     <div class="header-left" id="header-default">
@@ -641,6 +657,27 @@
   <!-- ════════════════════ TAB: RECORD ════════════════════ -->
   <div id="tab-record" class="tab-content active">
     <div class="content" id="settings-content">
+
+      <!-- Contexto RAG -->
+      <div class="setting-card" style="flex-direction: column; align-items: flex-start; gap: 10px; background: #F9FAFB;">
+        <div style="font-size: 13px; font-weight: 600; color: #111827; display: flex; align-items: center; gap: 6px;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#00998F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
+          Módulo e Contexto (RAG)
+        </div>
+        <input list="rag-namespaces-list" id="rag-namespace" placeholder="Auto (Todos) ou digite um novo..." style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #E5E7EB; font-size: 13px; color: #4B5563; background: #FFFFFF; outline: none;">
+        <datalist id="rag-namespaces-list">
+          <option value="auto">Busca Automática (Todos)</option>
+        </datalist>
+        <div style="width: 100%; display: flex; align-items: center; gap: 8px;">
+          <input type="file" id="rag-file" accept=".pdf,.txt" style="display: none;">
+          <button id="btn-upload-rag" style="flex: 1; padding: 6px 10px; border-radius: 6px; border: 1px dashed #00998F; background: rgba(0,153,143,0.05); color: #00998F; font-size: 12px; font-weight: 500; cursor: pointer; transition: all 0.2s;">
+            + Anexar Release Notes
+          </button>
+          <span id="rag-file-name" style="font-size: 11px; color: #6B7280; max-width: 120px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: none;"></span>
+        </div>
+        <div id="rag-upload-status" style="font-size: 11px; font-weight: 600; color: #00998F; display: none;">Vetorizando arquivo...</div>
+      </div>
+
 
       <!-- Capturar Tela (always on, disabled) -->
       <div class="setting-card disabled-card">
@@ -814,6 +851,9 @@
     </div>
   </div>
 
+  <!-- ════════════════════ SCRIPTS ════════════════════ -->
+  <script src="lib/supabase.min.js"></script>
+  <script src="supabase_config.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

@@ -714,7 +714,7 @@ async function abortCapture() {
 function finalizeUpload(videoBase64, recordingStartTime, eventsLog, micAudioBase64 = "") {
     console.log("Montando Payload Final...");
 
-    chrome.storage.local.get(['useMic', 'useAi'], (res) => {
+    chrome.storage.local.get(['useMic', 'useAi', 'ragNamespace'], (res) => {
         // --- tudo abaixo está DENTRO do callback ---
 
         let modoInput = "A";
@@ -746,6 +746,7 @@ function finalizeUpload(videoBase64, recordingStartTime, eventsLog, micAudioBase
         formData.append('events', JSON.stringify(eventsLog));
         formData.append('modo_input', modoInput);
         formData.append('roteiro_manual', '[]');
+        formData.append('rag_namespace', res.ragNamespace || "auto");
         formData.append('video', videoBlob, 'recording.webm');
 
         if (modoInput === 'B' && micAudioBase64) {

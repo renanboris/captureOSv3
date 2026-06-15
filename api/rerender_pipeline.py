@@ -18,7 +18,7 @@ def is_loading_step(passo: dict) -> bool:
 
 
 async def rerenderizar_com_roteiro_aprovado(session_id: str, roteiro_aprovado: list,
-                                            usar_overlay: bool = True):
+                                            usar_overlay: bool = True, voice_id: str = "Portuguese_Casual_Speaker_v1"):
     """
     Pipeline parcial para re-renderização pós-editor.
     Pula a parte visual/Aura.
@@ -96,7 +96,7 @@ async def rerenderizar_com_roteiro_aprovado(session_id: str, roteiro_aprovado: l
 
     async def _gerar_com_semaforo(texto, audio_path):
         async with sem:
-            return await gerar_audio(texto, audio_path)
+            return await gerar_audio(texto, audio_path, voice_id)
 
     resultados = await asyncio.gather(
         *[_gerar_com_semaforo(t["texto"], t["audio_path"]) for t in tts_tasks]
@@ -125,6 +125,13 @@ async def rerenderizar_com_roteiro_aprovado(session_id: str, roteiro_aprovado: l
         timeline_events,
         overlay_path
     )
+    
+    # Faz o upload para a nuvem (Supabase)
+    update_status(session_id, "rendering_final", "☁️ Fazendo upload do vídeo para a nuvem...")
+    from api.storage import upload_video
+    public_url = await asyncio.to_thread(upload_video, final_mp4_path, session_id)
+    if public_url:
+        logger.info(f"[{session_id}] Vídeo disponível na nuvem: {public_url}")
     
     # --- 5. GERAÇÃO DE ARTEFATOS PARALELOS ---
     update_status(session_id, "rendering_final", "📄 Gerando materiais de apoio...")
@@ -169,7 +176,7 @@ async def rerenderizar_com_roteiro_aprovado(session_id: str, roteiro_aprovado: l
 
     # Atualizar Módulo Simlink com o roteiro aprovado
     try:
-        video_url = f"{settings.backend_url}/videos_gerados/{session_id}_final.mp4"
+        video_url = public_url if public_url else f"{settings.backend_url}/videos_gerados/{session_id}_final.mp4"
         
         # Encontrar um título amigável para evitar que o LMS leia o nome do arquivo (session_id)
         titulo_amigavel = "Treinamento Prático"

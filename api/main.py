@@ -152,7 +152,7 @@ async def reject_modo_c_middleware(request: Request, call_next):
                         status_code=422,
                         media_type="application/json",
                     )
-            except (json.JSONDecodeError, UnicodeDecodeError):
+            except (json.DecodeError, UnicodeDecodeError):
                 pass  # Let the normal request parsing handle malformed JSON
         # For multipart/form-data: Modo C is rejected inside the route handler.
     return await call_next(request)
@@ -236,11 +236,53 @@ class RoteiroEditadoPayload(BaseModel):
     modo_input: str = "A"
     aprovado: bool = False
     usar_overlay: bool = True
+    voice_id: str = "Portuguese_Casual_Speaker_v1"
 
 class TTSPreviewPayload(BaseModel):
     texto: str
+    voice_id: str = "Portuguese_Casual_Speaker_v1"
+
+class UploadContextPayload(BaseModel):
+    filename: str
+    file_data: str
+    namespace: str = "auto"
 
 from fastapi import HTTPException
+
+async def processar_sessao_background(session_id: str, modo_input: str, events: list, start_time: int, rag_namespace: str = "auto"):
+    from api.export_pipeline import renderizar_exportacao
+    payload = {
+        "session_id": session_id,
+        "recording_start_time": start_time,
+        "events": events,
+        "modo_input": modo_input,
+        "rag_namespace": rag_namespace,
+        "roteiro_manual": [],
+    }
+    await renderizar_exportacao(payload)
+
+@app.get("/api/v1/rag/namespaces", dependencies=_auth_deps)
+async def get_rag_namespaces():
+    from api.rag_engine import _load_active_namespaces
+    from fastapi.concurrency import run_in_threadpool
+    namespaces = await run_in_threadpool(_load_active_namespaces)
+    return {"namespaces": namespaces}
+
+@app.post("/api/v1/rag/upload_context", dependencies=_auth_deps)
+async def upload_context(payload: UploadContextPayload):
+    from api.rag_engine import ingerir_documento_para_namespace
+    from fastapi.concurrency import run_in_threadpool
+    
+    if payload.namespace == "auto":
+        payload.namespace = "geral"
+        
+    sucesso = await run_in_threadpool(
+        ingerir_documento_para_namespace,
+        payload.file_data, payload.filename, payload.namespace
+    )
+    if not sucesso:
+        raise HTTPException(status_code=500, detail="Falha ao vetorizar documento")
+    return {"status": "ok", "message": "Contexto vetorizado com sucesso"}
 
 @app.post("/api/v1/capture/ingest", dependencies=_auth_deps)
 async def ingest_capture(
@@ -248,6 +290,7 @@ async def ingest_capture(
     recording_start_time: int = Form(0),
     events: str = Form("[]"),
     modo_input: str = Form("A"),
+    rag_namespace: str = Form("auto"),
     roteiro_manual: str = Form("[]"),
     video: UploadFile = File(...),
     audio: Optional[UploadFile] = File(None),
@@ -310,7 +353,7 @@ async def ingest_capture(
         "roteiro_manual": roteiro_manual_list,
     }
 
-    task = asyncio.create_task(renderizar_exportacao(payload_dict))
+    task = asyncio.create_task(processar_sessao_background(session_id, modo_input, events_list, recording_start_time, rag_namespace))
     active_tasks[session_id] = task
     task.add_done_callback(_task_exception_handler)
     task.add_done_callback(lambda t: active_tasks.pop(session_id, None))
@@ -336,6 +379,11 @@ async def abort_capture(session_id: str):
 
 @app.get("/api/v1/capture/status/{session_id}")
 async def check_status(session_id: str):
+    def _get_video_url() -> str:
+        if settings.supabase_url and settings.supabase_key:
+            return f"{settings.supabase_url}/storage/v1/object/public/videos/{session_id}_final.mp4"
+        return f"{settings.backend_url}/videos_gerados/{session_id}_final.mp4"
+
     status_data = get_status(session_id)
     if status_data.get("status") == "completed":
         roteiro_data = []
@@ -350,7 +398,7 @@ async def check_status(session_id: str):
 
         return {
             "status": "completed", 
-            "url": f"{settings.backend_url}/videos_gerados/{session_id}_final.mp4",
+            "url": _get_video_url(),
             "roteiro": roteiro_data
         }
         
@@ -389,7 +437,7 @@ async def save_roteiro(session_id: str, payload: RoteiroEditadoPayload):
         
         update_status(session_id, "rendering_final", "Renderizando vídeo final com roteiro aprovado...")
         task = asyncio.create_task(
-            rerenderizar_com_roteiro_aprovado(session_id, payload.roteiro, payload.usar_overlay)
+            rerenderizar_com_roteiro_aprovado(session_id, payload.roteiro, payload.usar_overlay, payload.voice_id)
         )
         active_tasks[session_id] = task
         task.add_done_callback(_task_exception_handler)
@@ -431,7 +479,7 @@ async def tts_preview(payload: TTSPreviewPayload):
     os.makedirs("data/artifacts/previews", exist_ok=True)
     filename = f"preview_{uuid.uuid4().hex}.mp3"
     filepath = f"data/artifacts/previews/{filename}"
-    sucesso = await gerar_audio(payload.texto, filepath)
+    sucesso = await gerar_audio(payload.texto, filepath, payload.voice_id)
     if not sucesso:
         raise HTTPException(status_code=500, detail="Falha ao gerar TTS")
     
@@ -448,6 +496,11 @@ async def get_artifacts(session_id: str):
 
     def url_if_exists(local_path: str, public_url: str) -> str | None:
         return public_url if os.path.exists(local_path) else None
+
+    def _get_video_url() -> str:
+        if settings.supabase_url and settings.supabase_key:
+            return f"{settings.supabase_url}/storage/v1/object/public/videos/{session_id}_final.mp4"
+        return f"{settings.backend_url}/videos_gerados/{session_id}_final.mp4"
 
     # Buscar modulo_id do simlink
     simlink_url = None
@@ -472,8 +525,7 @@ async def get_artifacts(session_id: str):
 
     return {
         "session_id": session_id,
-        "video_url":       url_if_exists(f"data/videos_gerados/{session_id}_final.mp4",
-                                         f"{base}/videos_gerados/{session_id}_final.mp4"),
+        "video_url":       url_if_exists(f"data/videos_gerados/{session_id}_final.mp4", _get_video_url()),
         "pdf_url":         url_if_exists(f"{art_dir}/apostila.pdf",
                                          f"{base}/artifacts/{session_id}/apostila.pdf"),
         "transcript_url":  url_if_exists(f"{art_dir}/transcricao.txt",
@@ -530,19 +582,20 @@ async def listar_roteiros(limit: int = 0, offset: int = 0):
                 roteiro = data.get("roteiro", [])
 
                 # Derivar título do primeiro passo com âncora ou intenção
-                titulo = ""
-                for p in roteiro:
-                    if str(p.get("passo", 0)) in ("0", "999"):
-                        continue
-                    ancora = p.get("ancora", "").strip()
-                    if ancora:
-                        titulo = ancora
-                        break
-                    intencao = p.get("intencao_original", "").strip()
-                    if intencao and not titulo:
-                        titulo = intencao
+                titulo = data.get("titulo", "")
                 if not titulo:
-                    titulo = f"Sessão {session_id[-8:]}" if session_id else "Sem título"
+                    for p in roteiro:
+                        if str(p.get("passo", 0)) in ("0", "999"):
+                            continue
+                        ancora = p.get("ancora", "").strip()
+                        if ancora:
+                            titulo = ancora
+                            break
+                        intencao = p.get("intencao_original", "").strip()
+                        if intencao and not titulo:
+                            titulo = intencao
+                    if not titulo:
+                        titulo = f"Sessão {session_id[-8:]}" if session_id else "Sem título"
 
                 # Buscar status atual
                 status_data = get_status(session_id)

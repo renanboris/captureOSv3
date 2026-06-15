@@ -126,30 +126,54 @@ async function previewTTS(index, btnElement) {
     const texto = document.getElementById(`texto-${index}`).value.trim();
     if (!texto) return;
     
+    const vozId = document.getElementById("voice-selector")?.value || "Portuguese_Casual_Speaker_v1";
+
+    if (currentAudio) {
+        // Se clicar no mesmo botao que já está tocando e nao acabou
+        if (currentAudio._btnRef === btnElement && !currentAudio.paused) {
+            currentAudio.pause();
+            btnElement.innerHTML = currentAudio._originalHtml;
+            btnElement.disabled = false;
+            return;
+        }
+        // Senao, pausa o anterior e reseta o botao antigo
+        currentAudio.pause();
+        if (currentAudio._btnRef) {
+            currentAudio._btnRef.innerHTML = currentAudio._originalHtml;
+            currentAudio._btnRef.disabled = false;
+        }
+        currentAudio = null;
+    }
+    
     const originalHtml = btnElement.innerHTML;
     btnElement.innerHTML = `<span style="font-size:12px; margin-right:4px;">Carregando...</span>`;
     btnElement.disabled = true;
-
-    if (currentAudio) {
-        currentAudio.pause();
-        currentAudio = null;
-    }
 
     try {
         const response = await authFetch('/api/v1/tts/preview', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ texto })
+            body: JSON.stringify({ texto, voice_id: vozId })
         });
         
         if (!response.ok) throw new Error("Erro no TTS");
         const data = await response.json();
         
         currentAudio = new Audio(data.audio_url);
+        currentAudio._originalHtml = originalHtml;
+        currentAudio._btnRef = btnElement;
+        
+        currentAudio.onended = () => {
+            btnElement.innerHTML = originalHtml;
+            btnElement.disabled = false;
+            currentAudio = null;
+        };
+
         currentAudio.play();
+        btnElement.innerHTML = `<span style="font-size:12px; margin-right:4px;">Parar ⏹</span>`;
+        btnElement.disabled = false;
     } catch(e) {
-        alert("Falha ao gerar preview da Francisca: " + e.message);
-    } finally {
+        alert("Falha ao gerar preview: " + e.message);
         btnElement.innerHTML = originalHtml;
         btnElement.disabled = false;
     }
@@ -207,12 +231,14 @@ document.getElementById('btn-render').addEventListener('click', async () => {
     });
 
     const usarOverlay = document.getElementById('toggle-overlay')?.checked ?? true;
+    const vozId = document.getElementById("voice-selector")?.value || "Portuguese_Casual_Speaker_v1";
 
     const payload = {
         roteiro: roteiroAtual,
         modo_input: "A",   // "C" estava incorreto — o editor edita roteiros de Modo A/B
         aprovado: true,
-        usar_overlay: usarOverlay
+        usar_overlay: usarOverlay,
+        voice_id: vozId
     };
 
     const btn = document.getElementById('btn-render');

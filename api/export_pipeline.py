@@ -4,7 +4,7 @@ import logging
 import asyncio
 from video_eng.tts_generator import gerar_audio
 from video_eng.time_bender import compose_video_with_freeze_frames
-from api.intelligence_engine import processar_intencao, enriquecer_narrativa
+from api.intelligence_engine import processar_intencao, enriquecer_narrativa, gerar_titulo_inteligente
 from api.status_manager import update_status
 import json
 
@@ -267,11 +267,20 @@ async def _renderizar_exportacao_impl(payload: dict, session_id: str):
 
         # --- 2. ENRIQUECIMENTO SEMÂNTICO ---
         update_status(session_id, "processing", "✍️ Assistente montando o roteiro do seu tutorial...")
+        rag_namespace = payload.get("rag_namespace", "auto")
         try:
-            roteiro_enriquecido = await enriquecer_narrativa(roteiro, transcricao_instrutor)
+            roteiro_enriquecido = await enriquecer_narrativa(roteiro, transcricao_instrutor, rag_namespace)
         except Exception as e:
             logger.error(f"Erro no enriquecimento da narrativa: {e}")
             roteiro_enriquecido = roteiro
+
+        # --- 3. GERAR TÍTULO INTELIGENTE ---
+        update_status(session_id, "processing", "🧠 Extraindo intenção para gerar título...")
+        try:
+            titulo_inteligente = await gerar_titulo_inteligente(roteiro_enriquecido, rag_namespace)
+        except Exception as e:
+            logger.error(f"Erro ao gerar titulo inteligente: {e}")
+            titulo_inteligente = f"[{rag_namespace.upper()}]_Tutorial" if rag_namespace != "auto" else "Tutorial"
 
     try:
         os.makedirs("data/roteiros", exist_ok=True)
@@ -279,6 +288,7 @@ async def _renderizar_exportacao_impl(payload: dict, session_id: str):
             json.dump({
                 "session_id": session_id,
                 "recording_start_time": start_time_ms,
+                "titulo": titulo_inteligente,
                 "roteiro": roteiro_enriquecido
             }, f, ensure_ascii=False, indent=2)
             

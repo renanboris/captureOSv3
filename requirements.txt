@@ -36,3 +36,6 @@ reportlab==4.1.0
 aiohttp==3.9.3
 # lms_callback.py uses httpx for the LMS completion callback (simlink conclusao).
 httpx==0.28.1
+
+# --- Cloud Storage ---
+supabase>=2.3.0
