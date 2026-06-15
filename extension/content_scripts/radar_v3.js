@@ -343,29 +343,26 @@
         if (hasShownInvalidated) return;
         hasShownInvalidated = true;
         
-        const _isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
         const banner = document.createElement("div");
         banner.style.cssText = `
             position: fixed;
             top: 20px;
             left: 50%;
             transform: translateX(-50%);
-            background: ${_isDark ? 'rgba(239, 68, 68, 0.15)' : 'rgba(239, 68, 68, 0.9)'};
-            color: ${_isDark ? '#fca5a5' : 'white'};
+            background: #FEF2F2;
+            color: #B91C1C;
             padding: 14px 24px;
-            border-radius: 14px;
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            border-radius: 8px;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             font-size: 14px;
-            font-weight: 600;
+            font-weight: 500;
             z-index: 2147483647;
-            backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
-            border: 1px solid ${_isDark ? 'rgba(239, 68, 68, 0.3)' : 'rgba(255, 255, 255, 0.2)'};
-            box-shadow: 0 8px 32px rgba(239, 68, 68, 0.25), 0 0 0 1px rgba(239, 68, 68, 0.1);
+            border: 1px solid #FECACA;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
             display: flex;
             align-items: center;
             gap: 12px;
-            animation: _capture_banner_in 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+            animation: _capture_banner_in 0.3s forwards;
         `;
         const bannerStyle = document.createElement('style');
         bannerStyle.innerHTML = `
@@ -378,8 +375,8 @@
         banner.innerHTML = `
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
             <span>O Capture OS foi atualizado. Para voltar a gravar, você <b>precisa recarregar esta página (F5)</b>.</span>
-            <button onclick="window.top.location.reload(true)" style="background: ${_isDark ? 'rgba(255,255,255,0.1)' : 'white'}; color: ${_isDark ? '#fca5a5' : '#ef4444'}; border: 1px solid ${_isDark ? 'rgba(255,255,255,0.1)' : 'transparent'}; padding: 7px 14px; border-radius: 8px; cursor: pointer; font-weight: 700; font-size: 13px; transition: all 0.2s;">Recarregar Agora</button>
-            <button onclick="this.parentElement.remove()" style="background: transparent; color: ${_isDark ? '#fca5a5' : 'white'}; border: none; cursor: pointer; font-size: 18px; padding: 4px; line-height: 1; opacity: 0.7;">×</button>
+            <button onclick="window.top.location.reload(true)" style="background: #FFFFFF; color: #DC2626; border: 1px solid #FECACA; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 13px; transition: all 0.2s;">Recarregar</button>
+            <button onclick="this.parentElement.remove()" style="background: transparent; color: #B91C1C; border: none; cursor: pointer; font-size: 18px; padding: 4px; line-height: 1; opacity: 0.7;">×</button>
         `;
         document.body.appendChild(banner);
     }
@@ -441,7 +438,7 @@
     // --- UX Feedback (Toast & Widget) ---
     chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         // Bloqueia a renderização de UI dentro de Iframes! O UI deve aparecer apenas na janela principal.
-        const isUIAction = ["show_toast", "update_toast", "show_player_modal", "show_pin_tooltip", "show_editor_modal", "show_countdown"].includes(msg.action);
+        const isUIAction = ["show_toast", "update_toast", "show_player_modal", "show_pin_tooltip", "show_editor_modal", "show_prep_toast"].includes(msg.action);
         if (isUIAction && window !== window.top) return;
 
         if (msg.action === "show_toast") {
@@ -466,7 +463,7 @@
             if(toast) toast.remove();
             
             mountEditorModal(msg.backendUrl, msg.session_id);
-        } else if (msg.action === "show_countdown") {
+        } else if (msg.action === "show_prep_toast") {
             if (window !== window.top) return; // Impede que iframes renderizem contadores duplicados
             
             // Remove o overlay antigo se existir
@@ -476,16 +473,15 @@
             const overlay = document.createElement("div");
             overlay.id = "capture-os-countdown";
             overlay.style.cssText = `
-                position: fixed; top: 40px; left: 50%; transform: translateX(-50%);
-                background: rgba(15,23,42,0.92); z-index: 2147483647;
-                display: flex; align-items: center; justify-content: center; gap: 16px;
-                backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
-                border: 1px solid rgba(255,255,255,0.12);
-                border-radius: 100px; padding: 14px 32px;
-                font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-                box-shadow: 0 16px 48px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.06), inset 0 1px 0 rgba(255,255,255,0.06);
-                transition: opacity 0.5s ease, transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
-                animation: _capture_slideDown 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+                position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+                background: #FFFFFF; z-index: 2147483647;
+                display: flex; align-items: center; justify-content: center; gap: 10px;
+                border: 1px solid #E5E7EB;
+                border-radius: 8px; padding: 10px 16px;
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+                transition: opacity 0.3s ease, transform 0.3s ease;
+                animation: _capture_slideDown 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
             `;
             
             const style = document.createElement('style');
@@ -494,76 +490,35 @@
                     from { transform: translate(-50%, -20px); opacity: 0; }
                     to { transform: translate(-50%, 0); opacity: 1; }
                 }
-                @keyframes _capture_countdown_pop {
-                    0% { transform: scale(1.4); opacity: 0; }
-                    50% { opacity: 1; }
-                    100% { transform: scale(1); opacity: 1; }
-                }
                 @keyframes _capture_pulse_dot {
-                    0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
-                    70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(239, 68, 68, 0); }
-                    100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
-                }
-                @keyframes _capture_go_flash {
-                    0% { transform: scale(0.5); opacity: 0; }
-                    40% { transform: scale(1.1); opacity: 1; }
-                    100% { transform: scale(1); opacity: 1; }
+                    0% { transform: scale(0.95); opacity: 1; }
+                    50% { transform: scale(1.1); opacity: 0.6; }
+                    100% { transform: scale(0.95); opacity: 1; }
                 }
             `;
             document.head.appendChild(style);
             
-            const countText = document.createElement("div");
-            countText.style.cssText = `
-                font-size: 56px; font-weight: 800; color: #ef4444;
-                min-width: 48px; text-align: center; line-height: 1;
-                animation: _capture_countdown_pop 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-                text-shadow: 0 0 30px rgba(239, 68, 68, 0.4);
-            `;
-            
-            const hint = document.createElement("div");
-            hint.innerHTML = "Preparando a gravação...";
-            hint.style.cssText = `
-                font-size: 15px; font-weight: 500; color: #f8fafc; letter-spacing: 0.2px;
-            `;
+            const dot = document.createElement("div");
+            dot.style.cssText = "width: 8px; height: 8px; background: #FF3B30; border-radius: 50%; animation: _capture_pulse_dot 1s infinite;";
 
-            overlay.appendChild(countText);
+            const hint = document.createElement("div");
+            hint.innerHTML = "Preparando gravação...";
+            hint.style.cssText = "font-size: 13px; font-weight: 500; color: #111827;";
+
+            overlay.appendChild(dot);
             overlay.appendChild(hint);
             document.documentElement.appendChild(overlay);
 
-            let counter = 3;
-            countText.innerText = counter;
-
-            const interval = setInterval(() => {
-                counter--;
-                if (counter > 0) {
-                    countText.innerText = counter;
-                    // Re-trigger pop animation
-                    countText.style.animation = 'none';
-                    countText.offsetHeight; // force reflow
-                    countText.style.animation = '_capture_countdown_pop 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards';
-                } else {
-                    clearInterval(interval);
-                    
-                    // Show "GO!" flash before fading out
-                    countText.innerText = 'GO!';
-                    countText.style.color = '#10B981';
-                    countText.style.fontSize = '40px';
-                    countText.style.textShadow = '0 0 30px rgba(16, 185, 129, 0.5)';
-                    countText.style.animation = '_capture_go_flash 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards';
-                    hint.innerHTML = 'Gravando!';
-                    
-                    setTimeout(() => {
-                        overlay.style.opacity = "0";
-                        overlay.style.transform = "translate(-50%, -20px)";
-                        setTimeout(() => {
-                            overlay.remove();
-                            style.remove();
-                            if (chrome.runtime && chrome.runtime.sendMessage) {
-                                chrome.runtime.sendMessage({ action: 'start_recording_now' }).catch(() => {});
-                            }
-                        }, 500);
-                    }, 600);
-                }
+            setTimeout(() => {
+                overlay.style.opacity = "0";
+                overlay.style.transform = "translate(-50%, -20px)";
+                setTimeout(() => {
+                    overlay.remove();
+                    style.remove();
+                    if (chrome.runtime && chrome.runtime.sendMessage) {
+                        chrome.runtime.sendMessage({ action: 'start_recording_now' }).catch(() => {});
+                    }
+                }, 300);
             }, 1000);
         }
     });
@@ -616,9 +571,9 @@
         }, 10);
 
         if (type === "processing") {
-            toast.style.background = _isDark ? 'rgba(15, 23, 42, 0.88)' : 'rgba(255, 255, 255, 0.92)';
-            toast.style.border = `1px solid ${_isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)'}`;
-            toast.style.color = _isDark ? '#f8fafc' : '#0f172a';
+            toast.style.background = '#FFFFFF';
+            toast.style.border = '1px solid #E5E7EB';
+            toast.style.color = '#111827';
             // Adicionada a Progress Bar na base do Toast
             toast.style.flexDirection = "column";
             toast.style.alignItems = "stretch";
@@ -630,14 +585,14 @@
                     <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
                         <div style="display: flex; align-items: center; gap: 14px;">
                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" class="capture-spin" style="flex-shrink:0;">
-                                <circle cx="12" cy="12" r="10" stroke="${_isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)'}" stroke-width="2.5" fill="none"></circle>
-                                <path d="M12 2a10 10 0 0 1 10 10" stroke="#3B82F6" stroke-width="2.5" stroke-linecap="round" fill="none"></path>
+                                <circle cx="12" cy="12" r="10" stroke="#F3F4F6" stroke-width="2.5" fill="none"></circle>
+                                <path d="M12 2a10 10 0 0 1 10 10" stroke="#00998F" stroke-width="2.5" stroke-linecap="round" fill="none"></path>
                             </svg>
                             <span id="capture-os-toast-msg" style="font-size: 14px;">${msg || 'Processando...'}</span>
                         </div>
-                        <button id="capture-os-cancel-btn" style="background: ${_isDark ? 'rgba(239,68,68,0.1)' : 'rgba(239,68,68,0.08)'}; border: none; color: #ef4444; font-size: 13px; font-weight: 600; cursor: pointer; padding: 5px 12px; border-radius: 8px; transition: all 0.2s;">Cancelar</button>
+                        <button id="capture-os-cancel-btn" style="background: #FEF2F2; border: none; color: #EF4444; font-size: 13px; font-weight: 600; cursor: pointer; padding: 5px 12px; border-radius: 8px; transition: all 0.2s;">Cancelar</button>
                     </div>
-                    <div style="width: 100%; height: 3px; background: ${_isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)'}; border-radius: 3px; overflow: hidden;">
+                    <div style="width: 100%; height: 3px; background: #F3F4F6; border-radius: 3px; overflow: hidden;">
                         <div class="capture-progress-fill"></div>
                     </div>
                 </div>
@@ -667,23 +622,18 @@
                     }
                     .capture-progress-fill {
                         height: 100%;
-                        background: linear-gradient(90deg, #3B82F6, #8B5CF6, #3B82F6);
-                        background-size: 200% 100%;
+                        background: #2AC4AA;
                         width: 0%;
                         border-radius: 3px;
-                        animation: capture-progress 60s cubic-bezier(0.1, 0.7, 0.1, 1) forwards, capture-progress-shimmer 2s linear infinite;
-                    }
-                    @keyframes capture-progress-shimmer {
-                        0% { background-position: 200% 0; }
-                        100% { background-position: -200% 0; }
+                        animation: capture-progress 60s cubic-bezier(0.1, 0.7, 0.1, 1) forwards;
                     }
                 `;
                 document.head.appendChild(style);
             }
         } else if (type === "success") {
-            toast.style.background = _isDark ? 'rgba(16, 185, 129, 0.15)' : 'rgba(16, 185, 129, 0.9)';
-            toast.style.border = `1px solid ${_isDark ? 'rgba(16,185,129,0.3)' : 'rgba(255,255,255,0.2)'}`;
-            toast.style.color = _isDark ? '#6EE7B7' : 'white';
+            toast.style.background = '#F0FDF4';
+            toast.style.border = '1px solid #BBF7D0';
+            toast.style.color = '#15803D';
             toast.innerHTML = `
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                     <polyline points="20 6 9 17 4 12"></polyline>
@@ -692,9 +642,9 @@
             `;
             setTimeout(() => fecharToast(toast), 6000);
         } else if (type === "error") {
-            toast.style.background = _isDark ? 'rgba(239, 68, 68, 0.15)' : 'rgba(239, 68, 68, 0.9)';
-            toast.style.border = `1px solid ${_isDark ? 'rgba(239,68,68,0.3)' : 'rgba(255,255,255,0.2)'}`;
-            toast.style.color = _isDark ? '#FCA5A5' : 'white';
+            toast.style.background = '#FEF2F2';
+            toast.style.border = '1px solid #FECACA';
+            toast.style.color = '#B91C1C';
             toast.innerHTML = `
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <circle cx="12" cy="12" r="10"></circle>
@@ -705,9 +655,9 @@
             `;
             setTimeout(() => fecharToast(toast), 6000);
         } else if (type === "warning") {
-            toast.style.background = _isDark ? 'rgba(245, 158, 11, 0.15)' : 'rgba(245, 158, 11, 0.9)';
-            toast.style.border = `1px solid ${_isDark ? 'rgba(245,158,11,0.3)' : 'rgba(255,255,255,0.2)'}`;
-            toast.style.color = _isDark ? '#FCD34D' : 'white';
+            toast.style.background = '#FFFBEB';
+            toast.style.border = '1px solid #FDE68A';
+            toast.style.color = '#B45309';
             toast.innerHTML = `
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
@@ -718,9 +668,9 @@
             `;
             setTimeout(() => fecharToast(toast), 6000);
         } else if (type === "success_arbitro") {
-            toast.style.background = _isDark ? 'rgba(16, 185, 129, 0.15)' : 'rgba(16, 185, 129, 0.9)';
-            toast.style.border = `1px solid ${_isDark ? 'rgba(16,185,129,0.3)' : 'rgba(255,255,255,0.2)'}`;
-            toast.style.color = _isDark ? '#6EE7B7' : 'white';
+            toast.style.background = '#F0FDF4';
+            toast.style.border = '1px solid #BBF7D0';
+            toast.style.color = '#15803D';
             toast.innerHTML = `
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><polyline points="20 6 9 17 4 12"></polyline></svg>
                 <span id="capture-os-toast-msg">Correto!</span>
@@ -790,8 +740,8 @@
             roteiro.forEach((passo, index) => {
                 let badge = passo.passo;
                 let badgeStyle = '';
-                if (passo.passo === 0) { badge = svgBulb; badgeStyle = `background: ${_isDark ? 'rgba(59,130,246,0.15)' : '#eff6ff'}; color: #3B82F6;`; }
-                else if (passo.passo === 999) { badge = svgCheck; badgeStyle = `background: ${_isDark ? 'rgba(16,185,129,0.15)' : '#ecfdf5'}; color: #10B981;`; }
+                if (passo.passo === 0) { badge = svgBulb; badgeStyle = 'background: #E6F5F4; color: #00998F;'; }
+                else if (passo.passo === 999) { badge = svgCheck; badgeStyle = 'background: #E0F5F3; color: #2AC4AA;'; }
                 
                 const stepText = passo.ancora || passo.intencao_original || '';
                 // Pular passos sem texto
@@ -805,22 +755,22 @@
                 `;
             });
         } else {
-            stepsHtml = `<div style="color: ${_isDark ? '#94A3B8' : '#64748b'}; font-size: 14px; text-align: center; margin-top: 40px;">Nenhum roteiro detalhado gerado.</div>`;
+            stepsHtml = '<div style="color: #6B7280; font-size: 14px; text-align: center; margin-top: 40px;">Nenhum roteiro detalhado gerado.</div>';
         }
 
         shadow.innerHTML = `
             <style>
                 :host {
-                    --primary: #3B82F6;
-                    --primary-hover: #2563EB;
-                    --bg: ${_isDark ? '#0F172A' : '#ffffff'};
-                    --bg-secondary: ${_isDark ? '#1E293B' : '#F8FAFC'};
-                    --text-main: ${_isDark ? '#F8FAFC' : '#0f172a'};
-                    --text-muted: ${_isDark ? '#94A3B8' : '#64748b'};
-                    --border: ${_isDark ? 'rgba(255,255,255,0.08)' : '#e2e8f0'};
-                    --btn-secondary-bg: ${_isDark ? 'rgba(255,255,255,0.05)' : 'white'};
-                    --btn-secondary-hover: ${_isDark ? 'rgba(255,255,255,0.1)' : '#f1f5f9'};
-                    --btn-secondary-border: ${_isDark ? 'rgba(255,255,255,0.1)' : '#cbd5e1'};
+                    --primary: #00998F;
+                    --primary-hover: #00AF9B;
+                    --bg: #FFFFFF;
+                    --bg-secondary: #F9FAFB;
+                    --text-main: #111827;
+                    --text-muted: #6B7280;
+                    --border: #E5E7EB;
+                    --btn-secondary-bg: #FFFFFF;
+                    --btn-secondary-hover: #F3F4F6;
+                    --btn-secondary-border: #D1D5DB;
                 }
                 @keyframes _capture_modal_in {
                     0% { transform: translateY(24px) scale(0.96); opacity: 0; }
@@ -833,8 +783,8 @@
                     height: 650px;
                     max-height: 90vh;
                     background: var(--bg);
-                    border-radius: 20px;
-                    box-shadow: 0 25px 60px -12px rgba(0, 0, 0, ${_isDark ? '0.6' : '0.25'}), 0 0 0 1px var(--border);
+                    border-radius: 12px;
+                    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.1);
                     display: flex;
                     overflow: hidden;
                     position: relative;
@@ -959,41 +909,39 @@
                     background: var(--btn-secondary-hover);
                 }
                 .btn-accent {
-                    background: ${_isDark ? 'rgba(59,130,246,0.12)' : '#eff6ff'};
-                    color: #3B82F6;
-                    border: 1px solid ${_isDark ? 'rgba(59,130,246,0.2)' : '#bfdbfe'};
+                    background: #E6F5F4;
+                    color: #00998F;
+                    border: 1px solid #B3E0DC;
                 }
                 .btn-accent:hover {
-                    background: ${_isDark ? 'rgba(59,130,246,0.2)' : '#dbeafe'};
+                    background: #CCECE9;
                 }
                 .close-btn {
                     position: absolute;
                     top: 16px;
                     right: 16px;
-                    background: ${_isDark ? 'rgba(255,255,255,0.1)' : 'rgba(255, 255, 255, 0.95)'};
-                    border: 1px solid ${_isDark ? 'rgba(255,255,255,0.1)' : '#e2e8f0'};
-                    width: 34px;
-                    height: 34px;
-                    border-radius: 12px;
+                    background: #FFFFFF;
+                    border: 1px solid #E5E7EB;
+                    width: 32px;
+                    height: 32px;
+                    border-radius: 8px;
                     display: flex;
                     align-items: center;
                     justify-content: center;
                     cursor: pointer;
-                    color: ${_isDark ? '#94A3B8' : '#64748b'};
+                    color: #6B7280;
                     z-index: 10;
                     transition: all 0.2s;
-                    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-                    backdrop-filter: blur(8px);
+                    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
                 }
                 .close-btn:hover {
-                    background: ${_isDark ? 'rgba(239,68,68,0.15)' : 'white'};
-                    color: #ef4444;
-                    box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+                    background: #F3F4F6;
+                    color: #111827;
                 }
                 .script-content::-webkit-scrollbar { width: 5px; }
                 .script-content::-webkit-scrollbar-track { background: transparent; }
-                .script-content::-webkit-scrollbar-thumb { background: ${_isDark ? 'rgba(255,255,255,0.1)' : '#cbd5e1'}; border-radius: 10px; }
-                .script-content::-webkit-scrollbar-thumb:hover { background: ${_isDark ? 'rgba(255,255,255,0.2)' : '#94a3b8'}; }
+                .script-content::-webkit-scrollbar-thumb { background: #D1D5DB; border-radius: 10px; }
+                .script-content::-webkit-scrollbar-thumb:hover { background: #9CA3AF; }
             </style>
 
             <div class="modal-container" id="modal">
@@ -1069,8 +1017,8 @@
             navigator.clipboard.writeText(texto).then(() => {
                 const originalHtml = copyBtn.innerHTML;
                 copyBtn.innerHTML = `
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                    <span style="color: #10b981;">Copiado com sucesso!</span>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2AC4AA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                    <span style="color: #2AC4AA;">Copiado com sucesso!</span>
                 `;
                 setTimeout(() => { copyBtn.innerHTML = originalHtml; }, 3000);
             });
@@ -1098,11 +1046,11 @@
             display: flex;
             justify-content: center;
             align-items: center;
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
-            background: ${_isDark ? 'rgba(0, 0, 0, 0.6)' : 'rgba(15, 23, 42, 0.4)'};
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            background: rgba(17, 24, 39, 0.5);
             opacity: 0;
-            transition: opacity 0.4s ease;
+            transition: opacity 0.3s ease;
         `;
         
         document.body.appendChild(host);
@@ -1133,12 +1081,12 @@
                     width: 700px;
                     max-width: 95vw;
                     height: 85vh;
-                    background: ${_isDark ? '#0F172A' : '#ffffff'};
-                    border-radius: 20px;
+                    background: #FFFFFF;
+                    border-radius: 12px;
                     display: flex;
                     flex-direction: column;
-                    animation: _capture_editor_in 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-                    box-shadow: 0 0 60px rgba(59,130,246,0.12), 0 25px 60px -12px rgba(0, 0, 0, ${_isDark ? '0.6' : '0.35'}), 0 0 0 1px ${_isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)'};
+                    animation: _capture_editor_in 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+                    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.1);
                     overflow: hidden;
                     position: relative;
                 }
@@ -1149,19 +1097,19 @@
                     width: 32px;
                     height: 32px;
                     border-radius: 50%;
-                    background: ${_isDark ? '#1E293B' : '#ffffff'};
-                    border: 1px solid ${_isDark ? 'rgba(255,255,255,0.1)' : '#e2e8f0'};
+                    background: #FFFFFF;
+                    border: 1px solid #E5E7EB;
                     display: flex;
                     align-items: center;
                     justify-content: center;
                     cursor: pointer;
-                    color: ${_isDark ? '#94A3B8' : '#64748b'};
+                    color: #6B7280;
                     z-index: 20;
                     transition: all 0.2s;
                     box-shadow: 0 4px 12px rgba(0,0,0,0.15);
                 }
                 .editor-close-btn:hover {
-                    background: ${_isDark ? 'rgba(239,68,68,0.15)' : '#FEF2F2'};
+                    background: #FEF2F2;
                     color: #ef4444;
                     box-shadow: 0 4px 16px rgba(0,0,0,0.2);
                 }
@@ -1173,18 +1121,18 @@
                     padding: 24px;
                     gap: 16px;
                     z-index: 5;
-                    background: ${_isDark ? '#0F172A' : '#ffffff'};
+                    background: #FFFFFF;
                     transition: opacity 0.4s ease;
                 }
                 .skeleton-bar {
                     height: 20px;
                     border-radius: 8px;
-                    background: ${_isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)'};
+                    background: rgba(0,0,0,0.04);
                     background-image: linear-gradient(
                         90deg,
-                        ${_isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)'} 0px,
-                        ${_isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)'} 200px,
-                        ${_isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)'} 400px
+                        rgba(0,0,0,0.04) 0px,
+                        rgba(0,0,0,0.08) 200px,
+                        rgba(0,0,0,0.04) 400px
                     );
                     background-size: 800px 100%;
                     animation: _capture_shimmer 1.5s ease-in-out infinite;
@@ -1194,7 +1142,7 @@
                     height: 100%;
                     border: none;
                     background: transparent;
-                    border-radius: 20px;
+                    border-radius: 12px;
                     position: relative;
                     z-index: 10;
                 }
@@ -1339,13 +1287,13 @@
                 bottom: 20px;
                 right: 20px;
                 width: 340px;
-                background: #0F172A;
-                color: #fff;
-                border-radius: 16px;
-                box-shadow: 0 12px 40px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.06);
-                font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+                background: #FFFFFF;
+                color: #111827;
+                border-radius: 12px;
+                box-shadow: 0 4px 24px rgba(0,0,0,0.1);
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
                 z-index: 999999999;
-                border: 1px solid rgba(255,255,255,0.08);
+                border: 1px solid #E5E7EB;
                 overflow: hidden;
                 display: flex;
                 flex-direction: column;
@@ -1368,29 +1316,29 @@
             // Drag area (Header) - gradient instead of flat color
             const header = document.createElement("div");
             header.style.cssText = `
-                background: linear-gradient(135deg, #1E293B 0%, #0F172A 100%);
+                background: #F9FAFB;
                 padding: 0;
                 display: flex;
                 flex-direction: column;
                 cursor: grab;
-                border-bottom: 1px solid rgba(255,255,255,0.06);
+                border-bottom: 1px solid #E5E7EB;
             `;
 
             // Progress bar at top of header
             const progressTrack = document.createElement("div");
             progressTrack.id = "sandbox-progress-track";
             progressTrack.style.cssText = `
-                width: 100%; height: 3px; background: rgba(255,255,255,0.06);
-                border-radius: 16px 16px 0 0; overflow: hidden;
+                width: 100%; height: 3px; background: #E5E7EB;
+                border-radius: 12px 12px 0 0; overflow: hidden;
             `;
             const progressFill = document.createElement("div");
             progressFill.id = "sandbox-progress-fill";
             const progressPct = sandboxTotalPassos > 0 ? Math.round((sandboxPassoAtual / sandboxTotalPassos) * 100) : 0;
             progressFill.style.cssText = `
                 width: ${progressPct}%; height: 100%;
-                background: linear-gradient(90deg, #3B82F6, #10B981);
+                background: #2AC4AA;
                 border-radius: 0 2px 2px 0;
-                transition: width 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+                transition: width 0.3s ease;
             `;
             progressTrack.appendChild(progressFill);
 
@@ -1403,10 +1351,10 @@
             `;
             headerContent.innerHTML = `
                 <div style="display: flex; align-items: center; gap: 8px;">
-                    <div style="width: 10px; height: 10px; border-radius: 50%; background: #10b981; box-shadow: 0 0 8px rgba(16, 185, 129, 0.6);"></div>
-                    <span style="font-size: 11px; font-weight: 700; color: #94A3B8; letter-spacing: 1px;">PRÁTICA ATIVA</span>
+                    <div style="width: 8px; height: 8px; border-radius: 50%; background: #2AC4AA;"></div>
+                    <span style="font-size: 11px; font-weight: 600; color: #6B7280; letter-spacing: 0.5px;">PRÁTICA ATIVA</span>
                 </div>
-                <div id="sandbox-xp" style="font-size: 13px; font-weight: 700; color: #10b981; background: rgba(16, 185, 129, 0.1); padding: 4px 12px; border-radius: 20px; letter-spacing: 0.3px;">0 XP</div>
+                <div id="sandbox-xp" style="font-size: 12px; font-weight: 600; color: #00998F; background: #E0F5F3; padding: 4px 10px; border-radius: 12px;">0 XP</div>
             `;
 
             header.appendChild(progressTrack);
@@ -1445,20 +1393,20 @@
 
             const footer = document.createElement("div");
             footer.style.cssText = `
-                background: rgba(0,0,0,0.25);
+                background: #F9FAFB;
                 padding: 10px 15px;
                 display: flex;
                 justify-content: space-between;
                 align-items: center;
-                border-top: 1px solid rgba(255,255,255,0.06);
+                border-top: 1px solid #E5E7EB;
             `;
             footer.innerHTML = `
-                <button id="btn-encerrar-pratica" style="background: transparent; color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.2); padding: 6px 12px; border-radius: 8px; cursor: pointer; font-size: 12px; font-weight: 600; transition: all 0.2s;">Sair</button>
+                <button id="btn-encerrar-pratica" style="background: transparent; color: #DC2626; border: 1px solid #FECACA; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 500; transition: all 0.2s;">Sair</button>
                 <div style="display: flex; gap: 8px;">
-                    <button id="btn-dica-pratica" style="background: rgba(255,255,255,0.05); color: #e5e7eb; border: 1px solid rgba(255,255,255,0.08); padding: 6px 16px; border-radius: 8px; cursor: pointer; font-size: 12px; font-weight: 600; transition: all 0.2s; display: flex; align-items: center; gap: 5px;">
+                    <button id="btn-dica-pratica" style="background: #FFFFFF; color: #374151; border: 1px solid #D1D5DB; padding: 6px 16px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 500; transition: all 0.2s; display: flex; align-items: center; gap: 5px;">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 16v-4"></path><path d="M12 8h.01"></path></svg> Dica
                     </button>
-                    <button id="btn-pular-pratica" style="background: #3b82f6; color: #fff; border: none; padding: 6px 16px; border-radius: 8px; cursor: pointer; font-size: 12px; font-weight: 600; transition: all 0.2s; display: flex; align-items: center; gap: 5px; box-shadow: 0 4px 12px rgba(59, 130, 246, 0.25);">
+                    <button id="btn-pular-pratica" style="background: #00998F; color: #FFFFFF; border: none; padding: 6px 16px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 500; transition: all 0.2s; display: flex; align-items: center; gap: 5px;">
                         Pular <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="M12 5l7 7-7 7"></path></svg>
                     </button>
                 </div>
@@ -1482,9 +1430,9 @@
                     el.onmouseleave = () => el.style.background = normalBg;
                 }
             };
-            addHover("btn-encerrar-pratica", "rgba(239, 68, 68, 0.1)", "transparent");
-            addHover("btn-dica-pratica", "rgba(255,255,255,0.1)", "rgba(255,255,255,0.05)");
-            addHover("btn-pular-pratica", "#2563eb", "#3b82f6");
+            addHover("btn-encerrar-pratica", "#FEF2F2", "transparent");
+            addHover("btn-dica-pratica", "#F3F4F6", "#FFFFFF");
+            addHover("btn-pular-pratica", "#00AF9B", "#00998F");
         }
 
         // Update progress bar
@@ -1498,8 +1446,8 @@
         if (step) {
             document.getElementById("sandbox-xp").innerText = `${sandboxXP} XP`;
             document.getElementById("sandbox-widget-content").innerHTML = `
-                <div style="font-size: 11px; color: #a1a1aa; text-transform: uppercase; font-weight: 700; letter-spacing: 0.8px;">Passo ${sandboxPassoAtual + 1} de ${sandboxTotalPassos}</div>
-                <div style="font-size: 14px; line-height: 1.5; color: #f4f4f5;">${step.micro_narracao || step.ancora || "Interaja com a tela para avançar."}</div>
+                <div style="font-size: 11px; color: #6B7280; text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px;">Passo ${sandboxPassoAtual + 1} de ${sandboxTotalPassos}</div>
+                <div style="font-size: 14px; line-height: 1.5; color: #111827; margin-top: 4px;">${step.micro_narracao || step.ancora || "Interaja com a tela para avançar."}</div>
             `;
             if (step.action === "navigation") {
                 document.getElementById("btn-dica-pratica").style.display = "none";
@@ -1651,30 +1599,30 @@
         const perc = Math.max(0, Math.round(((sandboxTotalPassos * 10) - (sandboxStats.errors*5) - (sandboxStats.hints*5) - (sandboxStats.skips*10)) / (sandboxTotalPassos * 10) * 100)) || 0;
         
         widget.innerHTML = `
-            <div style="background: linear-gradient(135deg, #065F46 0%, #064E3B 100%); padding: 16px; display: flex; align-items: center; justify-content: center; gap: 8px;">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#10B981" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                <span style="font-size: 12px; font-weight: 700; color: #6EE7B7; letter-spacing: 1px; text-transform: uppercase;">Prática Concluída</span>
+            <div style="background: #F0FDF4; padding: 16px; display: flex; align-items: center; justify-content: center; gap: 8px; border-bottom: 1px solid #E5E7EB;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#15803D" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                <span style="font-size: 12px; font-weight: 700; color: #15803D; letter-spacing: 1px; text-transform: uppercase;">Prática Concluída</span>
             </div>
-            <div style="padding: 24px 20px; display: flex; flex-direction: column; gap: 18px;">
+            <div style="padding: 24px 20px; display: flex; flex-direction: column; gap: 18px; background: #FFFFFF;">
                 <div style="text-align: center;">
-                    <div style="font-size: 40px; font-weight: 800; color: #F8FAFC; letter-spacing: -1px; line-height: 1;">${sandboxXP}</div>
-                    <div style="font-size: 13px; font-weight: 600; color: #64748B; margin-top: 4px; text-transform: uppercase; letter-spacing: 1px;">Pontos XP</div>
+                    <div style="font-size: 40px; font-weight: 800; color: #111827; letter-spacing: -1px; line-height: 1;">${sandboxXP}</div>
+                    <div style="font-size: 13px; font-weight: 600; color: #6B7280; margin-top: 4px; text-transform: uppercase; letter-spacing: 1px;">Pontos XP</div>
                 </div>
                 <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; text-align: center;">
-                    <div style="background: rgba(248,113,113,0.08); padding: 12px 8px; border-radius: 12px; border: 1px solid rgba(248,113,113,0.1);">
-                        <div style="font-size: 20px; font-weight: 800; color: #f87171; letter-spacing: -0.5px;">${sandboxStats.errors}</div>
-                        <div style="font-size: 10px; color: #94A3B8; text-transform: uppercase; margin-top: 4px; font-weight: 600; letter-spacing: 0.5px;">Erros</div>
+                    <div style="background: #FEF2F2; padding: 12px 8px; border-radius: 8px; border: 1px solid #FECACA;">
+                        <div style="font-size: 20px; font-weight: 800; color: #B91C1C; letter-spacing: -0.5px;">${sandboxStats.errors}</div>
+                        <div style="font-size: 10px; color: #7F1D1D; text-transform: uppercase; margin-top: 4px; font-weight: 600; letter-spacing: 0.5px;">Erros</div>
                     </div>
-                    <div style="background: rgba(251,191,36,0.08); padding: 12px 8px; border-radius: 12px; border: 1px solid rgba(251,191,36,0.1);">
-                        <div style="font-size: 20px; font-weight: 800; color: #fbbf24; letter-spacing: -0.5px;">${sandboxStats.hints}</div>
-                        <div style="font-size: 10px; color: #94A3B8; text-transform: uppercase; margin-top: 4px; font-weight: 600; letter-spacing: 0.5px;">Dicas</div>
+                    <div style="background: #FFFBEB; padding: 12px 8px; border-radius: 8px; border: 1px solid #FDE68A;">
+                        <div style="font-size: 20px; font-weight: 800; color: #B45309; letter-spacing: -0.5px;">${sandboxStats.hints}</div>
+                        <div style="font-size: 10px; color: #78350F; text-transform: uppercase; margin-top: 4px; font-weight: 600; letter-spacing: 0.5px;">Dicas</div>
                     </div>
-                    <div style="background: rgba(96,165,250,0.08); padding: 12px 8px; border-radius: 12px; border: 1px solid rgba(96,165,250,0.1);">
-                        <div style="font-size: 20px; font-weight: 800; color: #60a5fa; letter-spacing: -0.5px;">${sandboxStats.skips}</div>
-                        <div style="font-size: 10px; color: #94A3B8; text-transform: uppercase; margin-top: 4px; font-weight: 600; letter-spacing: 0.5px;">Pulos</div>
+                    <div style="background: #EFF6FF; padding: 12px 8px; border-radius: 8px; border: 1px solid #BFDBFE;">
+                        <div style="font-size: 20px; font-weight: 800; color: #1D4ED8; letter-spacing: -0.5px;">${sandboxStats.skips}</div>
+                        <div style="font-size: 10px; color: #1E3A8A; text-transform: uppercase; margin-top: 4px; font-weight: 600; letter-spacing: 0.5px;">Pulos</div>
                     </div>
                 </div>
-                <button id="btn-fechar-score" style="margin-top: 4px; width: 100%; background: #3b82f6; color: #fff; border: none; padding: 11px; border-radius: 10px; cursor: pointer; font-size: 13px; font-weight: 700; box-shadow: 0 4px 12px rgba(59,130,246,0.25); transition: all 0.2s;">Fechar</button>
+                <button id="btn-fechar-score" style="margin-top: 4px; width: 100%; background: #00998F; color: #FFFFFF; border: none; padding: 11px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600; transition: all 0.2s;">Fechar</button>
             </div>
         `;
         

@@ -121,8 +121,8 @@ main {
     width: 10px;
     height: 10px;
     border-radius: 50%;
-    background: #10b981;
-    box-shadow: 0 0 8px rgba(16, 185, 129, 0.6);
+    background: #2AC4AA;
+    box-shadow: 0 0 8px rgba(42, 196, 170, 0.6);
 }
 .widget-title {
     font-size: 12px;
@@ -133,8 +133,8 @@ main {
 .xp-badge {
     font-size: 13px;
     font-weight: bold;
-    color: #10b981;
-    background: rgba(16, 185, 129, 0.1);
+    color: #00AF9B;
+    background: rgba(0, 175, 155, 0.1);
     padding: 4px 10px;
     border-radius: 12px;
 }
@@ -231,7 +231,7 @@ main {
 .start-content h2 {
     margin: 0 0 15px 0;
     font-size: 1.6rem;
-    color: #10b981;
+    color: #00AF9B;
 }
 
 .start-content p {
@@ -242,7 +242,7 @@ main {
 }
 
 .btn-play {
-    background: #10b981;
+    background: #00AF9B;
     color: #000;
     border: none;
     padding: 12px 24px;
@@ -254,11 +254,11 @@ main {
     align-items: center;
     gap: 10px;
     transition: all 0.2s ease;
-    box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3);
+    box-shadow: 0 4px 15px rgba(0, 175, 155, 0.3);
 }
 
 .btn-play:hover {
-    background: #34d399;
+    background: #2AC4AA;
     transform: scale(1.05);
-    box-shadow: 0 6px 20px rgba(16, 185, 129, 0.4);
+    box-shadow: 0 6px 20px rgba(0, 175, 155, 0.4);
 }

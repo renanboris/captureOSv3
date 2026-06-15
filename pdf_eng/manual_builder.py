@@ -26,7 +26,7 @@ def gerar_pdf(roteiro: list, output_path: str, titulo: str = "Tutorial Gerado pe
         estilo_titulo = ParagraphStyle('Titulo', parent=styles['Heading1'],
                                        fontSize=18, textColor=HexColor('#1a1a2e'), spaceAfter=16)
         estilo_ancora = ParagraphStyle('Ancora', parent=styles['Normal'],
-                                       fontSize=11, textColor=HexColor('#2d6a4f'),
+                                       fontSize=11, textColor=HexColor('#00998F'),
                                        spaceBefore=8, spaceAfter=4, fontName='Helvetica-Bold')
         estilo_narracao = ParagraphStyle('Narracao', parent=styles['Normal'],
                                          fontSize=10, textColor=HexColor('#374151'),

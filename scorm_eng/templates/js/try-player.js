@@ -333,7 +333,7 @@ function concluirModulo() {
     
     document.getElementById('simulacao-container').innerHTML = `
         <div style="padding: 50px; text-align: center; color: white; width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center;">
-            <h2 style="font-size: 2rem; color: #10b981;">Treinamento Concluído!</h2>
+            <h2 style="font-size: 2rem; color: #00AF9B;">Treinamento Concluído!</h2>
             <p style="font-size: 1.2rem;">Seu XP Final: ${state.xpTotal}</p>
         </div>
     `;
