@@ -3,10 +3,8 @@ import logging
 import subprocess
 import json
 import shutil
-import static_ffmpeg
-
-# Instala e injeta o FFmpeg/FFprobe no PATH do Windows dinamicamente
-static_ffmpeg.add_paths()
+# O FFmpeg deve estar instalado na máquina (ou contêiner Docker) e disponível no PATH.
+# static_ffmpeg.add_paths() foi removido para evitar problemas multiplataforma.
 
 logger = logging.getLogger(__name__)
 

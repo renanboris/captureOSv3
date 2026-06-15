@@ -1,0 +1,31 @@
+
+services:
+  api:
+    build: .
+    container_name: capture_os_api
+    ports:
+      - "8000:8000"
+    volumes:
+      # Mapeia a pasta data para que os vídeos/json locais persistam durante o dev
+      - ./data:/app/data
+      # Carrega o .env automaticamente
+      - ./.env:/app/.env
+    environment:
+      - BACKEND_URL=http://localhost:8000
+    # Opcional: Se já quiser subir um banco local
+    # depends_on:
+    #   - db
+
+  # db:
+  #   image: postgres:15-alpine
+  #   environment:
+  #     POSTGRES_USER: admin
+  #     POSTGRES_PASSWORD: adminpassword
+  #     POSTGRES_DB: captureos
+  #   ports:
+  #     - "5432:5432"
+  #   volumes:
+  #     - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:

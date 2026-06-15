@@ -26,8 +26,8 @@ Pillow>=10.2.0
 # --- Audio / video pipeline ---
 edge-tts==6.1.9
 ffmpeg-python==0.2.0
-# time_bender.py injects a bundled FFmpeg/FFprobe at import time.
-static-ffmpeg==3.0
+# time_bender.py injeta o binário via sistema operacional no Docker ou localmente.
+# static-ffmpeg==3.0 (Removido para evitar conflitos em outras máquinas/Docker)
 
 # --- Artifacts ---
 reportlab==4.1.0
