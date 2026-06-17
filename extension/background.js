@@ -249,7 +249,7 @@ function setStaticIcon() {
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, 16, 16);
     
-    drawScreenIcon(ctx, '#3B82F6'); // Accent Blue
+    drawScreenIcon(ctx, '#00998F'); // Teal Accent
     
     chrome.action.setIcon({ imageData: ctx.getImageData(0, 0, 16, 16) });
 }
@@ -391,9 +391,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         // Inicia o ponto vermelho pulsante nativo no ícone da extensão
         startBlinkingBadge();
         
-        // MOSTRA O COUNTDOWN!
+        // MOSTRA O TOAST PREPARATÓRIO!
         chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
-            if(tabs[0]) chrome.tabs.sendMessage(tabs[0].id, {action: 'show_countdown'}).catch(() => {});
+            if(tabs[0]) chrome.tabs.sendMessage(tabs[0].id, {action: 'show_prep_toast'}).catch(() => {});
         });
     }
 
@@ -714,7 +714,7 @@ async function abortCapture() {
 function finalizeUpload(videoBase64, recordingStartTime, eventsLog, micAudioBase64 = "") {
     console.log("Montando Payload Final...");
 
-    chrome.storage.local.get(['useMic', 'useAi'], (res) => {
+    chrome.storage.local.get(['useMic', 'useAi', 'ragNamespace'], (res) => {
         // --- tudo abaixo está DENTRO do callback ---
 
         let modoInput = "A";
@@ -746,6 +746,7 @@ function finalizeUpload(videoBase64, recordingStartTime, eventsLog, micAudioBase
         formData.append('events', JSON.stringify(eventsLog));
         formData.append('modo_input', modoInput);
         formData.append('roteiro_manual', '[]');
+        formData.append('rag_namespace', res.ragNamespace || "auto");
         formData.append('video', videoBlob, 'recording.webm');
 
         if (modoInput === 'B' && micAudioBase64) {

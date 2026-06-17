@@ -28,9 +28,9 @@ class Settings(BaseSettings):
     # Worker
     redis_url: str = "redis://localhost:6379"
 
-    # Auth (Fase 2)
+    # Auth & Storage (Fase 2)
     supabase_url: str = ""
-    supabase_anon_key: str = ""
+    supabase_key: str = ""
     jwt_secret: str = "dev-secret-change-in-prod"
 
     # CORS / Extension

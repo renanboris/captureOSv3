@@ -37,8 +37,9 @@ async def gerar_audio(texto: str, output_path: str, voz: str = "pt-BR-FranciscaN
     texto_falado = re.sub(r"\s*[|/]\s*", ", ", texto_falado)
     texto_falado = re.sub(r" {2,}", " ", texto_falado).strip()
 
-    # Cache MD5: verificar se já existe áudio em cache para este texto
-    text_hash = hashlib.md5(texto_falado.encode()).hexdigest()
+    # Cache MD5: verificar se já existe áudio em cache para este texto com essa voz
+    cache_key = f"{texto_falado}_{voz}"
+    text_hash = hashlib.md5(cache_key.encode()).hexdigest()
     os.makedirs(TTS_CACHE_DIR, exist_ok=True)
     cache_path = os.path.join(TTS_CACHE_DIR, f"{text_hash}.mp3")
 
@@ -71,7 +72,7 @@ async def gerar_audio(texto: str, output_path: str, voz: str = "pt-BR-FranciscaN
                 "text": texto_falado,
                 "stream": False,
                 "voice_setting": {
-                    "voice_id": "Portuguese_Casual_Speaker_v1",
+                    "voice_id": voz,
                     "speed": 1.0,
                     "vol": 1.0,
                     "pitch": 0

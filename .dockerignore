@@ -1,0 +1,12 @@
+.git
+.gitignore
+.env
+__pycache__/
+*.pyc
+venv/
+.pytest_cache/
+data/
+legacy_agents/
+legacy_repos_tmp/
+*.json
+!gen-lang-client-*.json

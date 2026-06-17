@@ -88,12 +88,15 @@ def _load_active_namespaces() -> List[str]:
     _NAMESPACES_LOADED = True
     return _ACTIVE_NAMESPACES
 
-def buscar_contexto_multi_namespace(prompt_usuario: str) -> Optional[Dict]:
-    """Busca contexto no Pinecone em todos os namespaces ativos em paralelo."""
+def buscar_contexto_multi_namespace(prompt_usuario: str, namespace_alvo: Optional[str] = None) -> Optional[Dict]:
+    """Busca contexto no Pinecone. Se namespace_alvo for fornecido, busca apenas nele."""
     if not pinecone_index or not client_openai:
         return None
 
-    namespaces = _load_active_namespaces()
+    if namespace_alvo and namespace_alvo != "auto":
+        namespaces = [namespace_alvo]
+    else:
+        namespaces = _load_active_namespaces()
 
     try:
         query_embedding = gerar_embedding(prompt_usuario)
@@ -160,3 +163,69 @@ def buscar_contexto_multi_namespace(prompt_usuario: str) -> Optional[Dict]:
         t.join(timeout=4.0)  # Tolerância rigorosa (V3 não pode travar)
 
     return melhor_resultado
+
+# =========================================================
+# UPLOAD MANUAL DE CONTEXTO
+# =========================================================
+def extrair_texto_documento(file_data_b64: str, filename: str) -> str:
+    """Extrai o texto de um PDF ou TXT em base64"""
+    import base64
+    import io
+    
+    try:
+        raw_bytes = base64.b64decode(file_data_b64)
+        if filename.lower().endswith(".pdf"):
+            from PyPDF2 import PdfReader
+            pdf_file = io.BytesIO(raw_bytes)
+            reader = PdfReader(pdf_file)
+            texto = []
+            for page in reader.pages:
+                t = page.extract_text()
+                if t: texto.append(t)
+            return "\n".join(texto)
+        else:
+            return raw_bytes.decode("utf-8", errors="ignore")
+    except Exception as e:
+        logger.error(f"Falha ao extrair texto: {e}")
+        return ""
+
+def ingerir_documento_para_namespace(file_data_b64: str, filename: str, namespace: str) -> bool:
+    """Extrai texto, gera embeddings e salva no Pinecone sob o namespace"""
+    import hashlib
+    
+    if not pinecone_index:
+        logger.error("Pinecone não inicializado, impossível vetorizar")
+        return False
+        
+    texto_puro = extrair_texto_documento(file_data_b64, filename)
+    if not texto_puro.strip():
+        logger.warning(f"Documento vazio: {filename}")
+        return False
+        
+    # Quebrar texto em chunks de ~1000 caracteres
+    chunks = [texto_puro[i:i+1000] for i in range(0, len(texto_puro), 1000)]
+    
+    vectors_to_upsert = []
+    doc_id = hashlib.md5(filename.encode()).hexdigest()[:10]
+    
+    for i, chunk in enumerate(chunks):
+        embedding = gerar_embedding(chunk)
+        chunk_id = f"doc_{doc_id}_chunk_{i}"
+        
+        vectors_to_upsert.append({
+            "id": chunk_id,
+            "values": embedding,
+            "metadata": {
+                "text": chunk,
+                "titulo": filename,
+                "fonte": "Upload Local Release Notes"
+            }
+        })
+        
+    try:
+        pinecone_index.upsert(vectors=vectors_to_upsert, namespace=namespace)
+        logger.info(f"Vetorizados {len(vectors_to_upsert)} chunks no namespace '{namespace}'")
+        return True
+    except Exception as e:
+        logger.error(f"Erro ao upsert no Pinecone: {e}")
+        return False

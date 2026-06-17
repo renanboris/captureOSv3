@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Capture OS v3 - Frictionless Recorder",
-  "version": "1.0",
-  "description": "Ferramenta de captura sem atrito para gerar roteiros corporativos.",
+  "name": "Capture OS v3",
+  "version": "1.0.0",
+  "description": "Gravação inteligente e criação de tutoriais na velocidade do pensamento.",
   "permissions": [
     "desktopCapture",
     "activeTab",

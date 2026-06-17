@@ -150,7 +150,7 @@ async def processar_intencao(image_bytes: bytes, event_data: dict, a11y_tree: li
         return {"intencao_detalhada": "Interagir com o sistema"}
 
 
-async def enriquecer_narrativa(roteiro_bruto: list, transcricao_instrutor: str = None) -> list:
+async def enriquecer_narrativa(roteiro_bruto: list, transcricao_instrutor: str = None, rag_namespace: str = "auto") -> list:
     """
     Passo 2 (Enriquecimento Semântico):
     Olha o cenário completo de cliques e gera a âncora (Big Picture) e a micro narração (Instrução exata).
@@ -167,7 +167,7 @@ async def enriquecer_narrativa(roteiro_bruto: list, transcricao_instrutor: str =
     resumo_passos = " ".join([p.get('intencao_original', '') for p in roteiro_bruto[:3]])
     logger.info(f"Deducindo objetivo para RAG a partir de: {resumo_passos}")
 
-    rag_result = buscar_contexto_multi_namespace(resumo_passos)
+    rag_result = buscar_contexto_multi_namespace(resumo_passos, rag_namespace)
     rag_prompt_section = ""
     if rag_result and rag_result.get("texto_rag"):
         logger.info(f"RAG Encontrado no namespace: {rag_result.get('namespace')} (Score: {rag_result.get('score'):.2f})")
@@ -353,3 +353,44 @@ async def regerar_passo_isolado(passo_alvo: dict, passo_anterior: dict = None, p
                 logger.error(f"Erro no Fallback OpenAI (Regerar Passo): {e2}")
 
         return passo_alvo
+
+async def gerar_titulo_inteligente(roteiro: list, namespace: str = "auto") -> str:
+    """Analisa as intenções iniciais e gera um slug descritivo para o nome do arquivo."""
+    try:
+        client = get_genai_client()
+    except RuntimeError:
+        return "Tutorial_Sem_Titulo"
+        
+    acoes = " ".join([p.get('intencao_original', '') for p in roteiro[:4]])
+    if not acoes.strip():
+        return "Tutorial_Gravado"
+        
+    prompt = f"""
+Crie um nome de arquivo (slug) extremamente conciso e descritivo para um tutorial passo a passo baseado nas seguintes ações gravadas pelo usuário.
+Ações: {acoes}
+
+Regras:
+1. Comece com um verbo de ação se possível (ex: Cadastrar, Configurar).
+2. Sem acentos, sem caracteres especiais, e use Underscore no lugar de espaços.
+3. Máximo de 4 ou 5 palavras (ex: Cadastrar_Novo_Colaborador).
+4. Retorne APENAS o slug gerado, sem mais nada.
+"""
+    try:
+        response = await client.aio.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt,
+            config=genai_types.GenerateContentConfig(temperature=0.2)
+        )
+        slug = response.text.strip().replace(" ", "_")
+        
+        # Limpar caracteres não permitidos
+        import re
+        slug = re.sub(r'[^A-Za-z0-9_]', '', slug)
+        
+        if namespace and namespace != "auto":
+            slug = f"[{namespace.upper()}]_{slug}"
+            
+        return slug
+    except Exception as e:
+        logger.error(f"Erro ao gerar titulo inteligente: {e}")
+        return "Tutorial_Gerado"

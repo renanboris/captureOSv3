@@ -158,9 +158,9 @@ class ScormBuilder:
     </metadata>
     <organizations default="default_org">
         <organization identifier="default_org">
-            <title>{self.titulo}</title>
+            <title>&#8203;</title>
             <item identifier="item_1" identifierref="resource_1">
-                <title>Modo Prática Guiada</title>
+                <title>&#8203;</title>
             </item>
         </organization>
     </organizations>

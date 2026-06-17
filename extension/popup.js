@@ -1,5 +1,50 @@
 document.addEventListener('DOMContentLoaded', async () => {
     // ═══════════════════════════════════════════
+    // AUTHENTICATION LOGIC (Supabase)
+    // ═══════════════════════════════════════════
+    const loginOverlay = document.getElementById('login-overlay');
+    const loginEmail = document.getElementById('login-email');
+    const loginPassword = document.getElementById('login-password');
+    const btnLogin = document.getElementById('btn-login');
+    const loginError = document.getElementById('login-error');
+
+    async function checkSession() {
+        const { data: { session }, error } = await supabaseClient.auth.getSession();
+        if (session) {
+            // Salva o token localmente para os requests
+            await chrome.storage.local.set({ authToken: session.access_token });
+            loginOverlay.style.display = 'none';
+        } else {
+            loginOverlay.style.display = 'flex';
+        }
+    }
+
+    btnLogin.addEventListener('click', async () => {
+        const email = loginEmail.value.trim();
+        const password = loginPassword.value;
+        
+        if (!email.endsWith('@senior.com.br')) {
+            loginError.textContent = "Apenas e-mails corporativos são permitidos.";
+            loginError.style.display = 'block';
+            return;
+        }
+
+        btnLogin.textContent = "Entrando...";
+        const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+        
+        if (error) {
+            loginError.textContent = "Credenciais inválidas ou e-mail não cadastrado.";
+            loginError.style.display = 'block';
+            btnLogin.textContent = "Entrar";
+        } else {
+            await checkSession();
+        }
+    });
+
+    // Roda no startup
+    await checkSession();
+
+    // ═══════════════════════════════════════════
     // DOM ELEMENTS
     // ═══════════════════════════════════════════
     const btnStart = document.getElementById('btn-start');
@@ -430,13 +475,117 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     // Check if processing
-    chrome.storage.local.get(['isProcessing'], (res) => {
+    chrome.storage.local.get(['isProcessing', 'ragNamespace', 'backendUrl', 'authToken'], (res) => {
         if (res.isProcessing) {
             enterProcessingState();
         } else {
             btnForceStop.style.display = 'none';
         }
+        
+        if (res.ragNamespace && selectRagNamespace) {
+            selectRagNamespace.value = res.ragNamespace;
+        }
+        
+        // Fetch dynamic namespaces from Pinecone
+        if (res.backendUrl && res.authToken) {
+            fetch(`${res.backendUrl}/api/v1/rag/namespaces`, {
+                headers: { 'Authorization': `Bearer ${res.authToken}` }
+            })
+            .then(r => r.json())
+            .then(data => {
+                const datalist = document.getElementById('rag-namespaces-list');
+                if (datalist && data.namespaces) {
+                    // Keep the "auto" option, remove the rest
+                    datalist.innerHTML = '<option value="auto">Busca Automática (Todos)</option>';
+                    data.namespaces.forEach(ns => {
+                        const opt = document.createElement('option');
+                        opt.value = ns;
+                        datalist.appendChild(opt);
+                    });
+                }
+            })
+            .catch(err => console.error("Falha ao buscar namespaces:", err));
+        }
     });
+
+    // ═══════════════════════════════════════════
+    // RAG UPLOAD LOGIC
+    // ═══════════════════════════════════════════
+    const btnUploadRag = document.getElementById('btn-upload-rag');
+    const inputRagFile = document.getElementById('rag-file');
+    const ragFileName = document.getElementById('rag-file-name');
+    const ragUploadStatus = document.getElementById('rag-upload-status');
+    const selectRagNamespace = document.getElementById('rag-namespace');
+
+    if (btnUploadRag && inputRagFile) {
+        btnUploadRag.addEventListener('click', () => {
+            inputRagFile.click();
+        });
+
+        inputRagFile.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            ragFileName.textContent = file.name;
+            ragFileName.style.display = 'block';
+            btnUploadRag.style.display = 'none';
+            ragUploadStatus.style.display = 'block';
+            ragUploadStatus.textContent = 'Vetorizando arquivo...';
+            
+            // Disable start recording
+            btnStart.disabled = true;
+            btnStart.style.opacity = '0.5';
+
+            try {
+                const base64Str = await new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = () => resolve(reader.result.split(',')[1]);
+                    reader.onerror = reject;
+                    reader.readAsDataURL(file);
+                });
+
+                const namespace = selectRagNamespace.value;
+                const { backendUrl, authToken } = await chrome.storage.local.get(['backendUrl', 'authToken']);
+                
+                if (!backendUrl) throw new Error("Servidor não configurado");
+
+                const res = await fetch(`${backendUrl}/api/v1/rag/upload_context`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${authToken}`
+                    },
+                    body: JSON.stringify({
+                        filename: file.name,
+                        file_data: base64Str,
+                        namespace: namespace
+                    })
+                });
+
+                if (!res.ok) throw new Error("Falha ao vetorizar");
+
+                ragUploadStatus.textContent = 'Contexto anexado!';
+                ragUploadStatus.style.color = '#34C759'; // Success green
+                
+                // Save context info to be sent when recording stops
+                chrome.storage.local.set({ 
+                    ragContext: { namespace: namespace, filename: file.name }
+                });
+                
+            } catch (err) {
+                ragUploadStatus.textContent = 'Erro ao anexar.';
+                ragUploadStatus.style.color = '#FF3B30';
+                console.error("RAG Error:", err);
+            } finally {
+                btnStart.disabled = false;
+                btnStart.style.opacity = '1';
+            }
+        });
+        
+        selectRagNamespace.addEventListener('change', () => {
+            chrome.storage.local.set({ ragNamespace: selectRagNamespace.value });
+        });
+    }
 
     // ═══════════════════════════════════════════
     // BUTTON ACTIONS
