@@ -486,9 +486,13 @@ document.addEventListener('DOMContentLoaded', async () => {
             selectRagNamespace.value = res.ragNamespace;
         }
         
-        // Fetch dynamic namespaces from Pinecone
-        if (res.backendUrl && res.authToken) {
-            fetch(`${res.backendUrl}/api/v1/rag/namespaces`, {
+        // Fetch dynamic namespaces from Pinecone.
+        // Always attempt the fetch when authToken is present — backendUrl has a
+        // localhost:8000 fallback (same pattern as carregarModulosPratica and
+        // carregarRoteiros) so no hard guard on backendUrl is needed.
+        if (res.authToken) {
+            const backendUrl = res.backendUrl || ("http://" + "localhost" + ":8000");
+            fetch(`${backendUrl}/api/v1/rag/namespaces`, {
                 headers: { 'Authorization': `Bearer ${res.authToken}` }
             })
             .then(r => r.json())
@@ -504,7 +508,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     });
                 }
             })
-            .catch(err => console.error("Falha ao buscar namespaces:", err));
+            .catch(() => { /* backend unreachable — datalist keeps default "auto" option */ });
         }
     });
 

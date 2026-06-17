@@ -1,0 +1,66 @@
+{
+  "pbtResults": {},
+  "executionHistory": {
+    "1. Write bug condition exploration tests": [
+      {
+        "executionId": "b24de290-48a2-4fbc-a50e-0c661cec757e",
+        "chatSessionId": "sess_2acda7ba-3af1-45f9-9349-f66d2e8d53d5",
+        "timestamp": 1781715024717
+      },
+      {
+        "executionId": "b24de290-48a2-4fbc-a50e-0c661cec757e",
+        "chatSessionId": "sess_2acda7ba-3af1-45f9-9349-f66d2e8d53d5",
+        "timestamp": 1781715033277
+      }
+    ],
+    "2. Write preservation property tests (BEFORE implementing fix)": [
+      {
+        "executionId": "b24de290-48a2-4fbc-a50e-0c661cec757e",
+        "chatSessionId": "sess_2acda7ba-3af1-45f9-9349-f66d2e8d53d5",
+        "timestamp": 1781715024839
+      }
+    ],
+    "3.1 Fix Bug 1 — Add `localhost:8000` fallback and silent catch in `extension/popup.js`": [
+      {
+        "executionId": "b24de290-48a2-4fbc-a50e-0c661cec757e",
+        "chatSessionId": "sess_2acda7ba-3af1-45f9-9349-f66d2e8d53d5",
+        "timestamp": 1781715024943
+      }
+    ],
+    "3.2 Fix Bug 2a — Read file bytes before Supabase upload in `api/storage.py`": [
+      {
+        "executionId": "b24de290-48a2-4fbc-a50e-0c661cec757e",
+        "chatSessionId": "sess_2acda7ba-3af1-45f9-9349-f66d2e8d53d5",
+        "timestamp": 1781715025049
+      }
+    ],
+    "3.3 Verify Bug 2b is resolved by the local file deletion in 3.2": [
+      {
+        "executionId": "b24de290-48a2-4fbc-a50e-0c661cec757e",
+        "chatSessionId": "sess_2acda7ba-3af1-45f9-9349-f66d2e8d53d5",
+        "timestamp": 1781715025170
+      }
+    ],
+    "3.4 Verify bug condition exploration tests now pass": [
+      {
+        "executionId": "b24de290-48a2-4fbc-a50e-0c661cec757e",
+        "chatSessionId": "sess_2acda7ba-3af1-45f9-9349-f66d2e8d53d5",
+        "timestamp": 1781715025354
+      }
+    ],
+    "3.5 Verify preservation tests still pass": [
+      {
+        "executionId": "b24de290-48a2-4fbc-a50e-0c661cec757e",
+        "chatSessionId": "sess_2acda7ba-3af1-45f9-9349-f66d2e8d53d5",
+        "timestamp": 1781715025457
+      }
+    ],
+    "4. Checkpoint — Ensure all tests pass": [
+      {
+        "executionId": "b24de290-48a2-4fbc-a50e-0c661cec757e",
+        "chatSessionId": "sess_2acda7ba-3af1-45f9-9349-f66d2e8d53d5",
+        "timestamp": 1781715025543
+      }
+    ]
+  }
+}

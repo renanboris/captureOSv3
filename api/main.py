@@ -249,7 +249,7 @@ class UploadContextPayload(BaseModel):
 
 from fastapi import HTTPException
 
-async def processar_sessao_background(session_id: str, modo_input: str, events: list, start_time: int, rag_namespace: str = "auto"):
+async def processar_sessao_background(session_id: str, modo_input: str, events: list, start_time: int, rag_namespace: str = "auto", video_bytes: bytes = b"", audio_bytes: bytes = b"", roteiro_manual: list = []):
     from api.export_pipeline import renderizar_exportacao
     payload = {
         "session_id": session_id,
@@ -257,7 +257,9 @@ async def processar_sessao_background(session_id: str, modo_input: str, events: 
         "events": events,
         "modo_input": modo_input,
         "rag_namespace": rag_namespace,
-        "roteiro_manual": [],
+        "roteiro_manual": roteiro_manual,
+        "video_bytes": video_bytes,
+        "audio_bytes": audio_bytes,
     }
     await renderizar_exportacao(payload)
 
@@ -353,7 +355,7 @@ async def ingest_capture(
         "roteiro_manual": roteiro_manual_list,
     }
 
-    task = asyncio.create_task(processar_sessao_background(session_id, modo_input, events_list, recording_start_time, rag_namespace))
+    task = asyncio.create_task(processar_sessao_background(session_id, modo_input, events_list, recording_start_time, rag_namespace, video_bytes, audio_bytes, roteiro_manual_list))
     active_tasks[session_id] = task
     task.add_done_callback(_task_exception_handler)
     task.add_done_callback(lambda t: active_tasks.pop(session_id, None))
@@ -380,9 +382,14 @@ async def abort_capture(session_id: str):
 @app.get("/api/v1/capture/status/{session_id}")
 async def check_status(session_id: str):
     def _get_video_url() -> str:
-        if settings.supabase_url and settings.supabase_key:
+        local_path = f"data/videos_gerados/{session_id}_final.mp4"
+        local_url = f"{settings.backend_url}/videos_gerados/{session_id}_final.mp4"
+        # Só usa URL do Supabase se o arquivo local NÃO existir (significa que o upload foi bem-sucedido
+        # e o arquivo local foi removido, ou que estamos em modo cloud-only).
+        # Se o arquivo local existe, serve direto do backend para evitar links quebrados.
+        if settings.supabase_url and settings.supabase_key and not os.path.exists(local_path):
             return f"{settings.supabase_url}/storage/v1/object/public/videos/{session_id}_final.mp4"
-        return f"{settings.backend_url}/videos_gerados/{session_id}_final.mp4"
+        return local_url
 
     status_data = get_status(session_id)
     if status_data.get("status") == "completed":
@@ -498,9 +505,11 @@ async def get_artifacts(session_id: str):
         return public_url if os.path.exists(local_path) else None
 
     def _get_video_url() -> str:
-        if settings.supabase_url and settings.supabase_key:
+        local_path = f"data/videos_gerados/{session_id}_final.mp4"
+        local_url = f"{settings.backend_url}/videos_gerados/{session_id}_final.mp4"
+        if settings.supabase_url and settings.supabase_key and not os.path.exists(local_path):
             return f"{settings.supabase_url}/storage/v1/object/public/videos/{session_id}_final.mp4"
-        return f"{settings.backend_url}/videos_gerados/{session_id}_final.mp4"
+        return local_url
 
     # Buscar modulo_id do simlink
     simlink_url = None
