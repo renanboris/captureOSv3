@@ -199,57 +199,27 @@ let blinkInterval = null;
 let isDotVisible = true;
 let activePollInterval = null;
 
-function drawScreenIcon(ctx, color) {
-    ctx.fillStyle = color;
-    // Monitor/screen body (rounded rectangle)
-    ctx.beginPath();
-    if (ctx.roundRect) {
-        ctx.roundRect(1, 3, 10, 7, 1.5);
-    } else {
-        ctx.rect(1, 3, 10, 7);
-    }
-    ctx.fill();
-    // Monitor stand
-    ctx.fillRect(5, 10, 2, 1.5);
-    // Monitor base
-    ctx.beginPath();
-    if (ctx.roundRect) {
-        ctx.roundRect(3.5, 11.5, 5, 1.2, 0.5);
-    } else {
-        ctx.rect(3.5, 11.5, 5, 1.2);
-    }
-    ctx.fill();
-    // AI Sparkle (4-point star, top-right)
-    drawSparkle(ctx, 13, 4, 2.5, color);
-    // Small secondary sparkle
-    drawSparkle(ctx, 14.5, 1.8, 1.2, color);
-}
-
-function drawSparkle(ctx, cx, cy, size, color) {
-    ctx.fillStyle = color;
-    ctx.beginPath();
-    const points = 4;
-    const outerR = size;
-    const innerR = size * 0.3;
-    for (let i = 0; i < points * 2; i++) {
-        const angle = (i * Math.PI) / points - Math.PI / 2;
-        const radius = i % 2 === 0 ? outerR : innerR;
-        const x = cx + Math.cos(angle) * radius;
-        const y = cy + Math.sin(angle) * radius;
-        if (i === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
-    }
-    ctx.closePath();
-    ctx.fill();
-}
-
 function setStaticIcon() {
     if (blinkInterval) clearInterval(blinkInterval);
     const canvas = new OffscreenCanvas(16, 16);
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, 16, 16);
     
-    drawScreenIcon(ctx, '#00998F'); // Teal Accent
+    // Apple-style Idle Recording Icon (Silver/Gray)
+    const cx = 8, cy = 8;
+    
+    // Outer Ring
+    ctx.beginPath();
+    ctx.arc(cx, cy, 6.5, 0, 2 * Math.PI);
+    ctx.strokeStyle = '#8E8E93'; 
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    
+    // Inner Solid Circle
+    ctx.beginPath();
+    ctx.arc(cx, cy, 3.5, 0, 2 * Math.PI);
+    ctx.fillStyle = '#8E8E93';
+    ctx.fill();
     
     chrome.action.setIcon({ imageData: ctx.getImageData(0, 0, 16, 16) });
 }
@@ -258,36 +228,43 @@ function startBlinkingBadge() {
     chrome.action.setBadgeText({ text: "" });
     if (blinkInterval) clearInterval(blinkInterval);
     
+    let isPulseHigh = true;
+    
     blinkInterval = setInterval(() => {
-        isDotVisible = !isDotVisible;
+        isPulseHigh = !isPulseHigh;
         const canvas = new OffscreenCanvas(16, 16);
         const ctx = canvas.getContext('2d');
         ctx.clearRect(0, 0, 16, 16);
         
-        // Base do ícone desativado (cinza) para destacar o REC
-        drawScreenIcon(ctx, '#64748b');
+        const cx = 8, cy = 8;
         
-        // Recording dot pulsante — maior e mais visível
-        if (isDotVisible) {
-            // Glow externo
-            ctx.fillStyle = 'rgba(239, 68, 68, 0.3)';
+        // Outer Ring - Apple style dim silver
+        ctx.beginPath();
+        ctx.arc(cx, cy, 6.5, 0, 2 * Math.PI);
+        ctx.strokeStyle = 'rgba(142, 142, 147, 0.6)'; 
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+        
+        if (isPulseHigh) {
+            // Bright Apple Red, slightly larger
             ctx.beginPath();
-            ctx.arc(13, 3, 5, 0, 2 * Math.PI);
+            ctx.arc(cx, cy, 4, 0, 2 * Math.PI);
+            ctx.fillStyle = '#FF3B30';
             ctx.fill();
-            // Dot principal vermelho
-            ctx.fillStyle = '#EF4444';
+            
+            // Inner subtle glow/shine for realism
+            const grad = ctx.createRadialGradient(cx - 1, cy - 1, 0, cx, cy, 4);
+            grad.addColorStop(0, 'rgba(255, 255, 255, 0.4)');
+            grad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+            ctx.fillStyle = grad;
             ctx.beginPath();
-            ctx.arc(13, 3, 3, 0, 2 * Math.PI);
+            ctx.arc(cx, cy, 4, 0, 2 * Math.PI);
             ctx.fill();
         } else {
-            // Fase dim — vermelho escuro, ainda visível
-            ctx.fillStyle = 'rgba(220, 38, 38, 0.25)';
+            // Dim Red, slightly smaller (breathing effect)
             ctx.beginPath();
-            ctx.arc(13, 3, 4, 0, 2 * Math.PI);
-            ctx.fill();
-            ctx.fillStyle = '#DC2626';
-            ctx.beginPath();
-            ctx.arc(13, 3, 2, 0, 2 * Math.PI);
+            ctx.arc(cx, cy, 3.5, 0, 2 * Math.PI);
+            ctx.fillStyle = '#C93429';
             ctx.fill();
         }
         
