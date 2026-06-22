@@ -4,8 +4,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     // ═══════════════════════════════════════════
     const loginOverlay = document.getElementById('login-overlay');
     const loginEmail = document.getElementById('login-email');
-    const loginPassword = document.getElementById('login-password');
-    const btnLogin = document.getElementById('btn-login');
+    const btnSendOtp = document.getElementById('btn-send-otp');
+    const otpContainer = document.getElementById('otp-container');
+    const otpInputs = document.querySelectorAll('.otp-digit');
+    const btnVerifyOtp = document.getElementById('btn-verify-otp');
     const loginError = document.getElementById('login-error');
 
     async function checkSession() {
@@ -19,23 +21,89 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
-    btnLogin.addEventListener('click', async () => {
+    btnSendOtp.addEventListener('click', async () => {
         const email = loginEmail.value.trim();
-        const password = loginPassword.value;
         
         if (!email.endsWith('@senior.com.br')) {
+            loginError.style.color = "var(--error)";
             loginError.textContent = "Apenas e-mails corporativos são permitidos.";
             loginError.style.display = 'block';
             return;
         }
 
-        btnLogin.textContent = "Entrando...";
-        const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+        btnSendOtp.textContent = "Enviando...";
+        loginError.style.display = 'none';
+
+        const { error } = await supabaseClient.auth.signInWithOtp({ email });
         
         if (error) {
-            loginError.textContent = "Credenciais inválidas ou e-mail não cadastrado.";
+            loginError.style.color = "var(--error)";
+            loginError.textContent = "Erro ao enviar código: " + error.message;
             loginError.style.display = 'block';
-            btnLogin.textContent = "Entrar";
+            btnSendOtp.textContent = "Receber Código de Acesso";
+        } else {
+            loginError.style.color = "var(--accent-primary)";
+            loginError.textContent = "Código enviado para o seu e-mail!";
+            loginError.style.display = 'block';
+            btnSendOtp.style.display = 'none';
+            otpContainer.style.display = 'flex';
+        }
+    });
+
+    otpInputs.forEach((input, index) => {
+        input.addEventListener('input', (e) => {
+            if (e.target.value.length === 1 && index < otpInputs.length - 1) {
+                otpInputs[index + 1].focus();
+            }
+        });
+
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Backspace' && e.target.value === '' && index > 0) {
+                otpInputs[index - 1].focus();
+            } else if (e.key === 'Enter') {
+                btnVerifyOtp.click();
+            }
+        });
+
+        input.addEventListener('paste', (e) => {
+            e.preventDefault();
+            const pastedData = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6).split('');
+            if (pastedData.length > 0) {
+                otpInputs.forEach((inp, i) => {
+                    if (pastedData[i]) {
+                        inp.value = pastedData[i];
+                        if (i === otpInputs.length - 1) {
+                            inp.focus();
+                        } else if (pastedData[i+1]) {
+                            otpInputs[i+1].focus();
+                        }
+                    }
+                });
+            }
+        });
+    });
+
+    btnVerifyOtp.addEventListener('click', async () => {
+        const email = loginEmail.value.trim();
+        const token = Array.from(otpInputs).map(i => i.value).join('');
+
+        if (token.length !== 6) {
+            loginError.style.color = "var(--error)";
+            loginError.textContent = "Digite o código de 6 dígitos.";
+            loginError.style.display = 'block';
+            return;
+        }
+
+        btnVerifyOtp.textContent = "Verificando...";
+        loginError.style.display = 'none';
+
+        const { data, error } = await supabaseClient.auth.verifyOtp({ email, token, type: 'email' });
+        
+        if (error) {
+            loginError.style.color = "var(--error)";
+            loginError.textContent = "Código inválido ou expirado.";
+            loginError.style.display = 'block';
+            btnVerifyOtp.textContent = "Verificar Código e Entrar";
         } else {
             await checkSession();
         }

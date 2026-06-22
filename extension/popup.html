@@ -608,8 +608,25 @@
     
     <div style="width: 100%; display: flex; flex-direction: column; gap: 12px;">
       <input type="email" id="login-email" placeholder="Seu e-mail (@senior.com.br)" style="width: 100%; padding: 10px 12px; border: 1px solid var(--border-default); border-radius: 8px; font-size: 13px; outline: none;">
-      <input type="password" id="login-password" placeholder="Sua senha" style="width: 100%; padding: 10px 12px; border: 1px solid var(--border-default); border-radius: 8px; font-size: 13px; outline: none;">
-      <button id="btn-login" style="width: 100%; padding: 10px; background: var(--text-primary); color: white; border: none; border-radius: 8px; font-weight: 500; font-size: 13px; cursor: pointer;">Entrar</button>
+      <button id="btn-send-otp" style="width: 100%; padding: 10px; background: var(--text-primary); color: white; border: none; border-radius: 8px; font-weight: 500; font-size: 13px; cursor: pointer;">Receber Código de Acesso</button>
+      
+      <div id="otp-container" style="display: none; width: 100%; flex-direction: column; gap: 12px;">
+        <p style="margin: 0; font-size: 12px; color: var(--text-secondary); text-align: center;">Um código de 6 dígitos foi enviado para o seu e-mail.</p>
+        <div id="otp-inputs" style="display: flex; gap: 8px; justify-content: center; width: 100%;">
+          <input type="text" class="otp-digit" maxlength="1" style="width: 44px; height: 52px; text-align: center; font-size: 24px; font-weight: 600; border: 1.5px solid var(--border-default); border-radius: 10px; outline: none; background: transparent; color: var(--text-primary); transition: border-color 0.2s ease;">
+          <input type="text" class="otp-digit" maxlength="1" style="width: 44px; height: 52px; text-align: center; font-size: 24px; font-weight: 600; border: 1.5px solid var(--border-default); border-radius: 10px; outline: none; background: transparent; color: var(--text-primary); transition: border-color 0.2s ease;">
+          <input type="text" class="otp-digit" maxlength="1" style="width: 44px; height: 52px; text-align: center; font-size: 24px; font-weight: 600; border: 1.5px solid var(--border-default); border-radius: 10px; outline: none; background: transparent; color: var(--text-primary); transition: border-color 0.2s ease;">
+          <input type="text" class="otp-digit" maxlength="1" style="width: 44px; height: 52px; text-align: center; font-size: 24px; font-weight: 600; border: 1.5px solid var(--border-default); border-radius: 10px; outline: none; background: transparent; color: var(--text-primary); transition: border-color 0.2s ease;">
+          <input type="text" class="otp-digit" maxlength="1" style="width: 44px; height: 52px; text-align: center; font-size: 24px; font-weight: 600; border: 1.5px solid var(--border-default); border-radius: 10px; outline: none; background: transparent; color: var(--text-primary); transition: border-color 0.2s ease;">
+          <input type="text" class="otp-digit" maxlength="1" style="width: 44px; height: 52px; text-align: center; font-size: 24px; font-weight: 600; border: 1.5px solid var(--border-default); border-radius: 10px; outline: none; background: transparent; color: var(--text-primary); transition: border-color 0.2s ease;">
+        </div>
+        <style>
+          .otp-digit:focus {
+            border-color: var(--accent-primary) !important;
+          }
+        </style>
+        <button id="btn-verify-otp" style="width: 100%; padding: 10px; background: var(--accent-primary); color: white; border: none; border-radius: 8px; font-weight: 500; font-size: 13px; cursor: pointer;">Verificar Código e Entrar</button>
+      </div>
     </div>
     <div id="login-error" style="color: var(--error); font-size: 12px; margin-top: 12px; text-align: center; display: none;">Erro ao fazer login</div>
   </div>
