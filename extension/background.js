@@ -110,7 +110,7 @@ function notifyEventPersistenceError(err) {
 // localhost URL from parts (so no production endpoint is ever hardcoded). This
 // fallback exists purely to ease local development and is never used once a
 // real `backendUrl` is configured.
-const DEV_FALLBACK_BACKEND_URL = "http://" + "localhost" + ":8000";
+const DEV_FALLBACK_BACKEND_URL = "https://" + "api.nomadelabs.com.br";
 
 // Resolve the backend endpoint from configurable chrome.storage at request time.
 async function getBackendUrl() {
@@ -157,7 +157,7 @@ async function refreshAuthHeaderRule() {
         const u = new URL(base);
         urlFilter = `||${u.host}/`;   // e.g. ||localhost:8000/
     } catch (e) {
-        urlFilter = '||localhost:8000/';
+        urlFilter = '||api.nomadelabs.com.br/';
     }
     await chrome.declarativeNetRequest.updateDynamicRules({
         removeRuleIds: [AUTH_RULE_ID], // Operação atômica de remoção e adição

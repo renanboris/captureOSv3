@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Capture OS v3",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Gravação inteligente e criação de tutoriais na velocidade do pensamento.",
   "permissions": [
     "desktopCapture",
@@ -16,7 +16,7 @@
   ],
   "host_permissions": [
     "https://api.captureos.fly.dev/*",
-    "http://localhost:8000/*",
+    "https://api.nomadelabs.com.br/*",
     "<all_urls>"
   ],
   "icons": {

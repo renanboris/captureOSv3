@@ -5,7 +5,7 @@ class Settings(BaseSettings):
     # API
     api_host: str = "0.0.0.0"
     api_port: int = 8000
-    backend_url: str = "http://localhost:8000"  # Sobrescrever em produção
+    backend_url: str = "https://api.nomadelabs.com.br"  # Sobrescrever em dev
 
     # Storage
     storage_mode: str = "local"  # "local" | "s3" | "r2"
@@ -36,7 +36,7 @@ class Settings(BaseSettings):
     # CORS / Extension
     # Comma-separated allow-list of origins permitted to call the API.
     # Never combine a wildcard "*" with credentialed access (see cors_allowed_origins).
-    allowed_origins: str = "http://localhost:8000"
+    allowed_origins: str = "https://api.nomadelabs.com.br"
     # The published Chrome extension ID, used to build the chrome-extension:// origin.
     extension_id: str = ""
 
