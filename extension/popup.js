@@ -15,21 +15,57 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (session) {
             // Salva o token localmente para os requests
             await chrome.storage.local.set({ authToken: session.access_token });
+            await chrome.storage.local.remove('awaitingOtpEmail');
             loginOverlay.style.display = 'none';
         } else {
             loginOverlay.style.display = 'flex';
+            const res = await chrome.storage.local.get(['awaitingOtpEmail']);
+            if (res.awaitingOtpEmail) {
+                loginEmail.value = res.awaitingOtpEmail;
+                btnSendOtp.style.display = 'none';
+                otpContainer.style.display = 'flex';
+                loginError.style.display = 'none';
+            }
         }
+    }
+
+    loginEmail.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            btnSendOtp.click();
+        }
+    });
+
+    loginEmail.addEventListener('input', () => {
+        if (otpContainer.style.display === 'flex') {
+            btnSendOtp.style.display = 'block';
+            otpContainer.style.display = 'none';
+            chrome.storage.local.remove('awaitingOtpEmail');
+        }
+    });
+
+    const btnBackLogin = document.getElementById('btn-back-login');
+    if (btnBackLogin) {
+        btnBackLogin.addEventListener('click', () => {
+            btnSendOtp.style.display = 'block';
+            otpContainer.style.display = 'none';
+            chrome.storage.local.remove('awaitingOtpEmail');
+            loginEmail.focus();
+        });
     }
 
     btnSendOtp.addEventListener('click', async () => {
         const email = loginEmail.value.trim();
         
+        // Trava temporariamente desativada para testar o envio de e-mails com Gmail pessoal
+        /*
         if (!email.endsWith('@senior.com.br')) {
             loginError.style.color = "var(--error)";
             loginError.textContent = "Apenas e-mails corporativos são permitidos.";
             loginError.style.display = 'block';
             return;
         }
+        */
 
         btnSendOtp.textContent = "Enviando...";
         loginError.style.display = 'none';
@@ -42,6 +78,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             loginError.style.display = 'block';
             btnSendOtp.textContent = "Receber Código de Acesso";
         } else {
+            chrome.storage.local.set({ awaitingOtpEmail: email });
             loginError.style.color = "var(--accent-primary)";
             loginError.textContent = "Código enviado para o seu e-mail!";
             loginError.style.display = 'block';
@@ -97,7 +134,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         btnVerifyOtp.textContent = "Verificando...";
         loginError.style.display = 'none';
 
-        const { data, error } = await supabaseClient.auth.verifyOtp({ email, token, type: 'email' });
+        let { data, error } = await supabaseClient.auth.verifyOtp({ email, token, type: 'email' });
+        
+        // Supabase pitfall: se o usuário for novo, o tipo do token enviado é 'signup', não 'email'.
+        if (error && (error.message.toLowerCase().includes("invalid") || error.message.toLowerCase().includes("expired"))) {
+            const signupRes = await supabaseClient.auth.verifyOtp({ email, token, type: 'signup' });
+            if (!signupRes.error) {
+                data = signupRes.data;
+                error = null;
+            }
+        }
         
         if (error) {
             loginError.style.color = "var(--error)";
