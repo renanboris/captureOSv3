@@ -179,13 +179,12 @@ def _build_filter_complex(segments: list, audio_delays: list, n_audio_inputs: in
                 f" setpts=PTS-STARTPTS [{label}]"
             )
         else:
-            # Freeze frame: extrai ~2 frames e clona até a duração desejada
+            # Freeze frame: extrai 1 frame e clona infinitamente, depois corta
             freeze_t, duration = seg[1], seg[2]
-            frame_end = freeze_t + (FRAME_DUR * 3)  # 3 frames de margem
             filter_chains.append(
-                f"[0:v] fps={FPS}, trim=start={freeze_t:.4f}:end={frame_end:.4f},"
+                f"[0:v] fps={FPS}, trim=start={freeze_t:.4f}:end={freeze_t + 0.1:.4f},"
                 f" setpts=PTS-STARTPTS,"
-                f" tpad=stop_mode=clone:stop_duration={duration:.4f},"
+                f" loop=loop=-1:size=1:start=0, setpts=N/FRAME_RATE/TB,"
                 f" trim=duration={duration:.4f},"
                 f" setpts=PTS-STARTPTS [{label}]"
             )
@@ -284,7 +283,7 @@ def compose_video_with_freeze_frames(input_webm: str, output_mp4: str, timeline_
         print("Pré-convertendo WebM VFR para CFR para garantir cortes precisos no FFmpeg...")
         subprocess.run([
             "ffmpeg", "-y", "-i", input_webm,
-            "-r", str(FPS), "-c:v", "libx264", "-preset", "ultrafast",
+            "-vf", f"fps={FPS}", "-c:v", "libx264", "-preset", "ultrafast",
             "-crf", "28", cfr_mp4
         ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         process_input = cfr_mp4
