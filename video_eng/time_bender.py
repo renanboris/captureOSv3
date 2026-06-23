@@ -180,17 +180,10 @@ def _build_filter_complex(segments: list, audio_delays: list, n_audio_inputs: in
                 f" setpts=PTS-STARTPTS, fps={FPS} [{label}]"
             )
         else:
-            # Freeze frame garantido: janela segura para evitar trim vazio (quando o frame cai entre timestamps)
-            freeze_t, duration = seg[1], seg[2]
-            safe_start = max(0, freeze_t - 0.1)
+            # Freeze frame garantido via PNG estático
+            # O input [{idx}:v] já é um stream de vídeo do PNG em loop com a duração correta!
             filter_chains.append(
-                f"[{idx}:v] trim=start={safe_start:.4f}:end={freeze_t + 0.1:.4f},"
-                f" setpts=PTS-STARTPTS,"
-                f" select='eq(n\,0)',"
-                f" tpad=stop_mode=clone:stop_duration={duration:.4f},"
-                f" trim=duration={duration:.4f},"
-                f" setpts=PTS-STARTPTS,"
-                f" fps={FPS} [{label}]"
+                f"[{idx}:v] setpts=PTS-STARTPTS, fps={FPS} [{label}]"
             )
 
         seg_labels.append(f"[{label}]")
@@ -339,8 +332,23 @@ def compose_video_with_freeze_frames(input_webm: str, output_mp4: str, timeline_
 
     # Montar inputs FFmpeg: vídeo + todos os áudios + overlay (se houver)
     inputs = []
-    for _ in segments:
-        inputs.extend(["-i", process_input])
+    import time
+    sess_rand = str(int(time.time() * 1000))[-6:]
+    os.makedirs("data/cache", exist_ok=True)
+    
+    for idx, seg in enumerate(segments):
+        if seg[0] == "video":
+            inputs.extend(["-i", process_input])
+        else:
+            freeze_ts, duration = seg[1], seg[2]
+            frame_path = f"data/cache/freeze_{sess_rand}_{idx}.png"
+            # Extrair o frame exato
+            subprocess.run([
+                "ffmpeg", "-y", "-ss", str(freeze_ts), "-i", process_input,
+                "-frames:v", "1", frame_path
+            ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            # Carregar como vídeo infinito limitado pelo tempo (-t antes do -i)
+            inputs.extend(["-loop", "1", "-t", f"{duration:.4f}", "-i", frame_path])
     
     audio_start_idx = len(segments)
     for event in valid_events:
