@@ -269,22 +269,33 @@ O instrutor explicou o processo com as próprias palavras acima. Use o raciocín
 
                 roteiro_enriquecido_ai = _coerce_to_lista_passos(json.loads(res_text))
 
+                roteiro_final = []
                 for ai_passo in roteiro_enriquecido_ai:
-                    for bruto_passo in roteiro_bruto:
+                    if str(ai_passo.get("passo")) == "0":
+                        roteiro_final.append(ai_passo)
+                        
+                for bruto_passo in roteiro_bruto:
+                    for ai_passo in roteiro_enriquecido_ai:
                         if str(ai_passo.get("passo")) == str(bruto_passo.get("passo")):
                             bruto_passo["ancora"] = ai_passo.get("ancora", "")
                             bruto_passo["micro_narracao"] = ai_passo.get("micro_narracao", "")
                             if ai_passo.get("intencao_original"):
                                 bruto_passo["intencao_original"] = ai_passo.get("intencao_original")
                             break
-                return roteiro_bruto
+                    roteiro_final.append(bruto_passo)
+                    
+                for ai_passo in roteiro_enriquecido_ai:
+                    if str(ai_passo.get("passo")) == "999":
+                        roteiro_final.append(ai_passo)
+
+                return roteiro_final
             except Exception as e2:
                 logger.error(f"Erro no Fallback OpenAI (Enriquecimento): {e2}")
 
         # Retorna o bruto preenchido com textos básicos se tudo falhar
         for passo in roteiro_bruto:
             passo["ancora"] = passo.get("intencao_original", "Interação na tela")
-            passo["micro_narracao"] = ""
+            passo["micro_narracao"] = "Interaja com o elemento da tela."
         return roteiro_bruto
 
 

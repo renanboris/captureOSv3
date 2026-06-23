@@ -147,6 +147,7 @@ def _calculate_segments(timeline_events: list, video_duration: float) -> tuple:
 
 
 def _build_filter_complex(segments: list, audio_delays: list, n_audio_inputs: int,
+                          audio_start_idx: int,
                           overlay_input_idx: int | None = None,
                           overlay_hole: tuple | None = None) -> str:
     """
@@ -175,14 +176,14 @@ def _build_filter_complex(segments: list, audio_delays: list, n_audio_inputs: in
             start, end = seg[1], seg[2]
             # Extrai segmento de vídeo normal com framerate constante
             filter_chains.append(
-                f"[0:v] fps={FPS}, trim=start={start:.4f}:end={end:.4f},"
+                f"[{idx}:v] fps={FPS}, trim=start={start:.4f}:end={end:.4f},"
                 f" setpts=PTS-STARTPTS [{label}]"
             )
         else:
             # Freeze frame: extrai 1 frame e clona infinitamente, depois corta
             freeze_t, duration = seg[1], seg[2]
             filter_chains.append(
-                f"[0:v] fps={FPS}, trim=start={freeze_t:.4f}:end={freeze_t + 0.1:.4f},"
+                f"[{idx}:v] fps={FPS}, trim=start={freeze_t:.4f}:end={freeze_t + 0.1:.4f},"
                 f" setpts=PTS-STARTPTS,"
                 f" loop=loop=-1:size=1:start=0, setpts=N/FRAME_RATE/TB,"
                 f" trim=duration={duration:.4f},"
@@ -223,7 +224,7 @@ def _build_filter_complex(segments: list, audio_delays: list, n_audio_inputs: in
     if audio_delays:
         audio_labels = []
         for idx, (audio_path, delay_sec, audio_dur) in enumerate(audio_delays):
-            audio_input_idx = idx + 1  # input[0] é o vídeo
+            audio_input_idx = audio_start_idx + idx
             delay_ms = int(delay_sec * 1000)
             label = f"a{idx}"
             # adelay posiciona o áudio no momento correto da timeline final
@@ -334,15 +335,20 @@ def compose_video_with_freeze_frames(input_webm: str, output_mp4: str, timeline_
     overlay_input_idx = None
 
     # Montar inputs FFmpeg: vídeo + todos os áudios + overlay (se houver)
-    inputs = ["-i", process_input]
+    inputs = []
+    for _ in segments:
+        inputs.extend(["-i", process_input])
+    
+    audio_start_idx = len(segments)
     for event in valid_events:
         inputs.extend(["-i", event["audio_path"]])
 
     if use_overlay:
         inputs.extend(["-i", overlay_path])
-        overlay_input_idx = 1 + len(valid_events)  # último input
+        overlay_input_idx = len(segments) + len(valid_events)
 
     filter_complex = _build_filter_complex(segments, audio_delays, len(valid_events),
+                                           audio_start_idx=audio_start_idx,
                                            overlay_input_idx=overlay_input_idx,
                                            overlay_hole=overlay_hole)
 
