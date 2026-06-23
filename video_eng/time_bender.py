@@ -176,18 +176,21 @@ def _build_filter_complex(segments: list, audio_delays: list, n_audio_inputs: in
             start, end = seg[1], seg[2]
             # Extrai segmento de vídeo normal com framerate constante
             filter_chains.append(
-                f"[{idx}:v] fps={FPS}, trim=start={start:.4f}:end={end:.4f},"
-                f" setpts=PTS-STARTPTS [{label}]"
+                f"[{idx}:v] trim=start={start:.4f}:end={end:.4f},"
+                f" setpts=PTS-STARTPTS, fps={FPS} [{label}]"
             )
         else:
-            # Freeze frame: extrai 1 frame e clona infinitamente, depois corta
+            # Freeze frame garantido: janela segura para evitar trim vazio (quando o frame cai entre timestamps)
             freeze_t, duration = seg[1], seg[2]
+            safe_start = max(0, freeze_t - 0.1)
             filter_chains.append(
-                f"[{idx}:v] fps={FPS}, trim=start={freeze_t:.4f}:end={freeze_t + 0.1:.4f},"
+                f"[{idx}:v] trim=start={safe_start:.4f}:end={freeze_t + 0.1:.4f},"
                 f" setpts=PTS-STARTPTS,"
-                f" loop=loop=-1:size=1:start=0, setpts=N/FRAME_RATE/TB,"
+                f" select='eq(n\,0)',"
+                f" tpad=stop_mode=clone:stop_duration={duration:.4f},"
                 f" trim=duration={duration:.4f},"
-                f" setpts=PTS-STARTPTS [{label}]"
+                f" setpts=PTS-STARTPTS,"
+                f" fps={FPS} [{label}]"
             )
 
         seg_labels.append(f"[{label}]")
