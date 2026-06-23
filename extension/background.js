@@ -208,17 +208,17 @@ function setStaticIcon() {
     // Apple-style Idle Recording Icon (Silver/Gray)
     const cx = 8, cy = 8;
     
-    // Outer Ring
+    // Outer Ring (Red for idle)
     ctx.beginPath();
     ctx.arc(cx, cy, 6.5, 0, 2 * Math.PI);
-    ctx.strokeStyle = '#8E8E93'; 
+    ctx.strokeStyle = '#FF3B30'; 
     ctx.lineWidth = 1.5;
     ctx.stroke();
     
     // Inner Solid Circle
     ctx.beginPath();
     ctx.arc(cx, cy, 3.5, 0, 2 * Math.PI);
-    ctx.fillStyle = '#8E8E93';
+    ctx.fillStyle = '#FF3B30';
     ctx.fill();
     
     chrome.action.setIcon({ imageData: ctx.getImageData(0, 0, 16, 16) });
@@ -426,6 +426,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             activePollInterval = null;
         }
         activePollInterval = setInterval(async () => {
+            const backendUrl = await getBackendUrl();
             try {
                 const resp = await authedFetch(`/api/v1/capture/status/${sessionId}`);
                 const status = await resp.json();

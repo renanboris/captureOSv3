@@ -482,16 +482,16 @@
             const style = document.createElement('style');
             style.innerHTML = `
                 @keyframes _capture_pop {
-                    0% { transform: scale(0.5); opacity: 0; }
-                    30% { transform: scale(1.1); opacity: 1; }
-                    70% { transform: scale(1); opacity: 1; }
-                    100% { transform: scale(0.9); opacity: 0; }
+                    0% { transform: scale(0.95); opacity: 0; }
+                    20% { transform: scale(1); opacity: 1; }
+                    80% { transform: scale(1); opacity: 1; }
+                    100% { transform: scale(1.05); opacity: 0; }
                 }
             `;
             document.head.appendChild(style);
             
             const numberEl = document.createElement("div");
-            numberEl.style.cssText = "font-size: 160px; font-weight: 800; color: #FFFFFF; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; text-shadow: 0 12px 48px rgba(0,0,0,0.5); opacity: 0;";
+            numberEl.style.cssText = "font-size: 64px; font-weight: 300; color: #FFFFFF; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; opacity: 0;";
 
             overlay.appendChild(numberEl);
             document.documentElement.appendChild(overlay);
