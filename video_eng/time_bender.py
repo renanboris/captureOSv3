@@ -332,21 +332,25 @@ def compose_video_with_freeze_frames(input_webm: str, output_mp4: str, timeline_
 
     # Montar inputs FFmpeg: vídeo + todos os áudios + overlay (se houver)
     inputs = []
-    import time
-    sess_rand = str(int(time.time() * 1000))[-6:]
-    os.makedirs("data/cache", exist_ok=True)
+    import tempfile
+    import shutil
+    tmp_dir = tempfile.mkdtemp()
     
     for idx, seg in enumerate(segments):
         if seg[0] == "video":
             inputs.extend(["-i", process_input])
         else:
             freeze_ts, duration = seg[1], seg[2]
-            frame_path = f"data/cache/freeze_{sess_rand}_{idx}.png"
+            frame_path = os.path.join(tmp_dir, f"freeze_{idx}.png")
             # Extrair o frame exato
             subprocess.run([
                 "ffmpeg", "-y", "-ss", str(freeze_ts), "-i", process_input,
                 "-frames:v", "1", frame_path
             ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            
+            if not os.path.exists(frame_path):
+                subprocess.run(["ffmpeg", "-y", "-f", "lavfi", "-i", "color=c=black:s=1280x720", "-frames:v", "1", frame_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                
             # Carregar como vídeo infinito limitado pelo tempo (-t antes do -i)
             inputs.extend(["-loop", "1", "-t", f"{duration:.4f}", "-i", frame_path])
     
