@@ -192,10 +192,14 @@ async def rerenderizar_com_roteiro_aprovado(session_id: str, roteiro_aprovado: l
             import json
             json.dump(simlink_modulo.model_dump(), f, ensure_ascii=False, indent=2)
 
-        # Gerar pacote SCORM: inclui quiz automaticamente se já foi gerado pela IA
-        from scorm_eng.scorm_builder import gerar_scorm
-        scorm_path = gerar_scorm(simlink_modulo, session_id, titulo_amigavel)
-        logger.info(f"Pacote SCORM gerado em: {scorm_path}")
+        # Gerar pacote SCORM
+        update_status(session_id, "rendering_final", "📦 Empacotando SCORM para LMS...")
+        try:
+            from scorm_eng.scorm_builder import gerar_scorm
+            scorm_path = await gerar_scorm(simlink_modulo, session_id, titulo_amigavel)
+            logger.info(f"Pacote SCORM gerado em: {scorm_path}")
+        except Exception as e:
+            logger.error(f"Falha ao empacotar SCORM: {e}")
     except Exception as e:
         logger.error(f"Erro ao atualizar Simlink/SCORM no rerender: {e}")
 

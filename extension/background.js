@@ -446,7 +446,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                             chrome.tabs.sendMessage(tabs[0].id, {
                                 action: "show_player_modal",
                                 url: status.url,
-                                roteiro: status.roteiro || []
+                                roteiro: status.roteiro || [],
+                                backendUrl: backendUrl
                             }).catch(() => {});
                         }
                     });
@@ -613,7 +614,8 @@ function startPolling(sessionId) {
                                 chrome.tabs.sendMessage(tabs[0].id, {
                                     action: "show_player_modal",
                                     url: status.url,
-                                    roteiro: status.roteiro || []
+                                    roteiro: status.roteiro || [],
+                                    backendUrl: backendUrl
                                 }).catch(() => {});
                             }
                         });

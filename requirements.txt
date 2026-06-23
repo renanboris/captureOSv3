@@ -33,7 +33,7 @@ ffmpeg-python==0.2.0
 reportlab==4.1.0
 
 # --- HTTP clients ---
-aiohttp==3.9.3
+aiohttp>=3.10.5
 # lms_callback.py uses httpx for the LMS completion callback (simlink conclusao).
 httpx==0.28.1
 

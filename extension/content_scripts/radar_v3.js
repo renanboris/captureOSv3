@@ -455,7 +455,7 @@
             let toast = document.getElementById("capture-os-toast");
             if(toast) toast.remove();
             
-            mountPlayerModal(msg.url, msg.roteiro);
+            mountPlayerModal(msg.url, msg.roteiro, msg.backendUrl);
         } else if (msg.action === "show_error_toast") {
             showToast("error");
         } else if (msg.action === "show_editor_modal") {
@@ -693,19 +693,13 @@
 
 
     // --- Player Modal (Vimeo Record Aesthetic) ---
-    function mountPlayerModal(videoUrl, roteiro) {
+    function mountPlayerModal(videoUrl, roteiro, receivedBackendUrl) {
         // Extrai session_id da URL (ex: sess_1780090948221)
         const match = videoUrl.match(/(sess_\d+)/);
         const session_id = match ? match[1] : '';
 
-        // Extrai o backendUrl do videoUrl
-        let backendUrl = '';
-        try {
-            const urlObj = new URL(videoUrl);
-            backendUrl = urlObj.origin;
-        } catch (e) {
-            backendUrl = 'http://127.0.0.1:8000';
-        }
+        // Usa o backendUrl enviado pelo background.js
+        const backendUrl = receivedBackendUrl || 'http://127.0.0.1:8000';
 
         const _isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
 

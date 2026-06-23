@@ -276,8 +276,24 @@ def compose_video_with_freeze_frames(input_webm: str, output_mp4: str, timeline_
     if not timeline_events:
         return _simple_convert(input_webm, output_mp4)
 
+    # Passo 1: Converter WebM VFR bruto para CFR antes de fatiar
+    # Como o Chrome produz WebMs com framerate absurdamente variável (frames só quando a tela muda),
+    # o filtro 'trim' do FFmpeg falha e o vídeo corre solto. Precisamos preencher os quadros primeiro.
+    cfr_mp4 = input_webm.replace(".webm", "_cfr.mp4")
+    try:
+        print("Pré-convertendo WebM VFR para CFR para garantir cortes precisos no FFmpeg...")
+        subprocess.run([
+            "ffmpeg", "-y", "-i", input_webm,
+            "-r", str(FPS), "-c:v", "libx264", "-preset", "ultrafast",
+            "-crf", "28", cfr_mp4
+        ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        process_input = cfr_mp4
+    except Exception as e:
+        logger.error(f"Falha na conversão inicial para CFR: {e}")
+        process_input = input_webm
+
     # Obter duração do vídeo
-    video_duration = _get_media_duration(input_webm)
+    video_duration = _get_media_duration(process_input)
     if video_duration <= 0:
         logger.error("Não foi possível determinar a duração do vídeo.")
         return False
@@ -319,7 +335,7 @@ def compose_video_with_freeze_frames(input_webm: str, output_mp4: str, timeline_
     overlay_input_idx = None
 
     # Montar inputs FFmpeg: vídeo + todos os áudios + overlay (se houver)
-    inputs = ["-i", input_webm]
+    inputs = ["-i", process_input]
     for event in valid_events:
         inputs.extend(["-i", event["audio_path"]])
 
