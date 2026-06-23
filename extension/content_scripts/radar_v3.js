@@ -1162,7 +1162,7 @@
                         <div class="skeleton-bar" style="width: 45%;"></div>
                         <div class="skeleton-bar" style="width: 100%; flex: 1; border-radius: 12px;"></div>
                     </div>
-                    <iframe src="${backendUrl}/editor?session=${sessionId}&embedded=true${tokenParam}" id="editor-iframe"></iframe>
+                    <iframe src="${backendUrl}/editor/?session=${sessionId}&embedded=true${tokenParam}" id="editor-iframe"></iframe>
                 </div>
             </div>
         `;
