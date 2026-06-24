@@ -72,15 +72,17 @@ async def rerenderizar_com_roteiro_aprovado(session_id: str, roteiro_aprovado: l
         if not intencao_combinada or intencao_combinada.lower() in _SKIP_TEXTS:
             continue
         
-        if timestamp_ms == 0 and passo.get("passo") == 0:
-            rel_sec = 3.5
-        elif timestamp_ms == 99999999 or passo.get("passo") == 999:
+        passo_num = str(passo.get("passo", ""))
+        
+        if timestamp_ms == 0 and passo_num == "0":
+            rel_sec = 0.0
+        elif timestamp_ms == 99999999 or passo_num == "999":
             rel_sec = last_computed_ts + 3.0
         else:
             if start_time_ms > 0:
-                rel_sec = max(3.5, ((timestamp_ms - start_time_ms) / 1000.0) - 0.6)
+                rel_sec = max(0.0, ((timestamp_ms - start_time_ms) / 1000.0) - 0.6)
             else:
-                rel_sec = max(3.5, (timestamp_ms / 1000.0) - 0.6)
+                rel_sec = max(0.0, (timestamp_ms / 1000.0) - 0.6)
 
         audio_path = f"data/audios/{session_id}/passo_{idx+1}_final.mp3"
         tts_tasks.append({
