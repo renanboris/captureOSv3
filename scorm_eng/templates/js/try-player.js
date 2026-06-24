@@ -145,7 +145,7 @@ function calculateScaledBounds(coordinates) {
 
 // Se for rodar standalone via frontend/scorm-player/index.html?modulo=...
 const urlParams = new URLSearchParams(window.location.search);
-window.moduloId = urlParams.get('modulo') || 'default';
+window.moduloId = urlParams.get('modulo') || (typeof STEPS_DATA !== 'undefined' && STEPS_DATA.session_id ? STEPS_DATA.session_id : 'default');
 
 async function iniciarPlayer() {
     ScormAPI.init();

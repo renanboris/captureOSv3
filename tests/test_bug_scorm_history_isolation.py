@@ -173,7 +173,7 @@ def simulate_scorm_execution_and_extract_moduloid(
         import re
         match = re.search(r'"session_id"\s*:\s*"([^"]+)"', steps_js_code)
         if match:
-            session_id_from_steps = match.group(1)
+            session_id_from_steps = json.loads('"' + match.group(1) + '"')
     
     # Analyze the bug condition:
     # Line 19 in try-player.js: window.moduloId = urlParams.get('modulo') || 'default';

@@ -3,8 +3,10 @@ import logging
 import subprocess
 import json
 import shutil
-# O FFmpeg deve estar instalado na máquina (ou contêiner Docker) e disponível no PATH.
-# static_ffmpeg.add_paths() foi removido para evitar problemas multiplataforma.
+import static_ffmpeg
+
+# Injeta o binário do FFmpeg
+static_ffmpeg.add_paths()
 
 logger = logging.getLogger(__name__)
 
