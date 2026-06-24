@@ -335,29 +335,32 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 // GRAVA O TIMESTAMP IMEDIATAMENTE (Não espera o screenshot!)
                 const exact_timestamp = Date.now();
                 
-                // Tira print screen no tempo exato extraindo o frame da stream de vídeo no Offscreen
-                // NOTA: Tem que ser instantâneo (0ms). Qualquer delay fará a screenshot capturar a tela NOVA após um clique de navegação,
-                // quebrando o sistema de coordenadas da IA e fazendo ela alucinar botões errados.
-                chrome.runtime.sendMessage({ target: 'offscreen', action: 'take_screenshot' }, (response) => {
-                    if (chrome.runtime.lastError) {
-                        console.warn("Erro ao pedir frame pro offscreen", chrome.runtime.lastError);
-                        return;
-                    }
-                    if (response && response.dataUrl) {
-                        // Persist to IndexedDB instead of chrome.storage.local to avoid
-                        // the ~5 MB quota that silently drops events (bug C5).
-                        appendEventToDB({
-                            timestamp: exact_timestamp,
-                            type: message.type,
-                            eventData: message.data,
-                            screenshotData: response.dataUrl
-                        }).then(() => {
-                            console.log("Evento gravado no IndexedDB", message.type);
-                        }).catch((err) => {
-                            notifyEventPersistenceError(err);
+                // Tira print screen instantâneo e sem o cursor do mouse atrasado do WebRTC
+                chrome.tabs.captureVisibleTab(null, { format: 'jpeg', quality: 80 }, (dataUrl) => {
+                    if (chrome.runtime.lastError || !dataUrl) {
+                        // Fallback para o offscreen se der erro (ex: página restrita)
+                        chrome.runtime.sendMessage({ target: 'offscreen', action: 'take_screenshot' }, (response) => {
+                            if (response && response.dataUrl) {
+                                salvarEvento(exact_timestamp, message, response.dataUrl);
+                            }
                         });
+                    } else {
+                        salvarEvento(exact_timestamp, message, dataUrl);
                     }
                 });
+
+                function salvarEvento(ts, msg, picData) {
+                    appendEventToDB({
+                        timestamp: ts,
+                        type: msg.type,
+                        eventData: msg.data,
+                        screenshotData: picData
+                    }).then(() => {
+                        console.log("Evento gravado no IndexedDB", msg.type);
+                    }).catch((err) => {
+                        notifyEventPersistenceError(err);
+                    });
+                }
             }
         });
     }
