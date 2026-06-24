@@ -335,27 +335,30 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 // GRAVA O TIMESTAMP IMEDIATAMENTE (Não espera o screenshot!)
                 const exact_timestamp = Date.now();
                 
-                // Tira print screen no tempo exato extraindo o frame da stream de vídeo no Offscreen
-                chrome.runtime.sendMessage({ target: 'offscreen', action: 'take_screenshot' }, (response) => {
-                    if (chrome.runtime.lastError) {
-                        console.warn("Erro ao pedir frame pro offscreen", chrome.runtime.lastError);
-                        return;
-                    }
-                    if (response && response.dataUrl) {
-                        // Persist to IndexedDB instead of chrome.storage.local to avoid
-                        // the ~5 MB quota that silently drops events (bug C5).
-                        appendEventToDB({
-                            timestamp: exact_timestamp,
-                            type: message.type,
-                            eventData: message.data,
-                            screenshotData: response.dataUrl
-                        }).then(() => {
-                            console.log("Evento gravado no IndexedDB", message.type);
-                        }).catch((err) => {
-                            notifyEventPersistenceError(err);
-                        });
-                    }
-                });
+                // Tira print screen com 300ms de atraso para permitir que o stream de vídeo WebRTC (que tem latência inerente) 
+                // alcance visualmente o exato estado e posição do mouse na hora do clique
+                setTimeout(() => {
+                    chrome.runtime.sendMessage({ target: 'offscreen', action: 'take_screenshot' }, (response) => {
+                        if (chrome.runtime.lastError) {
+                            console.warn("Erro ao pedir frame pro offscreen", chrome.runtime.lastError);
+                            return;
+                        }
+                        if (response && response.dataUrl) {
+                            // Persist to IndexedDB instead of chrome.storage.local to avoid
+                            // the ~5 MB quota that silently drops events (bug C5).
+                            appendEventToDB({
+                                timestamp: exact_timestamp,
+                                type: message.type,
+                                eventData: message.data,
+                                screenshotData: response.dataUrl
+                            }).then(() => {
+                                console.log("Evento gravado no IndexedDB", message.type);
+                            }).catch((err) => {
+                                notifyEventPersistenceError(err);
+                            });
+                        }
+                    });
+                }, 300);
             }
         });
     }

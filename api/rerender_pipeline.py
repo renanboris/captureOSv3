@@ -77,7 +77,8 @@ async def rerenderizar_com_roteiro_aprovado(session_id: str, roteiro_aprovado: l
         if timestamp_ms == 0 and passo_num == "0":
             rel_sec = 0.0
         elif timestamp_ms == 99999999 or passo_num == "999":
-            rel_sec = last_computed_ts + 3.0
+            # 999999 será capado pelo video_duration no time_bender, garantindo que o vídeo corra solto até o fim
+            rel_sec = 999999.0
         else:
             if start_time_ms > 0:
                 rel_sec = max(0.0, ((timestamp_ms - start_time_ms) / 1000.0) - 0.6)
