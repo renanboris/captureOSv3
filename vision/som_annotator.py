@@ -119,14 +119,14 @@ def anotar_imagem(screenshot_bytes: bytes, boxes: List[SoMBox]) -> bytes:
         except:
             font = ImageFont.load_default()
 
-        red_color = "#FF3B30"
+        brand_color = "#00998F"
         
         for box in boxes:
             x, y, w, h = box["x"], box["y"], box["w"], box["h"]
             idx = str(box["idx"])
             
             # Draw rectangle
-            draw.rectangle([x, y, x + w, y + h], outline=red_color, width=2)
+            draw.rectangle([x, y, x + w, y + h], outline=brand_color, width=3)
             
             # Draw badge
             # Calculate text size for badge width
@@ -143,7 +143,7 @@ def anotar_imagem(screenshot_bytes: bytes, boxes: List[SoMBox]) -> bytes:
             badge_h = max(14, th + 4)
             
             # Badge background
-            draw.rectangle([x, y, x + badge_w, y + badge_h], fill=red_color)
+            draw.rectangle([x, y, x + badge_w, y + badge_h], fill=brand_color)
             
             # Badge text
             draw.text((x + 2, y + 1), idx, fill="white", font=font)
