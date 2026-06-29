@@ -247,6 +247,12 @@ class UploadContextPayload(BaseModel):
     file_data: str
     namespace: str = "auto"
 
+class RatingPayload(BaseModel):
+    context_type: str
+    context_id: str
+    score: int
+    comment: Optional[str] = None
+
 from fastapi import HTTPException
 
 async def processar_sessao_background(session_id: str, modo_input: str, events: list, start_time: int, rag_namespace: str = "auto", video_bytes: bytes = b"", audio_bytes: bytes = b"", roteiro_manual: list = []):
@@ -812,6 +818,43 @@ async def configurar_simlink(session_id: str, payload: dict):
         json.dump(mod, f, ensure_ascii=False, indent=2)
         
     return {"simlink_url": f"{settings.backend_url}/simlink?modulo={mod['modulo_id']}"}
+
+@app.post("/api/v1/ratings")
+async def submit_rating(payload: RatingPayload, request: Request):
+    """Salva uma avaliação (NPS/CSAT) no Supabase."""
+    if not settings.supabase_url or not settings.supabase_key:
+        logger.warning("Supabase não configurado. Avaliação ignorada.")
+        return {"status": "ignored"}
+    
+    # Extrair user_id do token se disponível. O AuthMiddleware deve colocar em request.state
+    # Se o sistema atual apenas tem uma proteção fraca ou admin único, podemos precisar
+    # usar um fallback ou o UID padrão da plataforma.
+    user_id = getattr(request.state, 'user_id', None)
+    
+    # Se não houver user_id explícito na requisição, usamos um namespace dummy ou UUID fixo 
+    # para fins de tracking (já que é uma feature inicial).
+    if not user_id:
+        # Fallback UUID for single-user desktop version or unauthenticated SCORM flows
+        user_id = "00000000-0000-0000-0000-000000000000"
+
+    try:
+        from supabase import create_client, Client
+        supabase: Client = create_client(settings.supabase_url, settings.supabase_key)
+        
+        data = {
+            "user_id": user_id,
+            "context_type": payload.context_type,
+            "context_id": payload.context_id,
+            "score": payload.score,
+            "comment": payload.comment
+        }
+        
+        # O supabase-py tem .upsert(), útil pela constraint UNIQUE(user_id, context_type, context_id)
+        response = supabase.table('ratings').upsert(data).execute()
+        return {"status": "ok", "data": response.data}
+    except Exception as e:
+        logger.error(f"Erro ao salvar rating no Supabase: {e}")
+        raise HTTPException(status_code=500, detail="Erro interno ao processar avaliação")
 
 def get_sandbox_state(session_id: str) -> int:
     path = f"data/status/sandbox_{session_id}.json"

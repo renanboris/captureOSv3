@@ -1169,12 +1169,25 @@ function mostrarTelaConclusao(xpFinal, jaConcluidoAntes) {
     document.getElementById('simulacao-container').innerHTML = `
         <div style="padding: 50px; text-align: center; color: white; width: 100%; height: 100%;
                     display: flex; flex-direction: column; justify-content: center; align-items: center;
-                    background: #1a1a2e; box-sizing: border-box;">
+                    background: #1a1a2e; box-sizing: border-box; overflow-y: auto;">
             <div style="font-size: 3rem; margin-bottom: 16px;">🏆</div>
             <h2 style="font-size: 2rem; color: #10b981; margin: 0 0 12px;">Parabéns!</h2>
             <p style="font-size: 1.1rem; color: #cbd5e1; margin: 0 0 6px;">Treinamento finalizado com sucesso!</p>
             <p style="font-size: 1.3rem; font-weight: 700; color: #f1f5f9; margin: 0 0 4px;">XP Final: ${xpFinal}</p>
             ${aviso}
+            
+            <div id="scorm-rating-container" style="margin-top: 24px; padding: 16px; background: rgba(255,255,255,0.05); border-radius: 12px;">
+                <p style="margin: 0 0 10px; font-size: 1rem; color: #cbd5e1;">Avalie este treinamento:</p>
+                <div id="scorm-stars" style="display: flex; gap: 8px; justify-content: center;">
+                    <span class="scorm-star" data-val="1" style="font-size: 32px; color: #475569; cursor: pointer; transition: 0.2s;">★</span>
+                    <span class="scorm-star" data-val="2" style="font-size: 32px; color: #475569; cursor: pointer; transition: 0.2s;">★</span>
+                    <span class="scorm-star" data-val="3" style="font-size: 32px; color: #475569; cursor: pointer; transition: 0.2s;">★</span>
+                    <span class="scorm-star" data-val="4" style="font-size: 32px; color: #475569; cursor: pointer; transition: 0.2s;">★</span>
+                    <span class="scorm-star" data-val="5" style="font-size: 32px; color: #475569; cursor: pointer; transition: 0.2s;">★</span>
+                </div>
+                <div id="scorm-rating-msg" style="display: none; color: #10b981; margin-top: 8px; font-size: 0.9rem;">Obrigado pela avaliação! ✅</div>
+            </div>
+
             <button
                 onclick="reiniciarTreinamento()"
                 style="margin-top: 28px; padding: 12px 32px; border-radius: 8px; border: none;
@@ -1185,6 +1198,55 @@ function mostrarTelaConclusao(xpFinal, jaConcluidoAntes) {
             >🔄 Reiniciar Treinamento</button>
         </div>
     `;
+    
+    // Lógica das estrelas
+    setTimeout(() => {
+        const stars = document.querySelectorAll('.scorm-star');
+        let notaSelecionada = 0;
+        
+        stars.forEach(star => {
+            star.addEventListener('mouseenter', function() {
+                if(notaSelecionada > 0) return;
+                const val = parseInt(this.getAttribute('data-val'));
+                stars.forEach(s => {
+                    s.style.color = parseInt(s.getAttribute('data-val')) <= val ? '#fbbf24' : '#475569';
+                    s.style.textShadow = parseInt(s.getAttribute('data-val')) <= val ? '0 2px 10px rgba(251, 191, 36, 0.4)' : 'none';
+                });
+            });
+            star.addEventListener('mouseleave', function() {
+                if(notaSelecionada > 0) return;
+                stars.forEach(s => {
+                    s.style.color = '#475569';
+                    s.style.textShadow = 'none';
+                });
+            });
+            star.addEventListener('click', function() {
+                if(notaSelecionada > 0) return;
+                notaSelecionada = parseInt(this.getAttribute('data-val'));
+                stars.forEach(s => {
+                    s.style.color = parseInt(s.getAttribute('data-val')) <= notaSelecionada ? '#fbbf24' : '#475569';
+                    s.style.textShadow = parseInt(s.getAttribute('data-val')) <= notaSelecionada ? '0 2px 10px rgba(251, 191, 36, 0.4)' : 'none';
+                    s.style.cursor = 'default';
+                });
+                
+                document.getElementById('scorm-rating-msg').style.display = 'block';
+                
+                // Enviar para API
+                const backendUrl = (state.modulo && state.modulo.backend_url) ? state.modulo.backend_url : window.location.origin;
+                const targetId = (state.modulo && state.modulo.session_id) ? state.modulo.session_id : window.moduloId;
+                
+                fetch(backendUrl + '/api/v1/ratings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        context_type: 'scorm',
+                        context_id: targetId || 'unknown',
+                        score: notaSelecionada
+                    })
+                }).catch(err => console.warn('Falha ao enviar NPS (Offline ou CORS)', err));
+            });
+        });
+    }, 100);
 
     // Play conclusion narration via MiniMax (falls back to TTS if file missing)
     tocarAudioFixo('scorm_conclusao.mp3', 'Parabéns, treinamento finalizado com sucesso!');

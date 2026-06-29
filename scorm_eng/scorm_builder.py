@@ -186,6 +186,11 @@ class ScormBuilder:
             if hotspot.get('audio_path'):
                 filename = os.path.basename(hotspot['audio_path'])
                 hotspot['audio_filename'] = filename
+        
+        from config.settings import get_settings
+        settings = get_settings()
+        steps_dict['backend_url'] = settings.backend_url
+        
         return steps_dict
 
     async def build(self) -> str:

@@ -36,6 +36,26 @@
             <div class="loading">Carregando roteiro...</div>
         </main>
     </div>
+    
+    <!-- Modal de Avaliação (NPS/Estrelas) -->
+    <div id="rating-modal" class="rating-modal" style="display: none;">
+        <div class="rating-content">
+            <h2>Processo Concluído!</h2>
+            <p>Como foi sua experiência gravando e editando este material hoje?</p>
+            <div class="stars-container" id="stars-container">
+                <span class="star" data-value="1">★</span>
+                <span class="star" data-value="2">★</span>
+                <span class="star" data-value="3">★</span>
+                <span class="star" data-value="4">★</span>
+                <span class="star" data-value="5">★</span>
+            </div>
+            <div id="rating-success-message" style="display: none; color: #10b981; font-weight: 500; margin-top: 10px;">
+                Obrigado pela sua avaliação! ✅
+            </div>
+            <button id="btn-skip-rating" class="btn-secondary" style="margin-top: 20px;">Pular e Continuar</button>
+        </div>
+    </div>
+
     <script src="editor.js"></script>
 </body>
 </html>
