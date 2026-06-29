@@ -22,10 +22,11 @@ export default function Dashboard() {
     try {
       const token = localStorage.getItem('dev_token');
       const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+      const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
 
       const [runsRes, metricsRes] = await Promise.all([
-        fetch('http://127.0.0.1:8000/api/v1/admin/pipeline-runs', { headers }),
-        fetch('http://127.0.0.1:8000/api/v1/admin/metrics', { headers })
+        fetch(`${API_URL}/api/v1/admin/pipeline-runs`, { headers }),
+        fetch(`${API_URL}/api/v1/admin/metrics`, { headers })
       ]);
 
       if (runsRes.ok && metricsRes.ok) {
