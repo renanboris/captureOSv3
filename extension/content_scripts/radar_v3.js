@@ -996,7 +996,7 @@
         const closeBtn = shadow.getElementById('close-btn');
         closeBtn.addEventListener('click', () => {
             // Ao fechar, mostramos o modal de Rating no mesmo host
-            shadow.getElementById('modal').innerHTML = \`
+            shadow.getElementById('modal').innerHTML = `
                 <div style="padding: 40px; text-align: center; width: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #ffffff; border-radius: 24px; min-height: 300px;">
                     <h2 style="margin: 0 0 8px 0; font-size: 22px; font-weight: 600; color: #0f172a;">Processo Concluído!</h2>
                     <p style="margin: 0 0 24px 0; font-size: 15px; color: #475569;">Como foi sua experiência gravando este material hoje?</p>
@@ -1010,7 +1010,7 @@
                     <div id="ext-rating-msg" style="display: none; color: #10b981; font-weight: 500; margin-bottom: 24px;">Obrigado pela sua avaliação! ✅</div>
                     <button id="ext-btn-skip" class="btn btn-secondary" style="background: white; border: 1px solid #cbd5e1; padding: 10px 24px; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 14px; color: #64748b; transition: 0.2s;">Pular e Fechar</button>
                 </div>
-            \`;
+            `;
 
             // Lógica das estrelas
             const stars = shadow.querySelectorAll('.ext-star');
@@ -1064,7 +1064,7 @@
                     // Enviar API via mensagem para usar o token em background, ou via fetch direto
                     chrome.runtime.sendMessage({
                         action: "auth_fetch",
-                        url: \`\${backendUrl}/api/v1/ratings\`,
+                        url: `${backendUrl}/api/v1/ratings`,
                         options: {
                             method: "POST",
                             headers: { "Content-Type": "application/json" },
@@ -1093,7 +1093,7 @@
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
-                a.download = \`tutorial_capture_os_\${Date.now()}.mp4\`;
+                a.download = `tutorial_capture_os_${Date.now()}.mp4`;
                 a.click();
                 URL.revokeObjectURL(url);
             } catch(err) {
