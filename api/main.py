@@ -233,6 +233,7 @@ class EventPayload(BaseModel):
 
 class RoteiroEditadoPayload(BaseModel):
     roteiro: List[Dict[str, Any]]
+    titulo: Optional[str] = None
     modo_input: str = "A"
     aprovado: bool = False
     usar_overlay: bool = True
@@ -439,6 +440,8 @@ async def save_roteiro(session_id: str, payload: RoteiroEditadoPayload):
                 
     existing_data["session_id"] = session_id
     existing_data["roteiro"] = payload.roteiro
+    if payload.titulo:
+        existing_data["titulo"] = payload.titulo
     
     with open(roteiro_path, "w", encoding="utf-8") as f:
         json.dump(existing_data, f, ensure_ascii=False, indent=2)

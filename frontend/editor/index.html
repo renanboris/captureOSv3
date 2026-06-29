@@ -8,8 +8,11 @@
 </head>
 <body>
     <div class="editor-container">
-        <header>
-            <h1>Revisão de Roteiro</h1>
+        <header style="display: flex; justify-content: space-between; align-items: center;">
+            <div style="display: flex; flex-direction: column; gap: 4px;">
+                <h1 style="margin: 0; font-size: 20px;">Revisão de Roteiro</h1>
+                <input type="text" id="treinamento-titulo" value="Carregando título..." style="font-size: 14px; font-weight: 500; padding: 6px 8px; margin-left: -8px; border-radius: 6px; border: 1px solid transparent; background: transparent; transition: all 0.2s; outline: none; width: 350px; color: #64748b;" onfocus="this.style.background='white'; this.style.borderColor='#cbd5e1'; this.style.boxShadow='0 2px 4px rgba(0,0,0,0.05)'" onblur="this.style.background='transparent'; this.style.borderColor='transparent'; this.style.boxShadow='none'">
+            </div>
             <div style="display: flex; gap: 16px; align-items: center;">
                 <select id="voice-selector" style="padding: 8px 12px; border-radius: 8px; border: 1px solid #cbd5e1; background: white; font-size: 13px; font-weight: 500; color: #475569; outline: none; cursor: pointer;">
                     <option value="Portuguese_Casual_Speaker_v1">Casual (Masculino)</option>

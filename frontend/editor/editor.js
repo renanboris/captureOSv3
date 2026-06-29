@@ -62,6 +62,10 @@ async function carregarRoteiro() {
         if (!response.ok) throw new Error('Falha ao buscar roteiro');
         const data = await response.json();
         roteiroAtual = data.roteiro;
+        const tituloInput = document.getElementById('treinamento-titulo');
+        if (tituloInput) {
+            tituloInput.value = data.titulo || ("Tutorial — Sessão " + sessionId.slice(-8));
+        }
         renderizarPassos();
     } catch (e) {
         document.getElementById('passos-container').innerHTML = `<p class="loading">Erro: ${e.message}</p>`;
@@ -232,9 +236,11 @@ document.getElementById('btn-render').addEventListener('click', async () => {
 
     const usarOverlay = document.getElementById('toggle-overlay')?.checked ?? true;
     const vozId = document.getElementById("voice-selector")?.value || "Portuguese_Casual_Speaker_v1";
+    const titulo = document.getElementById('treinamento-titulo')?.value.trim() || undefined;
 
     const payload = {
         roteiro: roteiroAtual,
+        titulo: titulo,
         modo_input: "A",   // "C" estava incorreto — o editor edita roteiros de Modo A/B
         aprovado: true,
         usar_overlay: usarOverlay,

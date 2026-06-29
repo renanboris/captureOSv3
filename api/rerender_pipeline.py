@@ -152,10 +152,23 @@ async def rerenderizar_com_roteiro_aprovado(session_id: str, roteiro_aprovado: l
 
     settings = get_settings()
 
+    # Ler título do JSON
+    titulo_amigavel = "Treinamento Prático"
+    import json
+    roteiro_json_path = f"data/roteiros/{session_id}.json"
+    if os.path.exists(roteiro_json_path):
+        try:
+            with open(roteiro_json_path, "r", encoding="utf-8") as f:
+                roteiro_data = json.load(f)
+                if roteiro_data.get("titulo"):
+                    titulo_amigavel = roteiro_data.get("titulo")
+        except:
+            pass
+
     # Rodar PDF e transcrição em paralelo
     logger.info(f"[{session_id}] Gerando PDF e transcrição...")
     await asyncio.gather(
-        asyncio.to_thread(gerar_pdf, roteiro_aprovado, pdf_path, f"Tutorial — Sessão {session_id}"),
+        asyncio.to_thread(gerar_pdf, roteiro_aprovado, pdf_path, titulo_amigavel),
         asyncio.to_thread(gerar_transcricao, roteiro_aprovado, transcript_path)
     )
     logger.info(f"[{session_id}] PDF e transcrição concluídos.")
@@ -180,15 +193,6 @@ async def rerenderizar_com_roteiro_aprovado(session_id: str, roteiro_aprovado: l
     # Atualizar Módulo Simlink com o roteiro aprovado
     try:
         video_url = public_url if public_url else f"{settings.backend_url}/videos_gerados/{session_id}_final.mp4"
-        
-        # Encontrar um título amigável para evitar que o LMS leia o nome do arquivo (session_id)
-        titulo_amigavel = "Treinamento Prático"
-        for passo in roteiro_aprovado:
-            ancora = passo.get("ancora", "").strip()
-            if ancora and len(ancora) > 3:
-                titulo_amigavel = ancora
-                break
-
         simlink_modulo = construir_modulo_simlink(roteiro_aprovado, session_id, video_url, titulo=titulo_amigavel)
         os.makedirs("data/simlink", exist_ok=True)
         with open(f"data/simlink/{session_id}.json", "w", encoding="utf-8") as f:
