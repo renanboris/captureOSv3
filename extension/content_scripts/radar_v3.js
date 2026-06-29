@@ -1001,6 +1001,12 @@
                     </div>
                     <div id="ext-rating-msg" style="display: none; color: #10b981; font-weight: 500; margin-bottom: 24px;">Obrigado pela sua avaliação! ✅</div>
                     <button id="ext-btn-skip" class="btn btn-secondary" style="background: white; border: 1px solid #cbd5e1; padding: 10px 24px; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 14px; color: #64748b; transition: 0.2s;">Pular e Fechar</button>
+                    
+                    <p id="ext-report-link" style="margin-top: 24px; font-size: 12px; color: #94a3b8; cursor: pointer; text-decoration: underline; transition: 0.2s;">Encontrou algum problema? Reportar erro</p>
+                    <div id="ext-report-container" style="display: none; width: 100%; margin-top: 16px;">
+                        <textarea id="ext-report-text" placeholder="Descreva o problema ou erro encontrado..." style="width: 100%; height: 70px; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13px; font-family: inherit; resize: none; outline: none; margin-bottom: 12px; box-sizing: border-box;"></textarea>
+                        <button id="ext-btn-report" class="btn btn-primary" style="width: 100%; padding: 10px; font-size: 13px; margin: 0; box-sizing: border-box;">Enviar Relato</button>
+                    </div>
                 </div>
             `;
 
@@ -1014,6 +1020,42 @@
             };
 
             shadow.getElementById('ext-btn-skip').addEventListener('click', fecharFinal);
+
+            shadow.getElementById('ext-report-link').addEventListener('click', (e) => {
+                e.target.style.display = 'none';
+                shadow.getElementById('ext-stars-container').style.display = 'none';
+                shadow.querySelector('h2').innerText = 'Reportar um Problema';
+                shadow.querySelector('p').style.display = 'none';
+                shadow.getElementById('ext-btn-skip').style.display = 'none';
+                shadow.getElementById('ext-report-container').style.display = 'block';
+                shadow.getElementById('modal').style.height = '320px';
+            });
+
+            shadow.getElementById('ext-btn-report').addEventListener('click', () => {
+                const text = shadow.getElementById('ext-report-text').value.trim();
+                if (!text) return;
+                
+                shadow.getElementById('ext-btn-report').innerText = 'Enviando...';
+                shadow.getElementById('ext-btn-report').disabled = true;
+                
+                chrome.runtime.sendMessage({
+                    action: "auth_fetch",
+                    url: `${backendUrl}/api/v1/ratings`,
+                    options: {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            context_type: 'recording_bug_report',
+                            context_id: session_id,
+                            score: 0,
+                            comment: text
+                        })
+                    }
+                });
+                
+                shadow.getElementById('ext-report-container').innerHTML = '<p style="color: #10b981; font-weight: 500; font-size: 14px; margin: 0;">Relato enviado com sucesso! Muito obrigado.</p>';
+                setTimeout(fecharFinal, 2500);
+            });
 
             stars.forEach(star => {
                 star.addEventListener('mouseenter', function() {
