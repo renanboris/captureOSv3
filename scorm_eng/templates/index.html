@@ -13,7 +13,7 @@
             <div class="start-content">
                 <h2>Prática Guiada</h2>
                 <p>Clique abaixo para iniciar a simulação passo a passo.</p>
-                <button id="btn-start" class="btn-play">
+                <button id="btn-start" class="btn-play" onclick="document.getElementById('start-screen').classList.add('hidden'); if(typeof renderizarPassoAtual === 'function') renderizarPassoAtual();">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3" fill="currentColor"></polygon></svg>
                     Iniciar Prática
                 </button>

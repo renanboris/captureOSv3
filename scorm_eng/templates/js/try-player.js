@@ -148,15 +148,6 @@ const urlParams = new URLSearchParams(window.location.search);
 window.moduloId = urlParams.get('modulo') || (typeof STEPS_DATA !== 'undefined' && STEPS_DATA.session_id ? STEPS_DATA.session_id : 'default');
 
 async function iniciarPlayer() {
-    // Configura o botão START logo de início para evitar que erros impeçam o clique
-    const startScreen = document.getElementById('start-screen');
-    const btnStart = document.getElementById('btn-start');
-    btnStart.addEventListener('click', () => {
-        startScreen.classList.add('hidden');
-        if (state.modulo) {
-            renderizarPassoAtual();
-        }
-    });
 
     try {
         ScormAPI.init();
