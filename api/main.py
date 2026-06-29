@@ -293,7 +293,7 @@ async def upload_context(payload: UploadContextPayload):
         raise HTTPException(status_code=500, detail="Falha ao vetorizar documento")
     return {"status": "ok", "message": "Contexto vetorizado com sucesso"}
 
-@app.post("/api/v1/capture/ingest", dependencies=_auth_deps)
+@app.post("/api/v1/capture/ingest")
 async def ingest_capture(
     session_id: str = Form(...),
     recording_start_time: int = Form(0),
@@ -303,24 +303,18 @@ async def ingest_capture(
     roteiro_manual: str = Form("[]"),
     video: UploadFile = File(...),
     audio: Optional[UploadFile] = File(None),
+    user_dict: dict = Depends(require_auth),
 ):
-    """Accept a binary multipart upload for the capture recording.
+    """Accept a binary multipart upload for the capture recording."""
+    logger.info(f"Recebido payload da sessão: {session_id} do user {user_dict.get('id')}")
 
-    Task 14.4 (C4): replaces the old base64-in-JSON ``EventPayload`` with
-    multipart/form-data so large recordings do not exhaust memory or time out.
-
-    Form fields:
-    - session_id (str, required)
-    - recording_start_time (int, default 0)
-    - events (str, JSON-encoded list, default "[]")
-    - modo_input (str, default "A"; "C" is rejected by the middleware above)
-    - roteiro_manual (str, JSON-encoded list, default "[]")
-
-    Files:
-    - video (required): the WebM recording as raw bytes
-    - audio (optional): the instructor microphone WebM as raw bytes
-    """
-    logger.info(f"Recebido payload da sessão: {session_id}")
+    # Cria ou busca a org e inicializa o PipelineRun
+    from api.db_services import get_or_create_organization_for_user, create_pipeline_run
+    user_id = user_dict.get("id")
+    email = user_dict.get("email", "")
+    org_id = get_or_create_organization_for_user(user_id, email)
+    if org_id:
+        create_pipeline_run(session_id, user_id, org_id)
 
     # Validate modo_input (belt-and-suspenders; middleware also checks)
     if modo_input == "C":
@@ -417,6 +411,58 @@ async def check_status(session_id: str):
         }
         
     return status_data
+
+@app.get("/api/v1/admin/pipeline-runs", dependencies=_auth_deps)
+async def admin_get_pipeline_runs(limit: int = 50, offset: int = 0, status: Optional[str] = None, user_dict: dict = Depends(require_auth)):
+    from api.db_services import get_or_create_organization_for_user, get_pipeline_runs_for_organization
+    user_id = user_dict.get("id")
+    email = user_dict.get("email", "")
+    
+    org_id = get_or_create_organization_for_user(user_id, email)
+    if not org_id:
+        raise HTTPException(status_code=403, detail="Organização não encontrada para o usuário.")
+        
+    return get_pipeline_runs_for_organization(org_id, limit, offset, status)
+
+@app.post("/api/v1/admin/report-error/{session_id}", dependencies=_auth_deps)
+async def admin_report_error(session_id: str, payload: dict, user_dict: dict = Depends(require_auth)):
+    from api.db_services import update_pipeline_run_status
+    update_status(session_id, "user_reported_error", payload.get("message", "Erro reportado pelo usuário"))
+    update_pipeline_run_status(session_id, "user_reported_error", "capture")
+    return {"status": "ok"}
+
+@app.post("/api/v1/session/{session_id}/publish", dependencies=_auth_deps)
+async def track_publish(session_id: str, payload: dict, user_dict: dict = Depends(require_auth)):
+    from api.db_services import get_supabase_client
+    client = get_supabase_client()
+    if not client:
+        return {"status": "error", "message": "DB_UNAVAILABLE"}
+    try:
+        run_res = client.table("pipeline_runs").select("id").eq("session_id", session_id).execute()
+        if run_res.data:
+            client.table("published_modules").insert({
+                "pipeline_run_id": run_res.data[0]["id"],
+                "published_by": user_dict.get("id"),
+                "destination": payload.get("destination", "SCORM_DOWNLOAD")
+            }).execute()
+        return {"status": "ok"}
+    except Exception as e:
+        logger.error(f"Erro ao rastrear publicação: {e}")
+        return {"status": "error"}
+
+@app.get("/api/v1/admin/metrics", dependencies=_auth_deps)
+async def admin_get_metrics(user_dict: dict = Depends(require_auth)):
+    from api.db_services import get_or_create_organization_for_user
+    from api.metrics_engine import get_organization_metrics
+    
+    user_id = user_dict.get("id")
+    email = user_dict.get("email", "")
+    org_id = get_or_create_organization_for_user(user_id, email)
+    
+    if not org_id:
+        raise HTTPException(status_code=403, detail="Organização não encontrada.")
+        
+    return get_organization_metrics(org_id)
 
 @app.get("/api/v1/session/{session_id}/roteiro", dependencies=_auth_deps)
 async def get_roteiro(session_id: str):

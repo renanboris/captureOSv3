@@ -90,6 +90,9 @@ async def processar_intencao(image_bytes: bytes, event_data: dict, a11y_tree: li
         f"{action_value_str}"
     ).strip()
 
+    from api.anonymizer import anonymize_text
+    user_content = anonymize_text(user_content)
+
     try:
         response = await client.aio.models.generate_content(
             model="gemini-2.5-flash",
@@ -198,6 +201,9 @@ O instrutor explicou o processo com as próprias palavras acima. Use o raciocín
 <ROTEIRO_BRUTO>
 {roteiro_texto}
 </ROTEIRO_BRUTO>""".strip()
+
+    from api.anonymizer import anonymize_text
+    user_content = anonymize_text(user_content)
 
     try:
         response = await client.aio.models.generate_content(
@@ -325,6 +331,9 @@ async def regerar_passo_isolado(passo_alvo: dict, passo_anterior: dict = None, p
     user_content = f"""<CONTEXTO_DOS_PASSOS_ADJACENTES>
 {contexto}
 </CONTEXTO_DOS_PASSOS_ADJACENTES>"""
+
+    from api.anonymizer import anonymize_text
+    user_content = anonymize_text(user_content)
 
     try:
         response = await client.aio.models.generate_content(
