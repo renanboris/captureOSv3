@@ -55,12 +55,32 @@ def get_organization_metrics(organization_id: str) -> dict:
         
     try:
         # 1. Pipeline Runs Success Rate
-        runs_res = client.table("pipeline_runs").select("status").eq("organization_id", organization_id).execute()
+        runs_res = client.table("pipeline_runs").select("status, instructor_id").eq("organization_id", organization_id).execute()
         runs = runs_res.data if runs_res.data else []
         
         total_runs = len(runs)
         completed_runs = sum(1 for r in runs if r["status"] == "completed")
         sucesso_rate = (completed_runs / total_runs * 100) if total_runs > 0 else 0
+        
+        # Agrupar por instrutor
+        instructor_map = {}
+        for r in runs:
+            uid = r.get("instructor_id") or "Desconhecido"
+            if uid not in instructor_map:
+                instructor_map[uid] = {"total": 0, "completed": 0}
+            instructor_map[uid]["total"] += 1
+            if r["status"] == "completed":
+                instructor_map[uid]["completed"] += 1
+                
+        runs_by_instructor = []
+        for uid, stats in instructor_map.items():
+            runs_by_instructor.append({
+                "instructor_id": uid[:8] if len(uid) > 10 else uid,
+                "total_runs": stats["total"],
+                "completed_runs": stats["completed"]
+            })
+            
+        runs_by_instructor.sort(key=lambda x: x["total_runs"], reverse=True)
         
         # 2. Roteiros Editing Rate (Mocked calculation for aggregate since we need both versions)
         # In a real scenario, we'd fetch versions 1 and 2 for each pipeline run and average the diff.
@@ -76,7 +96,8 @@ def get_organization_metrics(organization_id: str) -> dict:
             "total_runs": total_runs,
             "success_rate": round(sucesso_rate, 1),
             "avg_edit_rate": media_taxa_edicao,
-            "time_saved_hours": round(tempo_economizado_horas, 1)
+            "time_saved_hours": round(tempo_economizado_horas, 1),
+            "runs_by_instructor": runs_by_instructor
         }
     except Exception as e:
         logger.error(f"Error calculating metrics for org {organization_id}: {e}")

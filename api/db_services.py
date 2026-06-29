@@ -108,7 +108,7 @@ def save_roteiro_version(
             
         pipeline_run_id = run_res.data[0]["id"]
         
-        client.table("roteiro_versoes").insert({
+        client.table("roteiro_versoes").upsert({
             "pipeline_run_id": pipeline_run_id,
             "version": version,
             "text_content": text_content,
