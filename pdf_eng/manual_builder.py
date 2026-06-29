@@ -77,8 +77,8 @@ def _filter_step(passo: dict) -> bool:
         ancora = (passo.get("ancora") or "").strip()
         return not ancora
     else:
-        ancora = (passo.get("ancora") or "").strip()
-        micro = (passo.get("micro_narracao") or "").strip()
+        ancora = (passo.get("ancora") or "").strip().replace("(vazio)", "").strip()
+        micro = (passo.get("micro_narracao") or "").strip().replace("(vazio)", "").strip()
         return not ancora and not micro
 
 

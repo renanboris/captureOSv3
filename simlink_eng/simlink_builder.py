@@ -23,8 +23,8 @@ def construir_modulo_simlink(roteiro_enriquecido: list, session_id: str, video_u
             continue
 
         # Pular passos sem conteúdo textual (loading/navegação vazia)
-        ancora = passo.get("ancora", "").strip()
-        micro = passo.get("micro_narracao", "").strip()
+        ancora = passo.get("ancora", "").strip().replace("(vazio)", "").strip()
+        micro = passo.get("micro_narracao", "").strip().replace("(vazio)", "").strip()
         if not ancora and not micro:
             logger.info(f"Passo {num} sem texto (ancora/micro vazio) — pulando do simlink")
             continue

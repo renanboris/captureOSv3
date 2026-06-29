@@ -81,14 +81,15 @@ function renderizarPassos() {
         item.className = 'transcript-item';
         
         const tempoFicticio = `00:0${index+1}`;
-        const textoCompleto = `${passo.ancora || ''} ${passo.micro_narracao || ''}`.trim() || '(vazio)';
+        const textoCompletoReal = `${passo.ancora || ''} ${passo.micro_narracao || ''}`.trim();
+        const textoView = textoCompletoReal || '(vazio)';
 
         item.innerHTML = `
             <div class="transcript-time">${tempoFicticio}</div>
             <div class="transcript-content">
                 <div class="editable-text-container" onclick="iniciarEdicao(this, 'texto-${index}')">
-                    <p class="editable-text" id="texto-view-${index}">${textoCompleto}</p>
-                    <textarea id="texto-${index}" style="display:none;" onblur="finalizarEdicao(this, 'texto-view-${index}')">${textoCompleto}</textarea>
+                    <p class="editable-text" id="texto-view-${index}">${textoView}</p>
+                    <textarea id="texto-${index}" style="display:none;" placeholder="Digite o texto deste passo..." onblur="finalizarEdicao(this, 'texto-view-${index}')">${textoCompletoReal}</textarea>
                 </div>
                 <div class="actions">
                     <button class="btn-icon" onclick="previewTTS(${index}, this)" title="Ouvir com a voz real (Francisca)">
@@ -198,10 +199,10 @@ async function regerarPassoIA(indexArray, passoNum) {
         
         const data = await res.json();
         const passoAtualizado = data.passo;
-        const textoUnificado = `${passoAtualizado.ancora || ''} ${passoAtualizado.micro_narracao || ''}`.trim();
+        const textoCompletoReal = `${passoAtualizado.ancora || ''} ${passoAtualizado.micro_narracao || ''}`.trim();
         
-        document.getElementById(`texto-${indexArray}`).value = textoUnificado;
-        document.getElementById(`texto-view-${indexArray}`).innerText = textoUnificado || '(vazio)';
+        document.getElementById(`texto-${indexArray}`).value = textoCompletoReal;
+        document.getElementById(`texto-view-${indexArray}`).innerText = textoCompletoReal || '(vazio)';
         
         roteiroAtual[indexArray].ancora = passoAtualizado.ancora;
         roteiroAtual[indexArray].micro_narracao = passoAtualizado.micro_narracao;
@@ -229,7 +230,8 @@ document.getElementById('btn-cancel').addEventListener('click', () => {
 
 document.getElementById('btn-render').addEventListener('click', async () => {
     roteiroAtual.forEach((passo, index) => {
-        const textoUnificado = document.getElementById(`texto-${index}`).value.trim();
+        let textoUnificado = document.getElementById(`texto-${index}`).value.trim();
+        if (textoUnificado === '(vazio)') textoUnificado = ''; // Prevenção extra
         passo.ancora = "";
         passo.micro_narracao = textoUnificado;
     });
