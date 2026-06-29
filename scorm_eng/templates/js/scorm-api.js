@@ -12,13 +12,18 @@ var ScormAPI = {
         
         var findAPI = function(win) {
             var attempts = 0, limit = 500;
-            while ((!win.API && !win.API_1484_11) &&
-                   (win.parent) && (win.parent != win) &&
-                   (attempts <= limit)){
-                attempts++;
-                win = win.parent;
+            try {
+                while ((!win.API && !win.API_1484_11) &&
+                       (win.parent) && (win.parent != win) &&
+                       (attempts <= limit)){
+                    attempts++;
+                    win = win.parent;
+                }
+                return win.API;
+            } catch (e) {
+                console.warn("SCORM API search blocked by CORS: ", e);
+                return null;
             }
-            return win.API;
         };
         
         var api = findAPI(window);

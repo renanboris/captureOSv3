@@ -148,9 +148,19 @@ const urlParams = new URLSearchParams(window.location.search);
 window.moduloId = urlParams.get('modulo') || (typeof STEPS_DATA !== 'undefined' && STEPS_DATA.session_id ? STEPS_DATA.session_id : 'default');
 
 async function iniciarPlayer() {
-    ScormAPI.init();
-    
+    // Configura o botão START logo de início para evitar que erros impeçam o clique
+    const startScreen = document.getElementById('start-screen');
+    const btnStart = document.getElementById('btn-start');
+    btnStart.addEventListener('click', () => {
+        startScreen.classList.add('hidden');
+        if (state.modulo) {
+            renderizarPassoAtual();
+        }
+    });
+
     try {
+        ScormAPI.init();
+        
         let dados;
         if (ScormAPI.isLMS || !window.moduloId || window.moduloId === 'default') {
             // SCORM real, carrega do arquivo steps.js que foi incluído no index.html
@@ -228,14 +238,7 @@ async function iniciarPlayer() {
             document.getElementById('imagem-bg').src = getScreenshotUrl(firstHotspot);
         }
 
-        // Aguarda clique no botão START para evitar bloqueio de autoplay de áudio pelo navegador
-        const startScreen = document.getElementById('start-screen');
-        const btnStart = document.getElementById('btn-start');
-        
-        btnStart.addEventListener('click', () => {
-            startScreen.classList.add('hidden');
-            renderizarPassoAtual();
-        });
+
     } catch (e) {
         document.getElementById('ancora-texto').innerText = `Erro: ${e.message}`;
     }

@@ -965,23 +965,11 @@
                                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2-2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
                                 Baixar Vídeo
                             </button>
-                            <button class="btn btn-secondary" id="copy-btn">
-                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-                                Copiar Roteiro
-                            </button>
                         </div>
                         <div class="btn-grid">
                             <a href="${backendUrl}/artifacts/${session_id}/apostila.pdf" target="_blank" download="apostila_capture_os_${Date.now()}.pdf" class="btn btn-secondary">
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
                                 PDF
-                            </a>
-                            <a href="${backendUrl}/artifacts/${session_id}/transcricao.txt" target="_blank" download="transcricao_capture_os_${Date.now()}.txt" class="btn btn-secondary">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
-                                Transcrição
-                            </a>
-                            <a href="${backendUrl}/artifacts/${session_id}/quiz.json" target="_blank" download="quiz_capture_os_${Date.now()}.json" class="btn btn-secondary">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
-                                Quiz JSON
                             </a>
                             <a href="${backendUrl}/scorm/${session_id}.zip" target="_blank" download="pacote_scorm_${session_id}.zip" class="btn btn-accent">
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2-2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
@@ -1102,24 +1090,6 @@
             }
             btn.innerHTML = originalHtml;
             btn.disabled = false;
-        });
-
-        const copyBtn = shadow.getElementById('copy-btn');
-        copyBtn.addEventListener('click', () => {
-            let texto = "Roteiro do Tutorial:\n\n";
-            if (roteiro && roteiro.length > 0) {
-                roteiro.forEach(p => { texto += `${p.passo}. ${p.ancora || p.intencao_original || ''}\n`; });
-            } else {
-                texto += "Nenhum roteiro detalhado gerado.\n";
-            }
-            navigator.clipboard.writeText(texto).then(() => {
-                const originalHtml = copyBtn.innerHTML;
-                copyBtn.innerHTML = `
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2AC4AA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                    <span style="color: #2AC4AA;">Copiado com sucesso!</span>
-                `;
-                setTimeout(() => { copyBtn.innerHTML = originalHtml; }, 3000);
-            });
         });
 
         requestAnimationFrame(() => {
