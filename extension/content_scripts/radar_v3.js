@@ -699,7 +699,7 @@
         const session_id = match ? match[1] : '';
 
         // Usa o backendUrl enviado pelo background.js
-        const backendUrl = receivedBackendUrl || 'http://127.0.0.1:8000';
+        const backendUrl = receivedBackendUrl || 'https://api.nomadelabs.com.br';
 
         const _isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
 
@@ -785,6 +785,7 @@
                     display: flex;
                     overflow: hidden;
                     position: relative;
+                    transition: width 0.3s cubic-bezier(0.16, 1, 0.3, 1), height 0.3s cubic-bezier(0.16, 1, 0.3, 1);
                     animation: _capture_modal_in 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
                 }
                 .video-section {
@@ -983,10 +984,13 @@
 
         const closeBtn = shadow.getElementById('close-btn');
         closeBtn.addEventListener('click', () => {
-            // Ao fechar, mostramos o modal de Rating no mesmo host
-            shadow.getElementById('modal').innerHTML = `
-                <div style="padding: 40px; text-align: center; width: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #ffffff; border-radius: 24px; min-height: 300px;">
-                    <h2 style="margin: 0 0 8px 0; font-size: 22px; font-weight: 600; color: #0f172a;">Processo Concluído!</h2>
+            // Ao fechar, mostramos o modal de Rating no mesmo host, mas bem menor
+            const modal = shadow.getElementById('modal');
+            modal.style.width = '400px';
+            modal.style.height = '280px';
+            modal.innerHTML = `
+                <div style="padding: 32px 24px; text-align: center; width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #ffffff; border-radius: 12px; box-sizing: border-box;">
+                    <h2 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: #0f172a;">Processo Concluído!</h2>
                     <p style="margin: 0 0 24px 0; font-size: 15px; color: #475569;">Como foi sua experiência gravando este material hoje?</p>
                     <div id="ext-stars-container" style="display: flex; gap: 8px; justify-content: center; margin-bottom: 24px;">
                         <span class="ext-star" data-val="1" style="font-size: 36px; color: #cbd5e1; cursor: pointer; transition: 0.2s; user-select: none;">★</span>
