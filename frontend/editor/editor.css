@@ -30,7 +30,7 @@ header h1 {
     color: #1e293b;
 }
 .btn-primary {
-    background-color: #0b5ce3;
+    background-color: #111827;
     color: #fff;
     border: none;
     padding: 10px 20px;
@@ -41,7 +41,7 @@ header h1 {
     transition: background 0.2s;
 }
 .btn-primary:hover {
-    background-color: #084bbb;
+    background-color: #1f2937;
 }
 .btn-primary:disabled {
     background-color: #94a3b8;
@@ -114,13 +114,13 @@ textarea {
     width: 100%;
     min-height: 40px;
     padding: 8px 12px;
-    border: 1px solid #0b5ce3;
+    border: 1px solid #111827;
     border-radius: 6px;
     font-family: inherit;
     font-size: 15px;
     line-height: 1.6;
     resize: vertical;
-    box-shadow: 0 0 0 2px rgba(11, 92, 227, 0.2);
+    box-shadow: 0 0 0 2px rgba(17, 24, 39, 0.2);
     outline: none;
     background: #fff;
 }

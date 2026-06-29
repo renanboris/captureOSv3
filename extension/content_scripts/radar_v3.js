@@ -890,13 +890,13 @@
                     box-sizing: border-box;
                 }
                 .btn-primary {
-                    background: var(--primary);
+                    background: #111827;
                     color: white;
-                    box-shadow: 0 2px 8px rgba(59,130,246,0.25);
+                    box-shadow: 0 2px 8px rgba(17,24,39,0.25);
                 }
                 .btn-primary:hover {
-                    background: var(--primary-hover);
-                    box-shadow: 0 4px 12px rgba(59,130,246,0.35);
+                    background: #1f2937;
+                    box-shadow: 0 4px 12px rgba(17,24,39,0.35);
                 }
                 .btn-secondary {
                     background: var(--btn-secondary-bg);
@@ -1327,8 +1327,8 @@
 
             if (targetEl) {
                 targetEl.classList.add("capture-os-hint-highlight");
-                targetEl.style.boxShadow = "0 0 0 4px rgba(59, 130, 246, 0.6), 0 0 20px rgba(59, 130, 246, 0.4)";
-                targetEl.style.outline = "2px solid #3b82f6";
+                targetEl.style.boxShadow = "0 0 0 4px rgba(0, 153, 143, 0.6), 0 0 20px rgba(0, 153, 143, 0.4)";
+                targetEl.style.outline = "2px solid #00998F";
                 targetEl.style.borderRadius = "4px";
                 targetEl.style.transition = "all 0.3s ease";
                 targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
