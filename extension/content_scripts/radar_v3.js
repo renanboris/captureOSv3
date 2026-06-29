@@ -961,10 +961,10 @@
                     
                     <div class="script-footer">
                         <div class="btn-grid-top">
-                            <a href="${videoUrl}" target="_blank" download="tutorial_capture_os_${Date.now()}.mp4" class="btn btn-primary">
+                            <button id="download-video-btn" class="btn btn-primary">
                                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2-2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
                                 Baixar Vídeo
-                            </a>
+                            </button>
                             <button class="btn btn-secondary" id="copy-btn">
                                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
                                 Copiar Roteiro
@@ -995,13 +995,114 @@
 
         const closeBtn = shadow.getElementById('close-btn');
         closeBtn.addEventListener('click', () => {
-            host.style.opacity = '0';
-            shadow.getElementById('modal').style.transform = 'translateY(20px) scale(0.98)';
-            setTimeout(() => host.remove(), 400);
+            // Ao fechar, mostramos o modal de Rating no mesmo host
+            shadow.getElementById('modal').innerHTML = \`
+                <div style="padding: 40px; text-align: center; width: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #ffffff; border-radius: 24px; min-height: 300px;">
+                    <h2 style="margin: 0 0 8px 0; font-size: 22px; font-weight: 600; color: #0f172a;">Processo Concluído!</h2>
+                    <p style="margin: 0 0 24px 0; font-size: 15px; color: #475569;">Como foi sua experiência gravando este material hoje?</p>
+                    <div id="ext-stars-container" style="display: flex; gap: 8px; justify-content: center; margin-bottom: 24px;">
+                        <span class="ext-star" data-val="1" style="font-size: 36px; color: #cbd5e1; cursor: pointer; transition: 0.2s; user-select: none;">★</span>
+                        <span class="ext-star" data-val="2" style="font-size: 36px; color: #cbd5e1; cursor: pointer; transition: 0.2s; user-select: none;">★</span>
+                        <span class="ext-star" data-val="3" style="font-size: 36px; color: #cbd5e1; cursor: pointer; transition: 0.2s; user-select: none;">★</span>
+                        <span class="ext-star" data-val="4" style="font-size: 36px; color: #cbd5e1; cursor: pointer; transition: 0.2s; user-select: none;">★</span>
+                        <span class="ext-star" data-val="5" style="font-size: 36px; color: #cbd5e1; cursor: pointer; transition: 0.2s; user-select: none;">★</span>
+                    </div>
+                    <div id="ext-rating-msg" style="display: none; color: #10b981; font-weight: 500; margin-bottom: 24px;">Obrigado pela sua avaliação! ✅</div>
+                    <button id="ext-btn-skip" class="btn btn-secondary" style="background: white; border: 1px solid #cbd5e1; padding: 10px 24px; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 14px; color: #64748b; transition: 0.2s;">Pular e Fechar</button>
+                </div>
+            \`;
+
+            // Lógica das estrelas
+            const stars = shadow.querySelectorAll('.ext-star');
+            let nota = 0;
+            const fecharFinal = () => {
+                host.style.opacity = '0';
+                shadow.getElementById('modal').style.transform = 'translateY(20px) scale(0.98)';
+                setTimeout(() => host.remove(), 400);
+            };
+
+            shadow.getElementById('ext-btn-skip').addEventListener('click', fecharFinal);
+
+            stars.forEach(star => {
+                star.addEventListener('mouseenter', function() {
+                    if (nota > 0) return;
+                    const val = parseInt(this.getAttribute('data-val'));
+                    stars.forEach(s => {
+                        if (parseInt(s.getAttribute('data-val')) <= val) {
+                            s.style.color = '#fbbf24';
+                            s.style.textShadow = '0 2px 10px rgba(251, 191, 36, 0.4)';
+                        } else {
+                            s.style.color = '#cbd5e1';
+                            s.style.textShadow = 'none';
+                        }
+                    });
+                });
+                star.addEventListener('mouseleave', function() {
+                    if (nota > 0) return;
+                    stars.forEach(s => {
+                        s.style.color = '#cbd5e1';
+                        s.style.textShadow = 'none';
+                    });
+                });
+                star.addEventListener('click', function() {
+                    if (nota > 0) return;
+                    nota = parseInt(this.getAttribute('data-val'));
+                    stars.forEach(s => {
+                        if (parseInt(s.getAttribute('data-val')) <= nota) {
+                            s.style.color = '#fbbf24';
+                            s.style.textShadow = '0 2px 10px rgba(251, 191, 36, 0.4)';
+                        } else {
+                            s.style.color = '#cbd5e1';
+                            s.style.textShadow = 'none';
+                        }
+                        s.style.cursor = 'default';
+                    });
+                    
+                    shadow.getElementById('ext-rating-msg').style.display = 'block';
+                    shadow.getElementById('ext-btn-skip').innerText = 'Fechar';
+                    
+                    // Enviar API via mensagem para usar o token em background, ou via fetch direto
+                    chrome.runtime.sendMessage({
+                        action: "auth_fetch",
+                        url: \`\${backendUrl}/api/v1/ratings\`,
+                        options: {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                                context_type: 'recording',
+                                context_id: session_id,
+                                score: nota
+                            })
+                        }
+                    });
+
+                    setTimeout(fecharFinal, 2000);
+                });
+            });
         });
 
-        // Removido o event listener do download-btn que estava quebrando o Javascript
-        // O HTML já possui o a href com o atributo download nativo.
+        // Download nativo (Blob)
+        shadow.getElementById('download-video-btn').addEventListener('click', async (e) => {
+            const btn = e.currentTarget;
+            const originalHtml = btn.innerHTML;
+            btn.innerHTML = 'Baixando...';
+            btn.disabled = true;
+            try {
+                const resp = await fetch(videoUrl);
+                const blob = await resp.blob();
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = \`tutorial_capture_os_\${Date.now()}.mp4\`;
+                a.click();
+                URL.revokeObjectURL(url);
+            } catch(err) {
+                console.error("Erro no download blob:", err);
+                window.open(videoUrl, '_blank');
+            }
+            btn.innerHTML = originalHtml;
+            btn.disabled = false;
+        });
 
         const copyBtn = shadow.getElementById('copy-btn');
         copyBtn.addEventListener('click', () => {

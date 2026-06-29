@@ -253,8 +253,12 @@ document.getElementById('btn-render').addEventListener('click', async () => {
         });
         
         if (res.ok) {
-            // Em vez de fechar, mostramos o modal de avaliação!
-            mostrarModalAvaliacao();
+            const isEmbedded = new URLSearchParams(window.location.search).get('embedded') === 'true';
+            if (isEmbedded) {
+                window.parent.postMessage({ action: "close_editor_modal_and_resume", session_id: sessionId }, "*");
+            } else {
+                window.close();
+            }
         } else {
             alert('Erro ao aprovar roteiro.');
             btn.disabled = false;
@@ -267,89 +271,3 @@ document.getElementById('btn-render').addEventListener('click', async () => {
     }
 });
 
-// ---------------------------------------------------------------------------
-// Lógica de Avaliação (NPS/CSAT)
-// ---------------------------------------------------------------------------
-function fecharEditor() {
-    const isEmbedded = new URLSearchParams(window.location.search).get('embedded') === 'true';
-    if (isEmbedded) {
-        window.parent.postMessage({ action: "close_editor_modal_and_resume", session_id: sessionId }, "*");
-    } else {
-        window.close();
-    }
-}
-
-function mostrarModalAvaliacao() {
-    const modal = document.getElementById('rating-modal');
-    modal.style.display = 'flex';
-    // Timeout para permitir que o display:flex aplique antes de mudar a opacidade (transição)
-    setTimeout(() => {
-        modal.classList.add('show');
-    }, 10);
-}
-
-document.getElementById('btn-skip-rating').addEventListener('click', () => {
-    fecharEditor();
-});
-
-const stars = document.querySelectorAll('.star');
-let notaSelecionada = 0;
-
-stars.forEach(star => {
-    star.addEventListener('mouseenter', function() {
-        if (notaSelecionada > 0) return; // Se já votou, não faz hover
-        const valorHover = parseInt(this.getAttribute('data-value'));
-        stars.forEach(s => {
-            if (parseInt(s.getAttribute('data-value')) <= valorHover) {
-                s.classList.add('hovered');
-            } else {
-                s.classList.remove('hovered');
-            }
-        });
-    });
-
-    star.addEventListener('mouseleave', function() {
-        if (notaSelecionada > 0) return;
-        stars.forEach(s => s.classList.remove('hovered'));
-    });
-
-    star.addEventListener('click', async function() {
-        if (notaSelecionada > 0) return; // Previne múltiplos cliques
-        notaSelecionada = parseInt(this.getAttribute('data-value'));
-        
-        // Pinta até a estrela clicada
-        stars.forEach(s => {
-            s.classList.remove('hovered');
-            if (parseInt(s.getAttribute('data-value')) <= notaSelecionada) {
-                s.classList.add('selected');
-            }
-        });
-
-        // Mostra mensagem de sucesso
-        const successMsg = document.getElementById('rating-success-message');
-        successMsg.style.display = 'block';
-        
-        const btnSkip = document.getElementById('btn-skip-rating');
-        btnSkip.innerText = 'Fechar'; // Muda o botão de "Pular" para "Fechar"
-
-        // Dispara request pra API
-        try {
-            await authFetch('/api/v1/ratings', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    context_type: 'recording',
-                    context_id: sessionId,
-                    score: notaSelecionada
-                })
-            });
-        } catch(e) {
-            console.error("Erro ao enviar rating:", e);
-        }
-
-        // Fecha automaticamente após 2.5 segundos
-        setTimeout(() => {
-            fecharEditor();
-        }, 2500);
-    });
-});

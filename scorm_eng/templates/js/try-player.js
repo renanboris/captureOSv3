@@ -213,7 +213,8 @@ async function iniciarPlayer() {
         // Verifica se já passou
         const lessonStatus = ScormAPI.get("cmi.core.lesson_status");
         if (lessonStatus === "passed" || lessonStatus === "completed") {
-            // Já concluiu — mostra tela de conclusão diretamente com opção de reiniciar
+            // Já concluiu — esconde o start-screen e mostra tela de conclusão
+            document.getElementById('start-screen').classList.add('hidden');
             mostrarTelaConclusao(state.xpTotal, /* jaConcluidoAntes */ true);
             return;
         } else {
