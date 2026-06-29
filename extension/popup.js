@@ -263,7 +263,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             const resStorage = await chrome.storage.local.get(['backendUrl', 'authToken']);
             // Dev-only fallback assembled from parts so no production endpoint
             // is hardcoded; configure `backendUrl` via the options page.
-            const backendUrl = resStorage.backendUrl || ("http://" + "localhost" + ":8000");
+            const backendUrl = resStorage.backendUrl || "https://api.nomadelabs.com.br";
             const headers = {};
             if (resStorage.authToken) headers['Authorization'] = `Bearer ${resStorage.authToken}`;
 
@@ -322,7 +322,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         try {
             const resStorage = await chrome.storage.local.get(['backendUrl', 'authToken']);
-            const backendUrl = resStorage.backendUrl || ("http://" + "localhost" + ":8000");
+            const backendUrl = resStorage.backendUrl || "https://api.nomadelabs.com.br";
             const headers = {};
             if (resStorage.authToken) headers['Authorization'] = `Bearer ${resStorage.authToken}`;
 
@@ -605,7 +605,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         // localhost:8000 fallback (same pattern as carregarModulosPratica and
         // carregarRoteiros) so no hard guard on backendUrl is needed.
         if (res.authToken) {
-            const backendUrl = res.backendUrl || ("http://" + "localhost" + ":8000");
+            const backendUrl = res.backendUrl || "https://api.nomadelabs.com.br";
             fetch(`${backendUrl}/api/v1/rag/namespaces`, {
                 headers: { 'Authorization': `Bearer ${res.authToken}` }
             })

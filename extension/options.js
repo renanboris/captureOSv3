@@ -1,22 +1,6 @@
-// options.js — settings page that populates `backendUrl`
-
-document.addEventListener('DOMContentLoaded', async () => {
-    const backendUrlInput = document.getElementById('backendUrl');
-    const saveBtn = document.getElementById('save');
-    const statusEl = document.getElementById('status');
-
-    // Load any previously saved configuration.
-    chrome.storage.local.get(['backendUrl'], (res) => {
-        if (res.backendUrl) backendUrlInput.value = res.backendUrl;
-    });
-
-    saveBtn.addEventListener('click', () => {
-        const backendUrl = backendUrlInput.value.trim().replace(/\/+$/, '');
-        chrome.storage.local.set({ backendUrl }, () => {
-            statusEl.textContent = 'Configurações salvas.';
-            setTimeout(() => { statusEl.textContent = ''; }, 2500);
-        });
-    });
+// options.js — settings page
+    
+    document.addEventListener('DOMContentLoaded', async () => {
 
     // Perfil e Logout logic
     const userEmailEl = document.getElementById('user-email');

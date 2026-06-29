@@ -353,7 +353,7 @@
             color: #B91C1C;
             padding: 14px 24px;
             border-radius: 8px;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            font-family: 'Aptos', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
             font-size: 14px;
             font-weight: 500;
             z-index: 2147483647;
@@ -491,7 +491,7 @@
             document.head.appendChild(style);
             
             const numberEl = document.createElement("div");
-            numberEl.style.cssText = "font-size: 64px; font-weight: 300; color: #FFFFFF; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; opacity: 0;";
+            numberEl.style.cssText = "font-size: 64px; font-weight: 300; color: #FFFFFF; font-family: 'Aptos', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; opacity: 0;";
 
             overlay.appendChild(numberEl);
             document.documentElement.appendChild(overlay);
@@ -549,7 +549,7 @@
                 left: 50%;
                 padding: 16px 24px;
                 border-radius: 16px;
-                font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+                font-family: 'Aptos', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
                 font-size: 15px;
                 font-weight: 500;
                 color: white;
@@ -722,7 +722,7 @@
             background: ${_isDark ? 'rgba(0, 0, 0, 0.6)' : 'rgba(15, 23, 42, 0.4)'};
             opacity: 0;
             transition: opacity 0.4s ease;
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            font-family: 'Aptos', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
         `;
         
         document.body.appendChild(host);
@@ -1363,7 +1363,7 @@
                 color: #111827;
                 border-radius: 12px;
                 box-shadow: 0 4px 24px rgba(0,0,0,0.1);
-                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+                font-family: 'Aptos', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
                 z-index: 999999999;
                 border: 1px solid #E5E7EB;
                 overflow: hidden;
