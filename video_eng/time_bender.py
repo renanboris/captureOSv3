@@ -112,6 +112,10 @@ def _calculate_segments(timeline_events: list, video_duration: float) -> tuple:
             if remainder > 0:
                 hold_t = max(0, video_duration - 0.1)
                 segments.append(("freeze", hold_t, remainder))
+            
+            # Inject timeline info back to the event for Simlink
+            event['video_timestamp'] = shifted_time
+            
             # Audio positioned over the running segment
             audio_delays.append((audio_path, shifted_time, dur))
             shifted_time += dur
@@ -129,6 +133,9 @@ def _calculate_segments(timeline_events: list, video_duration: float) -> tuple:
 
             # 2. Frame congelado com duração do áudio TTS
             segments.append(("freeze", freeze_ts, dur))
+            
+            # Inject timeline info back to the event for Simlink
+            event['video_timestamp'] = shifted_time
 
             # 3. Posição do áudio na timeline expandida
             audio_delays.append((audio_path, shifted_time, dur))

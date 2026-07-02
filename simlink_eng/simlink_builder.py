@@ -42,7 +42,8 @@ def construir_modulo_simlink(roteiro_enriquecido: list, session_id: str, video_u
             screenshot_path=simlink_data.get("screenshot_path", ""),
             ancora=passo.get("ancora", ""),
             micro_narracao=passo.get("micro_narracao", ""),
-            audio_path=audio_path
+            audio_path=audio_path,
+            video_timestamp=passo.get("video_timestamp", 0.0)
         ))
 
     xp_max = len(hotspots) * 10 + 20  # +20 = bônus sequência perfeita

@@ -478,14 +478,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     // ─── MODO ÁRBITRO: iniciar sessão de prática ───
     if (message.action === "INICIAR_SESSAO_ARBITRO") {
-        const { moduloId, tabId } = message;
+        const { moduloId, tabId, mode } = message;
 
         authedFetch(`/api/v1/simlink/${moduloId}`)
-            .then(r => r.json())
+            .then(r => {
+                if (!r.ok) throw new Error(`HTTP ${r.status}`);
+                return r.json();
+            })
             .then(modulo => {
                 chrome.storage.local.set({
                     sandboxMode: true,
+                    sandboxModuleName: modulo.nome || modulo.titulo || modulo.name || 'Módulo Prático',
+                    sandboxCurrentMode: mode || 'guided', // 'guided' ou 'challenge'
                     sandboxSessionId: moduloId,
+                    sandboxVideoUrl: modulo.video_url || '',
                     sandboxTotalPassos: modulo.total_passos,
                     sandboxPassoAtual: 0,
                     sandboxHotspots: modulo.hotspots,

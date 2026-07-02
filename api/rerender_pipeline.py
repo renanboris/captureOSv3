@@ -90,7 +90,8 @@ async def rerenderizar_com_roteiro_aprovado(session_id: str, roteiro_aprovado: l
             "texto": intencao_combinada,
             "audio_path": audio_path,
             "rel_sec": rel_sec,
-            "is_loading": is_loading_step(passo)
+            "is_loading": is_loading_step(passo),
+            "passo_ref": passo
         })
         last_computed_ts = rel_sec
 
@@ -110,7 +111,8 @@ async def rerenderizar_com_roteiro_aprovado(session_id: str, roteiro_aprovado: l
         if sucesso_tts:
             event: dict = {
                 "timestamp": task_info["rel_sec"],
-                "audio_path": task_info["audio_path"]
+                "audio_path": task_info["audio_path"],
+                "passo_ref": task_info["passo_ref"]
             }
             if task_info["is_loading"]:
                 event["is_loading"] = True
@@ -128,6 +130,11 @@ async def rerenderizar_com_roteiro_aprovado(session_id: str, roteiro_aprovado: l
         timeline_events,
         overlay_path
     )
+    
+    # Map video_timestamp back to roteiro_aprovado
+    for event in timeline_events:
+        if "video_timestamp" in event and "passo_ref" in event:
+            event["passo_ref"]["video_timestamp"] = event["video_timestamp"]
     
     # Faz o upload para a nuvem (Supabase)
     update_status(session_id, "rendering_final", "☁️ Fazendo upload do vídeo para a nuvem...")

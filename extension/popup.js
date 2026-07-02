@@ -280,11 +280,42 @@ document.addEventListener('DOMContentLoaded', async () => {
             data.modulos.forEach(mod => {
                 const div = document.createElement('div');
                 div.className = 'module-item';
+                div.style.display = 'flex';
+                div.style.alignItems = 'center';
+                div.style.justifyContent = 'space-between';
+                div.style.cursor = 'default';
+                
                 div.innerHTML = `
-                    <div class="module-title">${mod.titulo}</div>
-                    <div class="module-meta">${mod.total_passos} passos • ${mod.xp_max} XP max</div>
+                    <div style="flex: 1;">
+                        <div class="module-title">${mod.titulo}</div>
+                        <div class="module-meta">${mod.total_passos} passos • ${mod.xp_max} XP max</div>
+                    </div>
+                    <div class="module-actions" style="display: flex; gap: 8px;">
+                        <button class="practice-btn guided-btn" title="We Do (Prática Guiada)" style="background: #eff6ff; border: 1px solid #bfdbfe; cursor: pointer; padding: 6px; border-radius: 6px; display: flex; align-items: center; justify-content: center; transition: all 0.2s;">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polygon points="10 8 16 12 10 16 10 8"></polygon></svg>
+                        </button>
+                        <button class="practice-btn challenge-btn" title="You Do (Desafio Solo)" style="background: #fff7ed; border: 1px solid #fed7aa; cursor: pointer; padding: 6px; border-radius: 6px; display: flex; align-items: center; justify-content: center; transition: all 0.2s;">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ea580c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                        </button>
+                    </div>
                 `;
-                div.onclick = () => iniciarPratica(mod.modulo_id, tabsChrome[0].id);
+                
+                const guidedBtn = div.querySelector('.guided-btn');
+                guidedBtn.onmouseover = () => guidedBtn.style.background = '#dbeafe';
+                guidedBtn.onmouseleave = () => guidedBtn.style.background = '#eff6ff';
+                guidedBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    iniciarPratica(mod.modulo_id, tabsChrome[0].id, 'guided');
+                };
+                
+                const challengeBtn = div.querySelector('.challenge-btn');
+                challengeBtn.onmouseover = () => challengeBtn.style.background = '#ffedd5';
+                challengeBtn.onmouseleave = () => challengeBtn.style.background = '#fff7ed';
+                challengeBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    iniciarPratica(mod.modulo_id, tabsChrome[0].id, 'challenge');
+                };
+
                 container.appendChild(div);
             });
         } catch (e) {
@@ -292,11 +323,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
-    function iniciarPratica(moduloId, tabId) {
+    function iniciarPratica(moduloId, tabId, mode) {
         chrome.runtime.sendMessage({
             action: 'INICIAR_SESSAO_ARBITRO',
             moduloId: moduloId,
-            tabId: tabId
+            tabId: tabId,
+            mode: mode
         }, (response) => {
             // O popup pode fechar antes da response async chegar (MV3 race condition).
             // Se response é undefined (port closed) ou ok, fechamos normalmente.

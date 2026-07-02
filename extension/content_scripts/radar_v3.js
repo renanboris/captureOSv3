@@ -6,36 +6,66 @@
 
     let eventCounter = 1;
     let isSandboxMode = false;
+    let sandboxCurrentMode = 'guided'; // 'guided' ou 'challenge'
     let sandboxSessionId = null;
+    let sandboxVideoUrl = '';
     let sandboxTotalPassos = 0;
     let sandboxXP = 0;
     let sandboxHotspots = [];
     let sandboxStats = { errors: 0, hints: 0, skips: 0 };
+    let sandboxModuleName = 'Módulo Prático';
 
-    chrome.storage.local.get(['sandboxMode', 'sandboxSessionId', 'sandboxTotalPassos', 'sandboxPassoAtual', 'sandboxXP', 'sandboxHotspots', 'sandboxStats'], (res) => {
+    chrome.storage.local.get(['sandboxMode', 'sandboxCurrentMode', 'sandboxSessionId', 'sandboxVideoUrl', 'sandboxTotalPassos', 'sandboxPassoAtual', 'sandboxXP', 'sandboxHotspots', 'sandboxStats', 'sandboxModuleName'], (res) => {
         isSandboxMode = res.sandboxMode || false;
+        sandboxCurrentMode = res.sandboxCurrentMode || 'guided';
         sandboxSessionId = res.sandboxSessionId || null;
+        sandboxVideoUrl = res.sandboxVideoUrl || '';
         sandboxTotalPassos = res.sandboxTotalPassos || 0;
         sandboxPassoAtual = res.sandboxPassoAtual || 0;
         sandboxXP = res.sandboxXP || 0;
         sandboxHotspots = res.sandboxHotspots || [];
         sandboxStats = res.sandboxStats || { errors: 0, hints: 0, skips: 0 };
+        if (res.sandboxModuleName) sandboxModuleName = res.sandboxModuleName;
 
         if (isSandboxMode) {
             setTimeout(() => {
-                if (typeof renderSandboxWidget === 'function') renderSandboxWidget();
+                if (typeof renderSandboxWidget === 'function') {
+                    renderSandboxWidget();
+                    if (typeof highlightSandboxCurrentStep === 'function') highlightSandboxCurrentStep();
+                }
             }, 500);
         }
     });
 
     chrome.storage.onChanged.addListener((changes) => {
         if (changes.sandboxMode) isSandboxMode = changes.sandboxMode.newValue;
+        if (changes.sandboxModuleName) sandboxModuleName = changes.sandboxModuleName.newValue;
+        if (changes.sandboxCurrentMode) sandboxCurrentMode = changes.sandboxCurrentMode.newValue;
         if (changes.sandboxSessionId) sandboxSessionId = changes.sandboxSessionId.newValue;
+        if (changes.sandboxVideoUrl) sandboxVideoUrl = changes.sandboxVideoUrl.newValue;
         if (changes.sandboxTotalPassos) sandboxTotalPassos = changes.sandboxTotalPassos.newValue;
-        if (changes.sandboxPassoAtual) sandboxPassoAtual = changes.sandboxPassoAtual.newValue;
         if (changes.sandboxXP) sandboxXP = changes.sandboxXP.newValue;
         if (changes.sandboxHotspots) sandboxHotspots = changes.sandboxHotspots.newValue;
         if (changes.sandboxStats) sandboxStats = changes.sandboxStats.newValue;
+        
+        if (changes.sandboxPassoAtual) {
+            sandboxPassoAtual = changes.sandboxPassoAtual.newValue;
+            if (isSandboxMode) {
+                if (typeof highlightSandboxCurrentStep === 'function') {
+                    setTimeout(() => highlightSandboxCurrentStep(), 100);
+                }
+                
+                // Sincronizar o vídeo (pula para o timestamp do passo atual)
+                const videoEl = document.getElementById('pip-video-el');
+                if (videoEl && sandboxHotspots && sandboxHotspots[sandboxPassoAtual]) {
+                    const stepTimestamp = sandboxHotspots[sandboxPassoAtual].video_timestamp;
+                    if (stepTimestamp !== undefined && stepTimestamp !== null) {
+                        videoEl.currentTime = stepTimestamp;
+                        videoEl.play().catch(e => console.warn('Autoplay prevented:', e));
+                    }
+                }
+            }
+        }
 
         // Atualizar renderização se os hotspots ou sessão mudarem
         if (changes.sandboxSessionId || changes.sandboxHotspots) {
@@ -218,7 +248,18 @@
         };
     }
 
+    let sandboxSonarTimeout = null;
+
     function interceptEvent(e, type) {
+        if (!chrome.runtime?.id) return;
+        
+        // Remove the sonar when any click/interaction happens
+        if (type === 'click' || type === 'dblclick') {
+            if (window.sandboxSonarTimeout) clearTimeout(window.sandboxSonarTimeout);
+            const sonar = document.getElementById("capture-os-sonar");
+            if (sonar) sonar.remove();
+        }
+
         // Encontra a árvore atual
         const tree = getSemanticSnapshot();
         
@@ -226,7 +267,7 @@
         const target = e.target;
         
         // Impede que a IA narre cliques nos nossos próprios componentes do Capture OS
-        if (target.closest && (target.closest('#capture-os-widget') || target.closest('#capture-os-sandbox-widget') || target.closest('#capture-os-toast'))) {
+        if (target.closest && (target.closest('#capture-os-widget') || target.closest('#capture-os-sandbox-widget') || target.closest('#capture-os-toast') || target.closest('#capture-os-pip-video'))) {
             return;
         }
 
@@ -699,7 +740,7 @@
         const session_id = match ? match[1] : '';
 
         // Usa o backendUrl enviado pelo background.js
-        const backendUrl = receivedBackendUrl || 'https://api.nomadelabs.com.br';
+        const backendUrl = receivedBackendUrl || 'http://localhost:8000';
 
         const _isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
 
@@ -986,26 +1027,29 @@
         closeBtn.addEventListener('click', () => {
             // Ao fechar, mostramos o modal de Rating no mesmo host, mas bem menor
             const modal = shadow.getElementById('modal');
-            modal.style.width = '400px';
-            modal.style.height = '280px';
+            modal.style.width = '420px';
+            modal.style.height = 'auto';
             modal.innerHTML = `
-                <div style="padding: 32px 24px; text-align: center; width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #ffffff; border-radius: 12px; box-sizing: border-box;">
-                    <h2 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: #0f172a;">Processo Concluído!</h2>
-                    <p style="margin: 0 0 24px 0; font-size: 15px; color: #475569;">Como foi sua experiência gravando este material hoje?</p>
-                    <div id="ext-stars-container" style="display: flex; gap: 8px; justify-content: center; margin-bottom: 24px;">
-                        <span class="ext-star" data-val="1" style="font-size: 36px; color: #cbd5e1; cursor: pointer; transition: 0.2s; user-select: none;">★</span>
-                        <span class="ext-star" data-val="2" style="font-size: 36px; color: #cbd5e1; cursor: pointer; transition: 0.2s; user-select: none;">★</span>
-                        <span class="ext-star" data-val="3" style="font-size: 36px; color: #cbd5e1; cursor: pointer; transition: 0.2s; user-select: none;">★</span>
-                        <span class="ext-star" data-val="4" style="font-size: 36px; color: #cbd5e1; cursor: pointer; transition: 0.2s; user-select: none;">★</span>
-                        <span class="ext-star" data-val="5" style="font-size: 36px; color: #cbd5e1; cursor: pointer; transition: 0.2s; user-select: none;">★</span>
+                <div style="padding: 32px 24px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #111317; border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.08); box-sizing: border-box; color: #fff;">
+                    <div style="width: 48px; height: 48px; background: rgba(16, 185, 129, 0.1); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin-bottom: 16px; border: 1px solid rgba(16, 185, 129, 0.2);">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
                     </div>
-                    <div id="ext-rating-msg" style="display: none; color: #10b981; font-weight: 500; margin-bottom: 24px;">Obrigado pela sua avaliação! ✅</div>
-                    <button id="ext-btn-skip" class="btn btn-secondary" style="background: white; border: 1px solid #cbd5e1; padding: 10px 24px; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 14px; color: #64748b; transition: 0.2s;">Pular e Fechar</button>
+                    <h2 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: #fff;">Processo Concluído!</h2>
+                    <p style="margin: 0 0 24px 0; font-size: 15px; color: #94a3b8;">Como foi sua experiência gravando este material hoje?</p>
+                    <div id="ext-stars-container" style="display: flex; gap: 8px; justify-content: center; margin-bottom: 24px;">
+                        <span class="ext-star" data-val="1" style="font-size: 36px; color: #334155; cursor: pointer; transition: 0.2s; user-select: none;">★</span>
+                        <span class="ext-star" data-val="2" style="font-size: 36px; color: #334155; cursor: pointer; transition: 0.2s; user-select: none;">★</span>
+                        <span class="ext-star" data-val="3" style="font-size: 36px; color: #334155; cursor: pointer; transition: 0.2s; user-select: none;">★</span>
+                        <span class="ext-star" data-val="4" style="font-size: 36px; color: #334155; cursor: pointer; transition: 0.2s; user-select: none;">★</span>
+                        <span class="ext-star" data-val="5" style="font-size: 36px; color: #334155; cursor: pointer; transition: 0.2s; user-select: none;">★</span>
+                    </div>
+                    <div id="ext-rating-msg" style="display: none; background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.2); color: #10b981; font-weight: 500; padding: 10px 16px; border-radius: 8px; margin-bottom: 24px; width: 100%; box-sizing: border-box;">Obrigado pela sua avaliação! ✅</div>
+                    <button id="ext-btn-skip" class="btn btn-secondary" style="background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); padding: 10px 24px; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 14px; color: #cbd5e1; transition: 0.2s; width: 100%;">Pular e Fechar</button>
                     
-                    <p id="ext-report-link" style="margin-top: 24px; font-size: 12px; color: #94a3b8; cursor: pointer; text-decoration: underline; transition: 0.2s;">Encontrou algum problema? Reportar erro</p>
+                    <p id="ext-report-link" style="margin-top: 24px; margin-bottom: 0; font-size: 13px; color: #64748b; cursor: pointer; text-decoration: underline; transition: 0.2s;">Encontrou algum problema? Reportar erro</p>
                     <div id="ext-report-container" style="display: none; width: 100%; margin-top: 16px;">
-                        <textarea id="ext-report-text" placeholder="Descreva o problema ou erro encontrado..." style="width: 100%; height: 70px; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13px; font-family: inherit; resize: none; outline: none; margin-bottom: 12px; box-sizing: border-box;"></textarea>
-                        <button id="ext-btn-report" class="btn btn-primary" style="width: 100%; padding: 10px; font-size: 13px; margin: 0; box-sizing: border-box;">Enviar Relato</button>
+                        <textarea id="ext-report-text" placeholder="Descreva o problema ou erro encontrado..." style="width: 100%; height: 80px; padding: 12px; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); color: #fff; border-radius: 8px; font-size: 13px; font-family: inherit; resize: none; outline: none; margin-bottom: 12px; box-sizing: border-box;"></textarea>
+                        <button id="ext-btn-report" class="btn btn-primary" style="background: #10b981; color: #111317; border: none; font-weight: 600; width: 100%; padding: 10px; border-radius: 8px; font-size: 14px; cursor: pointer; transition: 0.2s; margin: 0; box-sizing: border-box;">Enviar Relato</button>
                     </div>
                 </div>
             `;
@@ -1028,7 +1072,6 @@
                 shadow.querySelector('p').style.display = 'none';
                 shadow.getElementById('ext-btn-skip').style.display = 'none';
                 shadow.getElementById('ext-report-container').style.display = 'block';
-                shadow.getElementById('modal').style.height = '320px';
             });
 
             shadow.getElementById('ext-btn-report').addEventListener('click', () => {
@@ -1053,7 +1096,7 @@
                     }
                 });
                 
-                shadow.getElementById('ext-report-container').innerHTML = '<p style="color: #10b981; font-weight: 500; font-size: 14px; margin: 0;">Relato enviado com sucesso! Muito obrigado.</p>';
+                shadow.getElementById('ext-report-container').innerHTML = '<p style="color: #10b981; font-weight: 500; font-size: 14px; margin: 0; background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.2); padding: 12px; border-radius: 8px;">Relato enviado com sucesso! Muito obrigado.</p>';
                 setTimeout(fecharFinal, 2500);
             });
 
@@ -1063,10 +1106,10 @@
                     const val = parseInt(this.getAttribute('data-val'));
                     stars.forEach(s => {
                         if (parseInt(s.getAttribute('data-val')) <= val) {
-                            s.style.color = '#fbbf24';
-                            s.style.textShadow = '0 2px 10px rgba(251, 191, 36, 0.4)';
+                            s.style.color = '#10b981';
+                            s.style.textShadow = '0 0 12px rgba(16, 185, 129, 0.4)';
                         } else {
-                            s.style.color = '#cbd5e1';
+                            s.style.color = '#334155';
                             s.style.textShadow = 'none';
                         }
                     });
@@ -1074,7 +1117,7 @@
                 star.addEventListener('mouseleave', function() {
                     if (nota > 0) return;
                     stars.forEach(s => {
-                        s.style.color = '#cbd5e1';
+                        s.style.color = '#334155';
                         s.style.textShadow = 'none';
                     });
                 });
@@ -1083,10 +1126,10 @@
                     nota = parseInt(this.getAttribute('data-val'));
                     stars.forEach(s => {
                         if (parseInt(s.getAttribute('data-val')) <= nota) {
-                            s.style.color = '#fbbf24';
-                            s.style.textShadow = '0 2px 10px rgba(251, 191, 36, 0.4)';
+                            s.style.color = '#10b981';
+                            s.style.textShadow = '0 2px 10px rgba(16, 185, 129, 0.4)';
                         } else {
-                            s.style.color = '#cbd5e1';
+                            s.style.color = '#334155';
                             s.style.textShadow = 'none';
                         }
                         s.style.cursor = 'default';
@@ -1368,12 +1411,92 @@
             }
 
             if (targetEl) {
-                targetEl.classList.add("capture-os-hint-highlight");
-                targetEl.style.boxShadow = "0 0 0 4px rgba(0, 153, 143, 0.6), 0 0 20px rgba(0, 153, 143, 0.4)";
-                targetEl.style.outline = "2px solid #00998F";
-                targetEl.style.borderRadius = "4px";
-                targetEl.style.transition = "all 0.3s ease";
                 targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                
+                // Remover sonar antigo se existir
+                const oldSonar = document.getElementById("capture-os-sonar");
+                if (oldSonar) oldSonar.remove();
+                if (window.sandboxSonarTimeout) clearTimeout(window.sandboxSonarTimeout);
+                
+                window.renderSonarCore = function(el) {
+                    if (!document.body.contains(el)) return;
+                    
+                    const rect = el.getBoundingClientRect();
+                    const centerX = rect.left + window.scrollX + (rect.width / 2);
+                    const centerY = rect.top + window.scrollY + (rect.height / 2);
+                    
+                    const sonar = document.createElement("div");
+                    sonar.id = "capture-os-sonar";
+                    sonar.style.cssText = `
+                        position: absolute;
+                        left: ${centerX}px;
+                        top: ${centerY}px;
+                        width: 0;
+                        height: 0;
+                        z-index: 999999998;
+                        pointer-events: none;
+                    `;
+                    
+                    sonar.innerHTML = `
+                        <style>
+                        @keyframes radarPing {
+                            0% { transform: scale(0.2); opacity: 0.8; }
+                            80% { transform: scale(2.5); opacity: 0; }
+                            100% { transform: scale(2.5); opacity: 0; }
+                        }
+                        @keyframes radarCore {
+                            0%, 100% { transform: scale(1); opacity: 1; }
+                            50% { transform: scale(0.8); opacity: 0.8; }
+                        }
+                        .capture-sonar-container {
+                            position: absolute;
+                            left: 0; top: 0;
+                            z-index: 999999999;
+                        }
+                        .capture-sonar-core {
+                            position: absolute;
+                            left: -4px;
+                            top: -4px;
+                            width: 8px;
+                            height: 8px;
+                            background: rgba(16, 185, 129, 0.9);
+                            border-radius: 50%;
+                            box-shadow: 0 0 8px rgba(16, 185, 129, 0.8);
+                            animation: radarCore 1.5s ease-in-out infinite;
+                        }
+                        .capture-sonar-ring {
+                            position: absolute;
+                            left: -24px;
+                            top: -24px;
+                            width: 48px;
+                            height: 48px;
+                            border: 2px solid #10B981;
+                            border-radius: 50%;
+                            background: rgba(16, 185, 129, 0.15);
+                            animation: radarPing 2s cubic-bezier(0, 0, 0.2, 1) infinite;
+                        }
+                        .capture-sonar-ring:nth-child(2) {
+                            animation-delay: 0.6s;
+                        }
+                        </style>
+                        <div class="capture-sonar-container">
+                            <div class="capture-sonar-ring"></div>
+                            <div class="capture-sonar-ring"></div>
+                            <div class="capture-sonar-core"></div>
+                        </div>
+                    `;
+                    document.body.appendChild(sonar);
+                };
+
+                // Fallback para tutoriais antigos sem video_timestamp ou se não houver vídeo
+                if (step.video_timestamp === undefined || step.video_timestamp === null) {
+                    window.sandboxSonarTimeout = setTimeout(() => {
+                        window.renderSonarCore(targetEl);
+                    }, 1500);
+                } else {
+                    // Novo fluxo Video-Driven: Salva o targetEl globalmente para ser renderizado pelo ontimeupdate do vídeo
+                    window.pendingSonarTarget = targetEl;
+                }
             }
         }
     });
@@ -1398,21 +1521,23 @@
             // Estilos iniciais. A posição pode ser arrastada depois.
             widget.style.cssText = `
                 position: fixed;
-                bottom: 20px;
-                right: 20px;
-                width: 340px;
-                background: #FFFFFF;
-                color: #111827;
-                border-radius: 12px;
-                box-shadow: 0 4px 24px rgba(0,0,0,0.1);
-                font-family: 'Aptos', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+                top: 24px;
+                right: 24px;
+                width: 280px;
+                background: #181A1F;
+                color: #FFFFFF;
+                border-radius: 10px;
+                box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+                font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
                 z-index: 999999999;
-                border: 1px solid #E5E7EB;
+                border: 1px solid #2D323B;
                 overflow: hidden;
                 display: flex;
                 flex-direction: column;
                 user-select: none;
             `;
+            
+            document.body.appendChild(widget); // Append early so getElementById works
 
             // Inject sandbox widget animations
             if (!document.getElementById('capture-os-sandbox-style')) {
@@ -1427,181 +1552,464 @@
                 document.head.appendChild(sbxStyle);
             }
 
-            // Drag area (Header) - gradient instead of flat color
-            const header = document.createElement("div");
-            header.style.cssText = `
-                background: #F9FAFB;
-                padding: 0;
-                display: flex;
-                flex-direction: column;
-                cursor: grab;
-                border-bottom: 1px solid #E5E7EB;
-            `;
+            // Global SVGs
+            const svgCheck = `<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" stroke="#181A1F" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-check-circle-2 text-[#1FBB75]" style="color: #1FBB75;"><circle cx="12" cy="12" r="10" fill="currentColor"></circle><path d="m9 12 2 2 4-4" stroke="#181A1F"></path></svg>`;
+            const svgCircle = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#555C67" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-circle"><circle cx="12" cy="12" r="10"></circle></svg>`;
+            const svgMinimize = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v3a2 2 0 0 1-2 2H3"/><path d="M21 8h-3a2 2 0 0 1-2-2V3"/><path d="M3 16h3a2 2 0 0 1 2 2v3"/><path d="M16 21v-3a2 2 0 0 1 2-2h3"/></svg>`;
+            const svgList = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#10B981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/></svg>`;
 
-            // Progress bar at top of header
-            const progressTrack = document.createElement("div");
-            progressTrack.id = "sandbox-progress-track";
-            progressTrack.style.cssText = `
-                width: 100%; height: 3px; background: #E5E7EB;
-                border-radius: 12px 12px 0 0; overflow: hidden;
-            `;
-            const progressFill = document.createElement("div");
-            progressFill.id = "sandbox-progress-fill";
-            const progressPct = sandboxTotalPassos > 0 ? Math.round((sandboxPassoAtual / sandboxTotalPassos) * 100) : 0;
-            progressFill.style.cssText = `
-                width: ${progressPct}%; height: 100%;
-                background: #2AC4AA;
-                border-radius: 0 2px 2px 0;
-                transition: width 0.3s ease;
-            `;
-            progressTrack.appendChild(progressFill);
+            const formatTaskLabel = (step, index) => {
+                if (!step) return `Passo ${index + 1}`;
+                if (step.action === 'navigation') return 'Aguarde a página carregar';
+                
+                const actionMap = {
+                    'click': 'Clique em',
+                    'input': 'Preencha',
+                    'scroll': 'Role a tela até',
+                    'hover': 'Passe o mouse em'
+                };
+                const verb = actionMap[step.action] || 'Interaja com';
+                
+                if (step.target_text && step.target_text.trim() !== '') {
+                    let txt = step.target_text.trim();
+                    if (txt.length > 25) txt = txt.substring(0, 25) + '...';
+                    return `${verb} "${txt}"`;
+                }
+                
+                if (step.micro_narracao && step.micro_narracao.trim() !== '') {
+                    let micro = step.micro_narracao.trim();
+                    if (micro.length <= 40) return micro; // Só usa se for uma instrução curta
+                }
+                
+                const extractName = (xpath, cssSelector) => {
+                    let idStr = null;
+                    if (xpath) {
+                        const xpathMatch = xpath.match(/id=['"]([^'"]+)['"]/i);
+                        if (xpathMatch) idStr = xpathMatch[1];
+                    }
+                    if (!idStr && cssSelector) {
+                        const cssMatch = cssSelector.match(/#([^.\s>:]+)/);
+                        if (cssMatch) idStr = cssMatch[1];
+                    }
+                    if (idStr) {
+                        idStr = idStr.replace(/^(menu-item-|apps-menu-item-|btn-|button-|nav-|icon-|btn_|menu_)/i, '');
+                        if (idStr.trim().length > 0 && !idStr.match(/^[0-9]+$/)) {
+                            idStr = idStr.replace(/[-_]/g, ' ');
+                            return idStr.replace(/\b\w/g, c => c.toUpperCase()).trim();
+                        }
+                    }
+                    return null;
+                };
 
-            const headerContent = document.createElement("div");
-            headerContent.style.cssText = `
-                padding: 10px 15px;
-                display: flex;
-                align-items: center;
-                justify-content: space-between;
-            `;
-            headerContent.innerHTML = `
-                <div style="display: flex; align-items: center; gap: 8px;">
-                    <div style="width: 8px; height: 8px; border-radius: 50%; background: #2AC4AA;"></div>
-                    <span style="font-size: 11px; font-weight: 600; color: #6B7280; letter-spacing: 0.5px;">PRÁTICA ATIVA</span>
-                </div>
-                <div id="sandbox-xp" style="font-size: 12px; font-weight: 600; color: #00998F; background: #E0F5F3; padding: 4px 10px; border-radius: 12px;">0 XP</div>
-            `;
+                const extracted = extractName(step.xpath, step.css_selector);
+                if (extracted && extracted.length > 2) {
+                    let txt = extracted;
+                    if (txt.length > 25) txt = txt.substring(0, 25) + '...';
+                    return `${verb} "${txt}"`;
+                }
 
-            header.appendChild(progressTrack);
-            header.appendChild(headerContent);
+                const fallbackMap = {
+                    'click': 'Clique no elemento',
+                    'input': 'Preencha o campo',
+                    'scroll': 'Role a tela',
+                    'hover': 'Passe o mouse no elemento'
+                };
+                return fallbackMap[step.action] || `Interaja com o elemento`;
+            };
+
+            // Helper function to render tasks
+            const renderTasks = () => {
+                let tasksHtml = '';
+                for (let i = 0; i < sandboxTotalPassos; i++) {
+                    const isCompleted = i < sandboxPassoAtual;
+                    const isCurrent = i === sandboxPassoAtual;
+                    const label = formatTaskLabel(sandboxHotspots[i], i);
+                    
+                    const color = isCompleted ? '#646B75' : (isCurrent ? '#E2E4E9' : '#A9B1BD');
+                    const fontWeight = isCurrent ? '600' : '400';
+                    const opacity = isCurrent ? '1' : (isCompleted ? '0.5' : '0.8');
+                    const icon = isCompleted ? svgCheck : svgCircle;
+                    
+                    tasksHtml += `
+                        <div style="display: flex; align-items: center; gap: 12px; transition: all 0.3s; color: ${color}; opacity: ${opacity};">
+                            <div style="flex-shrink: 0; display: flex;">${icon}</div>
+                            <span style="font-size: 13px; font-weight: ${fontWeight}; letter-spacing: 0.2px; line-height: 1.4;">${label}</span>
+                        </div>
+                    `;
+                }
+                return tasksHtml;
+            };
+
+            const renderFullWidget = () => {
+                const isInitialRender = (widget.innerHTML === '');
+                if (!isInitialRender) {
+                    const rect = widget.getBoundingClientRect();
+                    widget.style.bottom = 'auto';
+                    widget.style.top = rect.top + 'px';
+                }
+                const pct = sandboxTotalPassos > 0 ? Math.round((sandboxPassoAtual / sandboxTotalPassos) * 100) : 0;
+                widget.innerHTML = `
+                    <div id="sandbox-drag-header" style="padding: 16px; padding-bottom: 12px; border-bottom: 1px solid #2D323B; background: rgba(28, 31, 37, 0.5); cursor: grab;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                            <h3 style="margin: 0; font-size: 11px; font-weight: 500; text-transform: uppercase; color: #A9B1BD; letter-spacing: 0.5px;">${sandboxModuleName}</h3>
+                            <div style="display: flex; align-items: center; gap: 12px;">
+                                <span style="font-size: 13px; font-weight: 700; color: #E2E4E9;">${pct}%</span>
+                                <button id="sandbox-btn-minimize" style="background: none; border: none; color: #6B7280; cursor: pointer; padding: 0; display: flex;">${svgMinimize}</button>
+                            </div>
+                        </div>
+                        <div style="width: 100%; height: 6px; background: #122A22; border-radius: 9999px; overflow: hidden;">
+                            <div style="height: 100%; background: #1FBB75; border-radius: 9999px; transition: width 0.5s ease-out; width: ${pct}%;"></div>
+                        </div>
+                    </div>
+                    <div style="padding: 16px; display: flex; flex-direction: column; gap: 12px; max-height: 250px; overflow-y: auto;">
+                        ${renderTasks()}
+                    </div>
+                    <div style="padding: 0 16px 16px 16px;">
+                        <button id="btn-encerrar-pratica" style="width: 100%; padding: 6px 0; background: transparent; color: #A9B1BD; border: 1px solid #3A414B; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600; transition: all 0.2s;">Sair da Prática</button>
+                    </div>
+                `;
+                
+                // Bind inner events
+                document.getElementById('sandbox-btn-minimize').onclick = () => renderMinimizedWidget();
+                document.getElementById('btn-encerrar-pratica').onclick = window.endSandboxPractice;
+                
+                const addHover = (id, hoverBg, hoverColor) => {
+                    const el = document.getElementById(id);
+                    if(el) {
+                        el.onmouseenter = () => { el.style.background = hoverBg; el.style.color = hoverColor; };
+                        el.onmouseleave = () => { el.style.background = 'transparent'; el.style.color = '#A9B1BD'; };
+                    }
+                };
+                addHover('btn-encerrar-pratica', '#252A32', '#E2E4E9');
+                
+                // Header Dragging
+                bindDragLogic(document.getElementById('sandbox-drag-header'), widget);
+                
+                if (!isInitialRender) {
+                    setTimeout(() => {
+                        const rect = widget.getBoundingClientRect();
+                        if (rect.bottom > window.innerHeight - 24) {
+                            widget.style.top = Math.max(24, window.innerHeight - rect.height - 24) + 'px';
+                        }
+                    }, 0);
+                }
+            };
+
+            const renderMinimizedWidget = () => {
+                const rect = widget.getBoundingClientRect();
+                widget.style.bottom = 'auto';
+                widget.style.top = rect.top + 'px';
+                
+                const pct = sandboxTotalPassos > 0 ? Math.round((sandboxPassoAtual / sandboxTotalPassos) * 100) : 0;
+                widget.innerHTML = `
+                    <div id="sandbox-drag-pill" style="display: flex; align-items: center; gap: 12px; padding: 8px 16px; cursor: pointer;">
+                        ${svgList}
+                        <div style="display: flex; flex-direction: column; gap: 4px; width: 96px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 10px; font-weight: 500; color: #A9B1BD;">
+                                <span>Progresso</span><span>${pct}%</span>
+                            </div>
+                            <div style="width: 100%; height: 4px; background: #122A22; border-radius: 9999px; overflow: hidden;">
+                                <div style="height: 100%; background: #1FBB75; border-radius: 9999px; transition: width 0.5s ease-out; width: ${pct}%;"></div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                
+                const pill = document.getElementById('sandbox-drag-pill');
+                pill.ondblclick = () => renderFullWidget();
+                pill.onmouseenter = () => widget.style.background = '#20242B';
+                pill.onmouseleave = () => widget.style.background = '#181A1F';
+                
+                // Pill Dragging
+                bindDragLogic(pill, widget);
+            };
+
+            const bindDragLogic = (handle, target) => {
+                let isDragging = false;
+                let startX, startY, initialRight, initialTop;
+                handle.addEventListener("mousedown", (e) => {
+                    isDragging = true;
+                    handle.style.cursor = "grabbing";
+                    startX = e.clientX;
+                    startY = e.clientY;
+                    const rect = target.getBoundingClientRect();
+                    initialRight = window.innerWidth - rect.right;
+                    initialTop = rect.top;
+                    target.style.bottom = 'auto'; // Force top anchor
+                });
+                document.addEventListener("mousemove", (e) => {
+                    if (!isDragging) return;
+                    const dx = startX - e.clientX;
+                    const dy = e.clientY - startY; // mouse moves down, top increases
+                    target.style.right = (initialRight + dx) + "px";
+                    target.style.top = (initialTop + dy) + "px";
+                });
+                document.addEventListener("mouseup", () => {
+                    if (isDragging) {
+                        isDragging = false;
+                        handle.style.cursor = "pointer"; // reset to pointer since pill/header have different defaults
+                    }
+                });
+            };
+
+            // Store render functions globally so they can be triggered on state change
+            window._renderSandboxChecklistFull = renderFullWidget;
+            window._renderSandboxChecklistMini = renderMinimizedWidget;
+
+            // Initial render
+            renderFullWidget();
             
-            // Drag Logic
+            // --- INJECT FLOATING VIDEO TUTORIAL (PiP) ---
+            if (sandboxCurrentMode === 'guided') {
+                injectFloatingVideoTutorial();
+            }
+        } else {
+            // Update existing widget progress
+            if (window._renderSandboxChecklistFull) {
+                // Determine which view is active and re-render
+                if (document.getElementById('sandbox-drag-header')) window._renderSandboxChecklistFull();
+                if (document.getElementById('sandbox-drag-pill')) window._renderSandboxChecklistMini();
+            }
+        }
+    };
+    
+    function injectFloatingVideoTutorial() {
+        if (document.getElementById("capture-os-pip-video")) return;
+        
+        const pip = document.createElement("div");
+        pip.id = "capture-os-pip-video";
+        pip.style.cssText = `
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            width: 320px;
+            background: #1C2025;
+            border-radius: 12px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+            font-family: 'Inter', sans-serif;
+            z-index: 999999999;
+            border: 1px solid rgba(113, 113, 122, 0.5);
+            overflow: hidden;
+            user-select: none;
+        `;
+        
+        document.body.appendChild(pip); // Append early
+        
+        const svgCap = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#10B981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>`;
+        const svgCap24 = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#10B981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>`;
+        const svgMin = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v3a2 2 0 0 1-2 2H3"/><path d="M21 8h-3a2 2 0 0 1-2-2V3"/><path d="M3 16h3a2 2 0 0 1 2 2v3"/><path d="M16 21v-3a2 2 0 0 1 2-2h3"/></svg>`;
+        const svgMax = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>`;
+        const svgRestore = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 14 10 14 10 20"></polyline><polyline points="20 10 14 10 14 4"></polyline><line x1="14" y1="10" x2="21" y2="3"></line><line x1="3" y1="21" x2="10" y2="14"></line></svg>`;
+        const svgPlay = `<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>`;
+        const svgPause = `<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>`;
+
+        let isMinimized = false;
+        let isMaximized = false;
+        let pipVideoTime = 0;
+        let pipVideoPlaying = false;
+        
+        const renderPip = () => {
+            if (isMinimized) {
+                pip.style.width = '48px';
+                pip.style.height = '48px';
+                pip.style.borderRadius = '50%';
+                pip.innerHTML = `
+                    <div id="pip-drag-pill" style="width: 100%; height: 100%; cursor: move; display: flex; align-items: center; justify-content: center;" title="Arraste ou duplo clique para expandir">
+                        ${svgCap24}
+                    </div>
+                `;
+                const pill = document.getElementById('pip-drag-pill');
+                pill.ondblclick = () => { isMinimized = false; renderPip(); };
+                pill.onmouseenter = () => pip.style.background = '#1F2937';
+                pill.onmouseleave = () => pip.style.background = '#1C2025';
+                bindPipDrag(pill);
+            } else {
+                pip.style.width = isMaximized ? '45vw' : '320px';
+                if (isMaximized) pip.style.maxWidth = '800px';
+                pip.style.height = 'auto';
+                pip.style.borderRadius = '12px';
+                pip.innerHTML = `
+                    <div style="position: relative; aspect-ratio: 16/9; background: #000; overflow: hidden; display: flex; align-items: center; justify-content: center; cursor: move;" id="pip-video-container">
+                        <video id="pip-video-el" src="${sandboxVideoUrl || 'https://www.w3schools.com/html/mov_bbb.mp4'}" style="width: 100%; height: 100%; object-fit: cover;"></video>
+                        <div id="pip-hover-overlay" style="position: absolute; inset: 0; background: rgba(0,0,0,0.6); display: flex; flex-direction: column; opacity: 1; transition: opacity 0.2s;">
+                            <div style="display: flex; justify-content: space-between; padding: 12px; pointer-events: none;">
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    ${svgCap}
+                                    <span style="color: white; font-size: 12px; font-weight: 500; text-shadow: 0 1px 2px rgba(0,0,0,0.8);">Tutorial</span>
+                                </div>
+                                <div style="display: flex; gap: 8px; color: #fff; pointer-events: auto;">
+                                    <button id="pip-btn-min" title="Ocultar" style="background: none; border: none; color: inherit; cursor: pointer; padding: 4px; border-radius: 4px; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.8)); transition: 0.2s;">${svgMin}</button>
+                                    <button id="pip-btn-max" title="${isMaximized ? 'Restaurar Tamanho' : 'Maximizar'}" style="background: none; border: none; color: inherit; cursor: pointer; padding: 4px; border-radius: 4px; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.8)); transition: 0.2s;">${isMaximized ? svgRestore : svgMax}</button>
+                                </div>
+                            </div>
+                            <div id="pip-play-btn" style="margin: auto; width: 48px; height: 48px; border-radius: 50%; background: rgba(16, 185, 129, 0.9); display: flex; align-items: center; justify-content: center; color: white; cursor: pointer; pointer-events: auto; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
+                                ${svgPlay}
+                            </div>
+                            <div id="pip-timeline" style="padding: 12px; display: flex; align-items: center; gap: 8px; pointer-events: auto;">
+                                <div id="pip-time-curr" style="font-size: 10px; font-weight: 500; color: rgba(255,255,255,0.9); text-shadow: 0 1px 2px rgba(0,0,0,0.8);">0:00</div>
+                                <div id="pip-track" style="flex: 1; height: 6px; background: rgba(255,255,255,0.3); border-radius: 9999px; cursor: pointer; overflow: hidden; box-shadow: inset 0 1px 2px rgba(0,0,0,0.3);">
+                                    <div id="pip-fill" style="height: 100%; width: 0%; background: #10B981; transition: width 0.1s;"></div>
+                                </div>
+                                <div id="pip-time-dur" style="font-size: 10px; font-weight: 500; color: rgba(255,255,255,0.9); text-shadow: 0 1px 2px rgba(0,0,0,0.8);">0:00</div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                
+                const vid = document.getElementById('pip-video-el');
+                const overlay = document.getElementById('pip-hover-overlay');
+                const playBtn = document.getElementById('pip-play-btn');
+                
+                let isPlaying = pipVideoPlaying;
+                let isHovering = false;
+                
+                if (pipVideoTime > 0) {
+                    vid.currentTime = pipVideoTime;
+                }
+                
+                const updateOverlay = () => {
+                    overlay.style.opacity = (isPlaying && !isHovering) ? '0' : '1';
+                };
+                
+                if (isPlaying) {
+                    vid.play().catch(e => console.log('Autoplay prevent', e));
+                    playBtn.innerHTML = svgPause;
+                    updateOverlay();
+                }
+                
+                const togglePlay = () => {
+                    if(isPlaying) vid.pause(); else vid.play();
+                    isPlaying = !isPlaying;
+                    playBtn.innerHTML = isPlaying ? svgPause : svgPlay;
+                    updateOverlay();
+                };
+                
+                vid.onclick = togglePlay;
+                playBtn.onclick = togglePlay;
+                
+                vid.onended = () => {
+                    isPlaying = false;
+                    playBtn.innerHTML = svgPlay;
+                    updateOverlay();
+                };
+                
+                const fmt = (t) => isNaN(t) ? "0:00" : `${Math.floor(t/60)}:${Math.floor(t%60).toString().padStart(2,'0')}`;
+                
+                vid.onloadedmetadata = () => {
+                    const durEl = document.getElementById('pip-time-dur');
+                    if(durEl) durEl.innerText = fmt(vid.duration);
+                };
+                
+                vid.ontimeupdate = () => {
+                    const currEl = document.getElementById('pip-time-curr');
+                    if(currEl) currEl.innerText = fmt(vid.currentTime);
+                    const fillEl = document.getElementById('pip-fill');
+                    if(fillEl) fillEl.style.width = ((vid.currentTime / vid.duration) * 100) + '%';
+                    
+                    // Video-Driven Sonar Logic
+                    if (window.pendingSonarTarget && sandboxHotspots) {
+                        let endTimestamp = vid.duration;
+                        if (sandboxPassoAtual + 1 < sandboxHotspots.length) {
+                            const nextStep = sandboxHotspots[sandboxPassoAtual + 1];
+                            if (nextStep.video_timestamp !== undefined && nextStep.video_timestamp !== null) {
+                                endTimestamp = nextStep.video_timestamp;
+                            }
+                        }
+                        
+                        // Check if we reached the end of the current step's instruction
+                        if (vid.currentTime >= endTimestamp) {
+                            // Pause the video
+                            if (isPlaying) {
+                                togglePlay(); 
+                            }
+                            // Show the Sonar
+                            if (typeof window.renderSonarCore === 'function') {
+                                window.renderSonarCore(window.pendingSonarTarget);
+                            }
+                            // Clear pending flag so we don't keep firing
+                            window.pendingSonarTarget = null;
+                        }
+                    }
+                };
+                
+                const track = document.getElementById('pip-track');
+                if(track) {
+                    track.onclick = (e) => {
+                        if(!vid.duration) return;
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        const clickPos = (e.clientX - rect.left) / rect.width;
+                        vid.currentTime = clickPos * vid.duration;
+                    };
+                }
+                
+                // Hover reveal controls
+                const container = document.getElementById('pip-video-container');
+                if(container) {
+                    container.onmouseenter = () => { isHovering = true; updateOverlay(); };
+                    container.onmouseleave = () => { isHovering = false; updateOverlay(); };
+                }
+                
+                const btnMin = document.getElementById('pip-btn-min');
+                if(btnMin) btnMin.onmousedown = (e) => { 
+                    e.stopPropagation(); 
+                    pipVideoTime = vid.currentTime;
+                    pipVideoPlaying = !vid.paused;
+                    isMinimized = true; 
+                    renderPip(); 
+                };
+                
+                const btnMax = document.getElementById('pip-btn-max');
+                if(btnMax) btnMax.onmousedown = (e) => { 
+                    e.stopPropagation(); 
+                    isMaximized = !isMaximized; 
+                    pip.style.width = isMaximized ? '45vw' : '320px';
+                    pip.style.maxWidth = isMaximized ? '800px' : 'none';
+                    btnMax.title = isMaximized ? 'Restaurar Tamanho' : 'Maximizar';
+                    btnMax.innerHTML = isMaximized ? svgRestore : svgMax;
+                };
+                
+                bindPipDrag(container);
+            }
+        };
+
+        const bindPipDrag = (handle) => {
             let isDragging = false;
             let startX, startY, initialRight, initialBottom;
-            header.addEventListener("mousedown", (e) => {
+            handle.addEventListener("mousedown", (e) => {
                 isDragging = true;
-                header.style.cursor = "grabbing";
+                handle.style.cursor = "grabbing";
                 startX = e.clientX;
                 startY = e.clientY;
-                const rect = widget.getBoundingClientRect();
+                const rect = pip.getBoundingClientRect();
                 initialRight = window.innerWidth - rect.right;
                 initialBottom = window.innerHeight - rect.bottom;
-                e.preventDefault();
             });
             document.addEventListener("mousemove", (e) => {
                 if (!isDragging) return;
                 const dx = startX - e.clientX;
                 const dy = startY - e.clientY;
-                widget.style.right = (initialRight + dx) + "px";
-                widget.style.bottom = (initialBottom + dy) + "px";
+                pip.style.right = (initialRight + dx) + "px";
+                pip.style.bottom = (initialBottom + dy) + "px";
             });
             document.addEventListener("mouseup", () => {
                 if (isDragging) {
                     isDragging = false;
-                    header.style.cursor = "grab";
+                    handle.style.cursor = "move";
                 }
             });
-
-            const content = document.createElement("div");
-            content.id = "sandbox-widget-content";
-            content.style.cssText = "padding: 16px 15px; display: flex; flex-direction: column; gap: 12px;";
-
-            const footer = document.createElement("div");
-            footer.style.cssText = `
-                background: #F9FAFB;
-                padding: 10px 15px;
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                border-top: 1px solid #E5E7EB;
-            `;
-            footer.innerHTML = `
-                <button id="btn-encerrar-pratica" style="background: transparent; color: #DC2626; border: 1px solid #FECACA; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 500; transition: all 0.2s;">Sair</button>
-                <div style="display: flex; gap: 8px;">
-                    <button id="btn-dica-pratica" style="background: #FFFFFF; color: #374151; border: 1px solid #D1D5DB; padding: 6px 16px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 500; transition: all 0.2s; display: flex; align-items: center; gap: 5px;">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 16v-4"></path><path d="M12 8h.01"></path></svg> Dica
-                    </button>
-                    <button id="btn-pular-pratica" style="background: #00998F; color: #FFFFFF; border: none; padding: 6px 16px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 500; transition: all 0.2s; display: flex; align-items: center; gap: 5px;">
-                        Pular <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="M12 5l7 7-7 7"></path></svg>
-                    </button>
-                </div>
-            `;
-
-            widget.appendChild(header);
-            widget.appendChild(content);
-            widget.appendChild(footer);
-            document.body.appendChild(widget);
-
-            // Bind events
-            document.getElementById("btn-encerrar-pratica").onclick = window.endSandboxPractice;
-            document.getElementById("btn-dica-pratica").onclick = window.showSandboxHint;
-            document.getElementById("btn-pular-pratica").onclick = window.skipSandboxStep;
-            
-            // Hover effects
-            const addHover = (id, hoverBg, normalBg) => {
-                const el = document.getElementById(id);
-                if(el) {
-                    el.onmouseenter = () => el.style.background = hoverBg;
-                    el.onmouseleave = () => el.style.background = normalBg;
-                }
-            };
-            addHover("btn-encerrar-pratica", "#FEF2F2", "transparent");
-            addHover("btn-dica-pratica", "#F3F4F6", "#FFFFFF");
-            addHover("btn-pular-pratica", "#00AF9B", "#00998F");
-        }
-
-        // Update progress bar
-        const progressFillEl = document.getElementById("sandbox-progress-fill");
-        if (progressFillEl) {
-            const pct = sandboxTotalPassos > 0 ? Math.round((sandboxPassoAtual / sandboxTotalPassos) * 100) : 0;
-            progressFillEl.style.width = pct + '%';
-        }
-
-        const step = sandboxHotspots[sandboxPassoAtual];
-        if (step) {
-            document.getElementById("sandbox-xp").innerText = `${sandboxXP} XP`;
-            document.getElementById("sandbox-widget-content").innerHTML = `
-                <div style="font-size: 11px; color: #6B7280; text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px;">Passo ${sandboxPassoAtual + 1} de ${sandboxTotalPassos}</div>
-                <div style="font-size: 14px; line-height: 1.5; color: #111827; margin-top: 4px;">${step.micro_narracao || step.ancora || "Interaja com a tela para avançar."}</div>
-            `;
-            if (step.action === "navigation") {
-                document.getElementById("btn-dica-pratica").style.display = "none";
-                document.getElementById("btn-pular-pratica").style.display = "none";
-                document.getElementById("sandbox-widget-content").innerHTML = `
-                    <div style="font-size: 11px; color: #a1a1aa; text-transform: uppercase; font-weight: 700; letter-spacing: 0.8px;">Passo ${sandboxPassoAtual + 1} de ${sandboxTotalPassos}</div>
-                    <div style="font-size: 14px; line-height: 1.5; color: #f4f4f5;">Aguarde, carregando...</div>
-                `;
-                // Auto-advance after 2 seconds to let the user see it, or if they navigated
-                sandboxNavTimeout = setTimeout(() => {
-                    if (sandboxPassoAtual === sandboxTotalPassos - 1) {
-                         // Se for o último passo, encerra
-                         advanceSandboxStep();
-                    } else {
-                         sandboxXP += 10;
-                         sandboxPassoAtual += 1;
-                         const concluido = sandboxPassoAtual >= sandboxTotalPassos;
-                         chrome.storage.local.set({ sandboxXP, sandboxPassoAtual, sandboxStats });
-                         chrome.runtime.sendMessage({
-                             type: 'ARBITRO_PASSO_OK',
-                             session_id: sandboxSessionId,
-                             passo: sandboxPassoAtual,
-                             total: sandboxTotalPassos,
-                             xp: sandboxXP,
-                             concluido: concluido
-                         }).catch(() => {});
-                         // A renderização ocorrerá via listener do chrome.storage.onChanged
-                    }
-                }, 1500);
-            } else {
-                document.getElementById("btn-dica-pratica").style.display = "flex";
-                document.getElementById("btn-pular-pratica").style.display = "flex";
-            }
-        }
+        };
+        
+        renderPip();
     };
 
     window.removeSandboxWidget = function() {
         if (window !== window.top) return;
         const widget = document.getElementById("capture-os-sandbox-widget");
         if (widget) widget.remove();
+        
+        const pip = document.getElementById("capture-os-pip-video");
+        if (pip) pip.remove();
+
         // Remove also any existing hint highlights
         document.querySelectorAll(".capture-os-hint-highlight").forEach(el => {
             el.classList.remove("capture-os-hint-highlight");
@@ -1679,14 +2087,7 @@
         chrome.storage.local.set({ sandboxXP, sandboxStats });
         renderSandboxWidget();
 
-        const step = sandboxHotspots[sandboxPassoAtual];
-        if (!step) return;
-
-        // Avisa TODAS as janelas (iframes inclusos) para tentar mostrar o hint
-        chrome.runtime.sendMessage({
-            action: "SHOW_HINT_BROADCAST",
-            step: step
-        }).catch(() => {});
+        window.highlightSandboxCurrentStep();
         
         // Em 200ms a gente confere se alguém pintou o highlight. Se não, exibe aviso (no top window).
         if (window === window.top) {
@@ -1698,6 +2099,17 @@
         }
     };
 
+    window.highlightSandboxCurrentStep = function() {
+        const step = sandboxHotspots[sandboxPassoAtual];
+        if (!step) return;
+
+        // Avisa TODAS as janelas (iframes inclusos) para tentar mostrar o hint
+        chrome.runtime.sendMessage({
+            action: "SHOW_HINT_BROADCAST",
+            step: step
+        }).catch(() => {});
+    };
+
     window.endSandboxPractice = function() {
         chrome.storage.local.set({ sandboxMode: false });
         chrome.runtime.sendMessage({ type: "ARBITRO_ENCERRADO" }).catch(() => {});
@@ -1707,36 +2119,67 @@
     window.renderSandboxScoreWidget = function() {
         if (window !== window.top) return;
         
+        // Auto-minimize PiP Se estiver maximizado (ou até se estiver normal, para liberar espaço)
+        const pipBtnMin = document.getElementById('pip-btn-min');
+        if (pipBtnMin) {
+            pipBtnMin.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+        }
+        
         let widget = document.getElementById("capture-os-sandbox-widget");
         if (!widget) return;
         
-        const perc = Math.max(0, Math.round(((sandboxTotalPassos * 10) - (sandboxStats.errors*5) - (sandboxStats.hints*5) - (sandboxStats.skips*10)) / (sandboxTotalPassos * 10) * 100)) || 0;
+        const maxXP = sandboxTotalPassos * 10;
+        let earnedXP = maxXP - (sandboxStats.errors*5) - (sandboxStats.hints*5) - (sandboxStats.skips*10);
+        if (earnedXP < 0) earnedXP = 0;
+        const perc = maxXP > 0 ? (earnedXP / maxXP) * 100 : 0;
+        
+        let stars = 0;
+        if (perc === 100) stars = 3;
+        else if (perc >= 70) stars = 2;
+        else if (perc >= 30) stars = 1;
+
+        let message = "Prática concluída! Tente novamente para melhorar a precisão.";
+        if (stars === 3) message = "Perfeito! Você dominou este módulo.";
+        else if (stars === 2) message = "Muito bem! Faltou pouco para a perfeição.";
+
+        const svgStarFilled = `<svg width="40" height="40" viewBox="0 0 24 24" fill="#FBBF24" stroke="#F59E0B" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" style="filter: drop-shadow(0 0 10px rgba(251, 191, 36, 0.5));"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>`;
+        const svgStarEmpty = `<svg width="40" height="40" viewBox="0 0 24 24" fill="rgba(75, 85, 99, 0.2)" stroke="#4B5563" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>`;
+        const svgStarFilledLarge = `<svg width="48" height="48" viewBox="0 0 24 24" fill="#FBBF24" stroke="#F59E0B" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" style="filter: drop-shadow(0 0 14px rgba(251, 191, 36, 0.6));"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>`;
+        const svgStarEmptyLarge = `<svg width="48" height="48" viewBox="0 0 24 24" fill="rgba(75, 85, 99, 0.2)" stroke="#4B5563" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>`;
         
         widget.innerHTML = `
-            <div style="background: #F0FDF4; padding: 16px; display: flex; align-items: center; justify-content: center; gap: 8px; border-bottom: 1px solid #E5E7EB;">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#15803D" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                <span style="font-size: 12px; font-weight: 700; color: #15803D; letter-spacing: 1px; text-transform: uppercase;">Prática Concluída</span>
+            <style>
+            @keyframes starPop {
+                0% { transform: scale(0) rotate(-15deg); opacity: 0; }
+                70% { transform: scale(1.15) rotate(5deg); opacity: 1; }
+                100% { transform: scale(1) rotate(0deg); opacity: 1; }
+            }
+            .capture-star-anim {
+                animation: starPop 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+                opacity: 0;
+            }
+            .capture-star-1 { animation-delay: 0.1s; }
+            .capture-star-2 { animation-delay: 0.4s; transform-origin: center; margin-bottom: 12px; }
+            .capture-star-3 { animation-delay: 0.7s; }
+            </style>
+            <div style="background: rgba(31, 187, 117, 0.1); padding: 16px; display: flex; align-items: center; justify-content: center; gap: 8px; border-bottom: 1px solid #122A22;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1FBB75" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                <span style="font-size: 12px; font-weight: 700; color: #1FBB75; letter-spacing: 1px; text-transform: uppercase;">Prática Concluída</span>
             </div>
-            <div style="padding: 24px 20px; display: flex; flex-direction: column; gap: 18px; background: #FFFFFF;">
-                <div style="text-align: center;">
-                    <div style="font-size: 40px; font-weight: 800; color: #111827; letter-spacing: -1px; line-height: 1;">${sandboxXP}</div>
-                    <div style="font-size: 13px; font-weight: 600; color: #6B7280; margin-top: 4px; text-transform: uppercase; letter-spacing: 1px;">Pontos XP</div>
+            <div style="padding: 32px 20px; display: flex; flex-direction: column; align-items: center; gap: 24px; background: rgba(28, 31, 37, 0.95);">
+                
+                <div style="display: flex; gap: 12px; align-items: flex-end; height: 60px;">
+                    <div class="capture-star-anim capture-star-1">${stars >= 1 ? svgStarFilled : svgStarEmpty}</div>
+                    <div class="capture-star-anim capture-star-2" style="width: 48px; height: 48px;">${stars >= 2 ? svgStarFilledLarge : svgStarEmptyLarge}</div>
+                    <div class="capture-star-anim capture-star-3">${stars >= 3 ? svgStarFilled : svgStarEmpty}</div>
                 </div>
-                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; text-align: center;">
-                    <div style="background: #FEF2F2; padding: 12px 8px; border-radius: 8px; border: 1px solid #FECACA;">
-                        <div style="font-size: 20px; font-weight: 800; color: #B91C1C; letter-spacing: -0.5px;">${sandboxStats.errors}</div>
-                        <div style="font-size: 10px; color: #7F1D1D; text-transform: uppercase; margin-top: 4px; font-weight: 600; letter-spacing: 0.5px;">Erros</div>
-                    </div>
-                    <div style="background: #FFFBEB; padding: 12px 8px; border-radius: 8px; border: 1px solid #FDE68A;">
-                        <div style="font-size: 20px; font-weight: 800; color: #B45309; letter-spacing: -0.5px;">${sandboxStats.hints}</div>
-                        <div style="font-size: 10px; color: #78350F; text-transform: uppercase; margin-top: 4px; font-weight: 600; letter-spacing: 0.5px;">Dicas</div>
-                    </div>
-                    <div style="background: #EFF6FF; padding: 12px 8px; border-radius: 8px; border: 1px solid #BFDBFE;">
-                        <div style="font-size: 20px; font-weight: 800; color: #1D4ED8; letter-spacing: -0.5px;">${sandboxStats.skips}</div>
-                        <div style="font-size: 10px; color: #1E3A8A; text-transform: uppercase; margin-top: 4px; font-weight: 600; letter-spacing: 0.5px;">Pulos</div>
-                    </div>
+
+                <div style="text-align: center; max-width: 240px;">
+                    <div style="font-size: 14px; font-weight: 600; color: #E2E4E9; margin-bottom: 6px;">${message}</div>
+                    <div style="font-size: 12px; color: #6B7280;">Aproveitamento: <strong style="color: #A9B1BD;">${Math.round(perc)}%</strong> (${earnedXP} XP)</div>
                 </div>
-                <button id="btn-fechar-score" style="margin-top: 4px; width: 100%; background: #00998F; color: #FFFFFF; border: none; padding: 11px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600; transition: all 0.2s;">Fechar</button>
+
+                <button id="btn-fechar-score" style="margin-top: 8px; width: 100%; background: #1FBB75; color: #181A1F; border: none; padding: 12px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 700; transition: background 0.2s; box-shadow: 0 4px 12px rgba(31, 187, 117, 0.2);">Finalizar Prática</button>
             </div>
         `;
         

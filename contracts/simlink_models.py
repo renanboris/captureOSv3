@@ -14,6 +14,7 @@ class SimlinkHotspot(BaseModel):
     ancora: str  # texto narrado ao acertar
     micro_narracao: str  # dica exibida ao errar
     audio_path: Optional[str] = None  # caminho para o áudio gerado
+    video_timestamp: float = 0.0 # timestamp do video para sync
 
 class SimlinkModulo(BaseModel):
     """Módulo completo de simulação — gerado a partir de uma sessão CaptureOS."""

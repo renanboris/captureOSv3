@@ -232,6 +232,7 @@ O instrutor explicou o processo com as próprias palavras acima. Use o raciocín
             if ai_correspondente:
                 bruto_passo["ancora"] = ai_correspondente.get("ancora", "")
                 bruto_passo["micro_narracao"] = ai_correspondente.get("micro_narracao", "")
+                bruto_passo["instrucao_curta"] = ai_correspondente.get("instrucao_curta", "")
                 if ai_correspondente.get("intencao_original"):
                     bruto_passo["intencao_original"] = ai_correspondente.get("intencao_original")
             else:
@@ -240,6 +241,7 @@ O instrutor explicou o processo com as próprias palavras acima. Use o raciocín
                 passos_perdidos += 1
                 bruto_passo["ancora"] = bruto_passo.get("intencao_original", "")
                 bruto_passo["micro_narracao"] = ""
+                bruto_passo["instrucao_curta"] = bruto_passo.get("intencao_original", "")
             roteiro_final.append(bruto_passo)
 
         if passos_perdidos:
@@ -285,6 +287,7 @@ O instrutor explicou o processo com as próprias palavras acima. Use o raciocín
                         if str(ai_passo.get("passo")) == str(bruto_passo.get("passo")):
                             bruto_passo["ancora"] = ai_passo.get("ancora", "")
                             bruto_passo["micro_narracao"] = ai_passo.get("micro_narracao", "")
+                            bruto_passo["instrucao_curta"] = ai_passo.get("instrucao_curta", "")
                             if ai_passo.get("intencao_original"):
                                 bruto_passo["intencao_original"] = ai_passo.get("intencao_original")
                             break
@@ -348,6 +351,7 @@ async def regerar_passo_isolado(passo_alvo: dict, passo_anterior: dict = None, p
         resultado = json.loads(response.text)
         passo_alvo["ancora"] = resultado.get("ancora", "")
         passo_alvo["micro_narracao"] = resultado.get("micro_narracao", "")
+        passo_alvo["instrucao_curta"] = resultado.get("instrucao_curta", "")
         return passo_alvo
     except Exception as e:
         logger.error(f"Erro ao regerar passo isolado (Gemini): {e}. Tentando OpenAI Fallback...")
@@ -368,6 +372,7 @@ async def regerar_passo_isolado(passo_alvo: dict, passo_anterior: dict = None, p
                 if isinstance(resultado, dict):
                     passo_alvo["ancora"] = resultado.get("ancora", passo_alvo.get("ancora", ""))
                     passo_alvo["micro_narracao"] = resultado.get("micro_narracao", passo_alvo.get("micro_narracao", ""))
+                    passo_alvo["instrucao_curta"] = resultado.get("instrucao_curta", passo_alvo.get("instrucao_curta", ""))
                 return passo_alvo
             except Exception as e2:
                 logger.error(f"Erro no Fallback OpenAI (Regerar Passo): {e2}")

@@ -46,6 +46,9 @@ REGRAS ESTRUTURAIS (NUNCA VIOLE)
 5. APLIQUE A MODULAÇÃO DE DENSIDADE acima a cada passo intermediário: âncora explica o
    porquê (voz de professora), micro-narração diz o como (voz técnica). Passo óbvio
    recebe âncora vazia e só micro-narração.
+6. INSTRUÇÃO CURTA (OBRIGATÓRIO): crie o campo "instrucao_curta" com uma versão
+   extremamente resumida (máximo 5-7 palavras) e imperativa do passo (ex: "Clique em
+   Salvar"). Isso será usado no Sandbox Hands-on. Passos 0 e 999 recebem "".
 ===USER===
 <BASE_DE_CONHECIMENTO_CORPORATIVA>
 {rag_texto}
@@ -71,20 +74,23 @@ esta estrutura:
     "timestamp": 0,
     "intencao_original": "Introdução do Objetivo",
     "ancora": "Hoje vamos aprender a criar uma estrutura de pastas do zero, organizando o ambiente para toda a equipe.",
-    "micro_narracao": ""
+    "micro_narracao": "",
+    "instrucao_curta": ""
   },
   {
     "passo": 1,
     "timestamp": 123456789,
     "intencao_original": "Acionar Nova Pasta",
     "ancora": "Tudo começa pela criação do diretório raiz, que vai abrigar o restante da estrutura.",
-    "micro_narracao": "Clique no botão Nova Pasta."
+    "micro_narracao": "Clique no botão Nova Pasta.",
+    "instrucao_curta": "Clique em Nova Pasta"
   },
   {
     "passo": 999,
     "timestamp": 99999999,
     "intencao_original": "Conclusão",
     "ancora": "Pronto. Em poucos passos a estrutura ficou organizada e pronta para a equipe usar.",
-    "micro_narracao": ""
+    "micro_narracao": "",
+    "instrucao_curta": ""
   }
 ]
