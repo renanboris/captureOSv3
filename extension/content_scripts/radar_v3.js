@@ -1,8 +1,9 @@
 // radar_v3.js (Content Script)
 (function() {
-    console.log("Capture OS v3 - Radar Injetado");
+    const currentScriptId = Math.random().toString(36).substring(2) + "_" + Date.now();
+    window.__capture_os_active_script_id = currentScriptId;
 
-    console.log("Capture OS v3 - Radar Injetado");
+    console.log("Capture OS v3 - Radar Injetado", currentScriptId);
 
     let eventCounter = 1;
     let isSandboxMode = false;
@@ -13,6 +14,9 @@
     let sandboxStats = { errors: 0, hints: 0, skips: 0 };
 
     chrome.storage.local.get(['sandboxMode', 'sandboxSessionId', 'sandboxTotalPassos', 'sandboxPassoAtual', 'sandboxXP', 'sandboxHotspots', 'sandboxStats'], (res) => {
+        if (window.__capture_os_active_script_id !== currentScriptId) {
+            return;
+        }
         isSandboxMode = res.sandboxMode || false;
         sandboxSessionId = res.sandboxSessionId || null;
         sandboxTotalPassos = res.sandboxTotalPassos || 0;
@@ -29,6 +33,9 @@
     });
 
     chrome.storage.onChanged.addListener((changes) => {
+        if (window.__capture_os_active_script_id !== currentScriptId) {
+            return;
+        }
         if (changes.sandboxMode) isSandboxMode = changes.sandboxMode.newValue;
         if (changes.sandboxSessionId) sandboxSessionId = changes.sandboxSessionId.newValue;
         if (changes.sandboxTotalPassos) sandboxTotalPassos = changes.sandboxTotalPassos.newValue;
@@ -219,6 +226,9 @@
     }
 
     function interceptEvent(e, type) {
+        if (window.__capture_os_active_script_id !== currentScriptId) {
+            return;
+        }
         // Encontra a árvore atual
         const tree = getSemanticSnapshot();
         
@@ -340,6 +350,10 @@
 
     let hasShownInvalidated = false;
     function showContextInvalidatedWarning() {
+        if (window.__capture_os_active_script_id !== currentScriptId) {
+            console.log("Capture OS: Instância de script antiga ignorando aviso de contexto invalidado.");
+            return;
+        }
         if (hasShownInvalidated) return;
         hasShownInvalidated = true;
         
@@ -403,6 +417,7 @@
     let urlAtual = window.location.href;
     let spaDebounce = null;
     const observerSPA = new MutationObserver(() => {
+        if (window.__capture_os_active_script_id !== currentScriptId) return;
         if (spaDebounce) return;
         spaDebounce = setTimeout(() => {
             spaDebounce = null;
@@ -437,6 +452,15 @@
 
     // --- UX Feedback (Toast & Widget) ---
     chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+        if (window.__capture_os_active_script_id !== currentScriptId) {
+            return;
+        }
+
+        if (msg && msg.action === "ping") {
+            sendResponse({ status: "pong" });
+            return;
+        }
+
         // Bloqueia a renderização de UI dentro de Iframes! O UI deve aparecer apenas na janela principal.
         const isUIAction = ["show_toast", "update_toast", "show_player_modal", "show_pin_tooltip", "show_editor_modal", "show_prep_toast"].includes(msg.action);
         if (isUIAction && window !== window.top) return;
@@ -532,6 +556,9 @@
 
     // Heartbeat para manter o Service Worker vivo durante a gravação
     setInterval(() => {
+        if (window.__capture_os_active_script_id !== currentScriptId) {
+            return;
+        }
         try {
             if (chrome.runtime && chrome.runtime.sendMessage) {
                 chrome.runtime.sendMessage({ action: "ping" }).catch(() => {});
@@ -1356,6 +1383,9 @@
 
     // Escuta mensagens do background
     chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+        if (window.__capture_os_active_script_id !== currentScriptId) {
+            return;
+        }
         if (request.action === "SHOW_HINT_LOCAL") {
             const step = request.step;
             if (!step) return;
