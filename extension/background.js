@@ -583,6 +583,42 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         });
         return true; // async response
     }
+
+    if (message.action === 'auth_fetch') {
+        (async () => {
+            try {
+                const { authToken } = await chrome.storage.local.get(['authToken']);
+                const backendUrl = await getBackendUrl();
+                
+                let targetUrl = message.url || '';
+                if (message.path) {
+                    targetUrl = `${backendUrl}${message.path}`;
+                }
+                
+                const options = { ...(message.options || {}) };
+                const headers = { ...(options.headers || {}) };
+                if (authToken) {
+                    headers['Authorization'] = `Bearer ${authToken}`;
+                }
+                options.headers = headers;
+
+                const res = await fetch(targetUrl, options);
+                if (res.ok) {
+                    let data = {};
+                    try {
+                        data = await res.json();
+                    } catch(e) {}
+                    sendResponse({ ok: true, status: res.status, data: data });
+                } else {
+                    sendResponse({ ok: false, status: res.status });
+                }
+            } catch (err) {
+                console.error("Erro no auth_fetch do background:", err);
+                sendResponse({ ok: false, status: 0, error: err.message });
+            }
+        })();
+        return true; // async response
+    }
     
     if (message.action === 'resume_polling') {
         startPolling(message.session_id);

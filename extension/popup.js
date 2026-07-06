@@ -401,78 +401,88 @@ document.addEventListener('DOMContentLoaded', async () => {
                 // Click no Simlink
                 const btnSimlink = div.querySelector('.btn-share-simlink');
                 if (btnSimlink) {
-                    btnSimlink.onclick = async (e) => {
+                    btnSimlink.onclick = (e) => {
                         e.stopPropagation();
                         const origHtml = btnSimlink.innerHTML;
                         btnSimlink.innerText = 'Carregando...';
                         btnSimlink.disabled = true;
-                        try {
-                            const res = await fetch(`${backendUrl}/api/v1/session/${rot.session_id}/artifacts`, { headers });
-                            if (res.ok) {
-                                const data = await res.json();
+
+                        chrome.runtime.sendMessage({
+                            action: "auth_fetch",
+                            path: `/api/v1/session/${rot.session_id}/artifacts`
+                        }, async (response) => {
+                            if (response && response.ok) {
+                                const data = response.data;
                                 if (data.simlink_url) {
-                                    await navigator.clipboard.writeText(data.simlink_url);
-                                    btnSimlink.innerHTML = 'Copiado! ✓';
-                                    btnSimlink.style.background = '#ECFDF5';
-                                    btnSimlink.style.color = '#10B981';
-                                    btnSimlink.style.borderColor = '#A7F3D0';
+                                    try {
+                                        await navigator.clipboard.writeText(data.simlink_url);
+                                        btnSimlink.innerHTML = 'Copiado! ✓';
+                                        btnSimlink.style.background = '#ECFDF5';
+                                        btnSimlink.style.color = '#10B981';
+                                        btnSimlink.style.borderColor = '#A7F3D0';
+                                    } catch(err) {
+                                        console.error(err);
+                                        btnSimlink.innerText = 'Erro ao copiar';
+                                    }
                                 } else {
                                     btnSimlink.innerText = 'Indisponível';
                                 }
                             } else {
-                                console.error(`[CaptureOS] Fetch artifacts failed: ${res.status}`);
-                                btnSimlink.innerText = `Erro ${res.status}`;
+                                const status = (response && response.status) || 'Conexão';
+                                btnSimlink.innerText = `Erro ${status}`;
                             }
-                        } catch(err) {
-                            console.error(err);
-                            btnSimlink.innerText = 'Erro Conexão';
-                        }
-                        setTimeout(() => {
-                            btnSimlink.innerHTML = origHtml;
-                            btnSimlink.style.background = '';
-                            btnSimlink.style.color = '';
-                            btnSimlink.style.borderColor = '';
-                            btnSimlink.disabled = false;
-                        }, 2000);
+                            setTimeout(() => {
+                                btnSimlink.innerHTML = origHtml;
+                                btnSimlink.style.background = '';
+                                btnSimlink.style.color = '';
+                                btnSimlink.style.borderColor = '';
+                                btnSimlink.disabled = false;
+                            }, 2000);
+                        });
                     };
                 }
 
                 // Click no Vídeo
                 const btnVideo = div.querySelector('.btn-share-video');
                 if (btnVideo) {
-                    btnVideo.onclick = async (e) => {
+                    btnVideo.onclick = (e) => {
                         e.stopPropagation();
                         const origHtml = btnVideo.innerHTML;
                         btnVideo.innerText = 'Carregando...';
                         btnVideo.disabled = true;
-                        try {
-                            const res = await fetch(`${backendUrl}/api/v1/session/${rot.session_id}/artifacts`, { headers });
-                            if (res.ok) {
-                                const data = await res.json();
+
+                        chrome.runtime.sendMessage({
+                            action: "auth_fetch",
+                            path: `/api/v1/session/${rot.session_id}/artifacts`
+                        }, async (response) => {
+                            if (response && response.ok) {
+                                const data = response.data;
                                 if (data.video_url) {
-                                    await navigator.clipboard.writeText(data.video_url);
-                                    btnVideo.innerHTML = 'Copiado! ✓';
-                                    btnVideo.style.background = '#ECFDF5';
-                                    btnVideo.style.color = '#10B981';
-                                    btnVideo.style.borderColor = '#A7F3D0';
+                                    try {
+                                        await navigator.clipboard.writeText(data.video_url);
+                                        btnVideo.innerHTML = 'Copiado! ✓';
+                                        btnVideo.style.background = '#ECFDF5';
+                                        btnVideo.style.color = '#10B981';
+                                        btnVideo.style.borderColor = '#A7F3D0';
+                                    } catch(err) {
+                                        console.error(err);
+                                        btnVideo.innerText = 'Erro ao copiar';
+                                    }
                                 } else {
                                     btnVideo.innerText = 'Indisponível';
                                 }
                             } else {
-                                console.error(`[CaptureOS] Fetch artifacts failed: ${res.status}`);
-                                btnVideo.innerText = `Erro ${res.status}`;
+                                const status = (response && response.status) || 'Conexão';
+                                btnVideo.innerText = `Erro ${status}`;
                             }
-                        } catch(err) {
-                            console.error(err);
-                            btnVideo.innerText = 'Erro Conexão';
-                        }
-                        setTimeout(() => {
-                            btnVideo.innerHTML = origHtml;
-                            btnVideo.style.background = '';
-                            btnVideo.style.color = '';
-                            btnVideo.style.borderColor = '';
-                            btnVideo.disabled = false;
-                        }, 2000);
+                            setTimeout(() => {
+                                btnVideo.innerHTML = origHtml;
+                                btnVideo.style.background = '';
+                                btnVideo.style.color = '';
+                                btnVideo.style.borderColor = '';
+                                btnVideo.disabled = false;
+                            }, 2000);
+                        });
                     };
                 }
 

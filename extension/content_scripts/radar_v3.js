@@ -1253,38 +1253,30 @@
             if (videoLinkUrl) copyToClipboard(videoLinkUrl, shareVideoBtn, videoOrigHtml);
         });
 
-        chrome.storage.local.get(['authToken'], async (resStorage) => {
-            const headers = {};
-            if (resStorage.authToken) {
-                headers['Authorization'] = `Bearer ${resStorage.authToken}`;
-            }
-            try {
-                const res = await fetch(`${backendUrl}/api/v1/session/${session_id}/artifacts`, { headers });
-                if (res.ok) {
-                    const data = await res.json();
-                    if (data.simlink_url) {
-                        simlinkUrl = data.simlink_url;
-                        shareSimlinkBtn.innerHTML = simlinkOrigHtml;
-                        shareSimlinkBtn.disabled = false;
-                    } else {
-                        shareSimlinkBtn.textContent = "Simlink Indisponível";
-                    }
-                    if (data.video_url) {
-                        videoLinkUrl = data.video_url;
-                        shareVideoBtn.innerHTML = videoOrigHtml;
-                        shareVideoBtn.disabled = false;
-                    } else {
-                        shareVideoBtn.textContent = "Vídeo Indisponível";
-                    }
+        chrome.runtime.sendMessage({
+            action: "auth_fetch",
+            path: `/api/v1/session/${session_id}/artifacts`
+        }, (response) => {
+            if (response && response.ok) {
+                const data = response.data;
+                if (data.simlink_url) {
+                    simlinkUrl = data.simlink_url;
+                    shareSimlinkBtn.innerHTML = simlinkOrigHtml;
+                    shareSimlinkBtn.disabled = false;
                 } else {
-                    console.error(`[CaptureOS] Fetch artifacts failed: ${res.status}`);
-                    shareSimlinkBtn.textContent = `Erro ${res.status}`;
-                    shareVideoBtn.textContent = `Erro ${res.status}`;
+                    shareSimlinkBtn.textContent = "Simlink Indisponível";
                 }
-            } catch(e) {
-                console.error("Erro ao buscar artefatos:", e);
-                shareSimlinkBtn.textContent = "Erro Conexão";
-                shareVideoBtn.textContent = "Erro Conexão";
+                if (data.video_url) {
+                    videoLinkUrl = data.video_url;
+                    shareVideoBtn.innerHTML = videoOrigHtml;
+                    shareVideoBtn.disabled = false;
+                } else {
+                    shareVideoBtn.textContent = "Vídeo Indisponível";
+                }
+            } else {
+                const status = (response && response.status) || 'Conexão';
+                shareSimlinkBtn.textContent = `Erro ${status}`;
+                shareVideoBtn.textContent = `Erro ${status}`;
             }
         });
 
