@@ -89,7 +89,11 @@ def _calculate_segments(timeline_events: list, video_duration: float) -> tuple:
     """
     segments = []
     audio_delays = []
-    current_time = 0
+    
+    first_ts = timeline_events[0]['timestamp'] if timeline_events else 0.0
+    start_offset = max(0.0, min(0.5, first_ts - 0.2))
+    
+    current_time = start_offset
     shifted_time = 0
 
     for event in timeline_events:
