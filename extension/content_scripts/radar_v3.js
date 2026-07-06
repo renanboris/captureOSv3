@@ -949,14 +949,6 @@
                     opacity: 0.6;
                     cursor: not-allowed;
                 }
-                .btn-share-simlink {
-                    background: #FFFBEB;
-                    color: #D97706;
-                    border: 1px solid #FCD34D;
-                }
-                .btn-share-simlink:hover:not(:disabled) {
-                    background: #FEF3C7;
-                }
                 .btn-share-video {
                     background: #F0F9FF;
                     color: #0284C7;
@@ -1028,16 +1020,10 @@
                         </div>
                         <div class="share-section" style="margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border); display: flex; flex-direction: column; gap: 8px;">
                             <div style="font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">Compartilhar com terceiros</div>
-                            <div class="btn-grid">
-                                <button id="share-simlink-btn" class="btn btn-share-simlink" disabled>
-                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
-                                    Carregando Simlink...
-                                </button>
-                                <button id="share-video-btn" class="btn btn-share-video" disabled>
-                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
-                                    Carregando Vídeo...
-                                </button>
-                            </div>
+                            <button id="share-video-btn" class="btn btn-share-video" disabled style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px;">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"></path><polyline points="16 6 12 2 8 6"></polyline><line x1="12" y1="2" x2="12" y2="15"></line></svg>
+                                Carregando Link do Vídeo...
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -1201,10 +1187,8 @@
         });
 
         // Lógica de compartilhamento
-        const shareSimlinkBtn = shadow.getElementById('share-simlink-btn');
         const shareVideoBtn = shadow.getElementById('share-video-btn');
 
-        let simlinkUrl = null;
         let videoLinkUrl = null;
 
         const copyToClipboard = async (text, btn, originalHtml) => {
@@ -1242,12 +1226,7 @@
             }
         };
 
-        const simlinkOrigHtml = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg> Copiar Simlink`;
-        const videoOrigHtml = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg> Copiar Vídeo`;
-
-        shareSimlinkBtn.addEventListener('click', () => {
-            if (simlinkUrl) copyToClipboard(simlinkUrl, shareSimlinkBtn, simlinkOrigHtml);
-        });
+        const videoOrigHtml = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 6px;"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"></path><polyline points="16 6 12 2 8 6"></polyline><line x1="12" y1="2" x2="12" y2="15"></line></svg> Compartilhar Link do Vídeo`;
 
         shareVideoBtn.addEventListener('click', () => {
             if (videoLinkUrl) copyToClipboard(videoLinkUrl, shareVideoBtn, videoOrigHtml);
@@ -1259,13 +1238,6 @@
         }, (response) => {
             if (response && response.ok) {
                 const data = response.data;
-                if (data.simlink_url) {
-                    simlinkUrl = data.simlink_url;
-                    shareSimlinkBtn.innerHTML = simlinkOrigHtml;
-                    shareSimlinkBtn.disabled = false;
-                } else {
-                    shareSimlinkBtn.textContent = "Simlink Indisponível";
-                }
                 if (data.video_url) {
                     videoLinkUrl = data.video_url;
                     shareVideoBtn.innerHTML = videoOrigHtml;
@@ -1275,7 +1247,6 @@
                 }
             } else {
                 const status = (response && response.status) || 'Conexão';
-                shareSimlinkBtn.textContent = `Erro ${status}`;
                 shareVideoBtn.textContent = `Erro ${status}`;
             }
         });

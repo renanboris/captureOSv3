@@ -354,14 +354,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                 let shareActionsHtml = '';
                 if (rot.status === 'completed') {
                     shareActionsHtml = `
-                        <div class="roteiro-share-actions" style="margin-top: 10px; display: flex; gap: 8px; border-top: 1px solid var(--border-default); padding-top: 8px;">
-                            <button class="btn-share-simlink" data-session="${rot.session_id}" style="flex: 1; display: flex; align-items: center; justify-content: center; gap: 4px; background: #FFFBEB; color: #D97706; border: 1px solid #FCD34D; border-radius: 6px; padding: 6px 8px; font-size: 11px; font-weight: 600; cursor: pointer; transition: background 0.2s;">
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
-                                Simlink
-                            </button>
-                            <button class="btn-share-video" data-session="${rot.session_id}" style="flex: 1; display: flex; align-items: center; justify-content: center; gap: 4px; background: #F0F9FF; color: #0284C7; border: 1px solid #BAE6FD; border-radius: 6px; padding: 6px 8px; font-size: 11px; font-weight: 600; cursor: pointer; transition: background 0.2s;">
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
-                                Vídeo
+                        <div class="roteiro-share-actions" style="margin-top: 10px; display: flex; border-top: 1px solid var(--border-default); padding-top: 8px;">
+                            <button class="btn-share-video" data-session="${rot.session_id}" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px; background: #F0F9FF; color: #0284C7; border: 1px solid #BAE6FD; border-radius: 6px; padding: 6px 12px; font-size: 11px; font-weight: 600; cursor: pointer; transition: background 0.2s;">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"></path><polyline points="16 6 12 2 8 6"></polyline><line x1="12" y1="2" x2="12" y2="15"></line></svg>
+                                Compartilhar Link do Vídeo
                             </button>
                         </div>
                     `;
@@ -397,50 +393,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                     await excluirRoteiro(rot.session_id, backendUrl, headers);
                     carregarRoteiros(); // Recarrega a lista
                 };
-
-                // Click no Simlink
-                const btnSimlink = div.querySelector('.btn-share-simlink');
-                if (btnSimlink) {
-                    btnSimlink.onclick = (e) => {
-                        e.stopPropagation();
-                        const origHtml = btnSimlink.innerHTML;
-                        btnSimlink.innerText = 'Carregando...';
-                        btnSimlink.disabled = true;
-
-                        chrome.runtime.sendMessage({
-                            action: "auth_fetch",
-                            path: `/api/v1/session/${rot.session_id}/artifacts`
-                        }, async (response) => {
-                            if (response && response.ok) {
-                                const data = response.data;
-                                if (data.simlink_url) {
-                                    try {
-                                        await navigator.clipboard.writeText(data.simlink_url);
-                                        btnSimlink.innerHTML = 'Copiado! ✓';
-                                        btnSimlink.style.background = '#ECFDF5';
-                                        btnSimlink.style.color = '#10B981';
-                                        btnSimlink.style.borderColor = '#A7F3D0';
-                                    } catch(err) {
-                                        console.error(err);
-                                        btnSimlink.innerText = 'Erro ao copiar';
-                                    }
-                                } else {
-                                    btnSimlink.innerText = 'Indisponível';
-                                }
-                            } else {
-                                const status = (response && response.status) || 'Conexão';
-                                btnSimlink.innerText = `Erro ${status}`;
-                            }
-                            setTimeout(() => {
-                                btnSimlink.innerHTML = origHtml;
-                                btnSimlink.style.background = '';
-                                btnSimlink.style.color = '';
-                                btnSimlink.style.borderColor = '';
-                                btnSimlink.disabled = false;
-                            }, 2000);
-                        });
-                    };
-                }
 
                 // Click no Vídeo
                 const btnVideo = div.querySelector('.btn-share-video');
