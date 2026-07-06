@@ -208,7 +208,7 @@ def _generate_dummy_chunk(idx, duration, tmp_dir, process_input):
     frame_png_path = os.path.join(tmp_dir, f"dummy_frame_{idx}.png")
     
     subprocess.run([
-        "ffmpeg", "-y", "-ss", "0.1", "-i", process_input,
+        "ffmpeg", "-y", "-i", process_input, "-ss", "0.1",
         "-frames:v", "1", "-q:v", "2", frame_png_path
     ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     
@@ -242,14 +242,14 @@ def _generate_freeze_clip(idx, freeze_ts, duration, process_input, tmp_dir):
     extract_ts = 0.2 if freeze_ts == 0.0 else freeze_ts
     
     subprocess.run([
-        "ffmpeg", "-y", "-ss", str(extract_ts), "-i", process_input,
+        "ffmpeg", "-y", "-i", process_input, "-ss", str(extract_ts),
         "-frames:v", "1", "-q:v", "2", frame_png_path
     ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     
     if not os.path.exists(frame_png_path):
         fallback_ts = max(0.0, freeze_ts - 0.5)
         subprocess.run([
-            "ffmpeg", "-y", "-ss", str(fallback_ts), "-i", process_input,
+            "ffmpeg", "-y", "-i", process_input, "-ss", str(fallback_ts),
             "-frames:v", "1", "-q:v", "2", frame_png_path
         ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         
@@ -281,7 +281,7 @@ def compose_video_with_freeze_frames(input_webm: str, output_mp4: str, timeline_
         subprocess.run([
             "ffmpeg", "-y", "-i", input_webm,
             "-vf", f"fps={FPS}", "-c:v", "libx264", "-preset", "ultrafast",
-            "-g", "1", "-keyint_min", "1", "-crf", "28", "-pix_fmt", "yuv420p", "-an", cfr_mp4
+            "-g", "1", "-keyint_min", "1", "-crf", "20", "-pix_fmt", "yuv420p", "-an", cfr_mp4
         ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         process_input = cfr_mp4
     except Exception as e:
