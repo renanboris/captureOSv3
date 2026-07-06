@@ -727,4 +727,42 @@ document.addEventListener('DOMContentLoaded', async () => {
         chrome.runtime.sendMessage({ action: 'abort_processing' });
         window.close();
     });
+    // ═══════════════════════════════════════════
+    // DEV MODE (Local Server Toggle)
+    // ═══════════════════════════════════════════
+    let devClicks = 0;
+    let devClickTimer = null;
+    const cardDevServer = document.getElementById('card-dev-server');
+    const toggleDevServer = document.getElementById('toggle-dev-server');
+
+    chrome.storage.local.get(['devMode', 'backendUrl'], (res) => {
+        if (res.devMode) {
+            cardDevServer.classList.remove('hidden');
+        }
+        if (res.backendUrl === 'http://localhost:8000') {
+            toggleDevServer.checked = true;
+        }
+    });
+
+    headerDefault.addEventListener('click', () => {
+        devClicks++;
+        clearTimeout(devClickTimer);
+        devClickTimer = setTimeout(() => {
+            devClicks = 0;
+        }, 1500);
+
+        if (devClicks >= 5) {
+            devClicks = 0;
+            chrome.storage.local.set({ devMode: true });
+            cardDevServer.classList.remove('hidden');
+        }
+    });
+
+    toggleDevServer.addEventListener('change', (e) => {
+        if (e.target.checked) {
+            chrome.storage.local.set({ backendUrl: 'http://localhost:8000' });
+        } else {
+            chrome.storage.local.remove('backendUrl');
+        }
+    });
 });

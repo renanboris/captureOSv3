@@ -344,14 +344,31 @@ def compose_video_with_freeze_frames(input_webm: str, output_mp4: str, timeline_
         else:
             freeze_ts, duration = seg[1], seg[2]
             frame_path = os.path.join(tmp_dir, f"freeze_{idx}.png")
-            # Extrair o frame exato
+            # Se for o frame inicial (0.0), a gravação do navegador pode estar borrada 
+            # enquanto o bitrate estabiliza. Pegamos 0.2s à frente para garantir nitidez.
+            extract_ts = 0.2 if freeze_ts == 0.0 else freeze_ts
+
+            # Extrair o frame exato com precisão de tempo (-ss depois do -i) e qualidade máxima
             subprocess.run([
-                "ffmpeg", "-y", "-ss", str(freeze_ts), "-i", process_input,
-                "-frames:v", "1", frame_path
+                "ffmpeg", "-y", "-i", process_input, "-ss", str(extract_ts),
+                "-frames:v", "1", "-q:v", "2", frame_path
             ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             
+            # Se estourar o EOF (ex: vídeo ficou mais curto na conversão CFR)
             if not os.path.exists(frame_path):
-                subprocess.run(["ffmpeg", "-y", "-f", "lavfi", "-i", "color=c=black:s=1280x720", "-frames:v", "1", frame_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                fallback_ts = max(0.0, freeze_ts - 0.5)
+                subprocess.run([
+                    "ffmpeg", "-y", "-i", process_input, "-ss", str(fallback_ts),
+                    "-frames:v", "1", "-q:v", "2", frame_path
+                ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                
+            # Se ainda assim falhar, gera um frame preto herdando a resolução exata do vídeo (evita crash no concat)
+            if not os.path.exists(frame_path):
+                subprocess.run([
+                    "ffmpeg", "-y", "-i", process_input,
+                    "-vf", "trim=start_frame=0:end_frame=1,drawbox=x=0:y=0:w=iw:h=ih:color=black:t=fill",
+                    "-frames:v", "1", frame_path
+                ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 
             # Carregar como vídeo infinito limitado pelo tempo (-t antes do -i)
             inputs.extend(["-loop", "1", "-t", f"{duration:.4f}", "-i", frame_path])
@@ -402,11 +419,12 @@ def compose_video_with_freeze_frames(input_webm: str, output_mp4: str, timeline_
         if use_overlay:
             print(f"  Overlay: {os.path.basename(overlay_path)}")
 
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+        result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='ignore', timeout=600)
 
         if result.returncode != 0:
             logger.error(f"FFmpeg retornou código {result.returncode}")
-            logger.error(f"FFmpeg stderr: {result.stderr[-2000:]}")
+            stderr_text = result.stderr[-2000:] if result.stderr else "Nenhum erro detalhado disponível."
+            logger.error(f"FFmpeg stderr: {stderr_text}")
             print("[AVISO] FFmpeg filter_complex falhou. Tentando fallback MoviePy...")
             return _compose_legacy_moviepy(input_webm, output_mp4, timeline_events, overlay_path)
 

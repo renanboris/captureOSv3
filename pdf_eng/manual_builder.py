@@ -68,14 +68,15 @@ def _filter_step(passo: dict) -> bool:
     """
     Retorna True se o passo deve ser ignorado (sem conteúdo útil).
 
-    - Passos especiais (0 e 999): ignorados quando `ancora` é vazio/nulo.
+    - Passos especiais (0 e 999): ignorados quando `ancora` e `micro_narracao` são vazios/nulos.
     - Passos regulares: ignorados quando tanto `ancora` quanto `micro_narracao`
       estão vazios ou compostos apenas de espaços.
     """
     num = passo.get("passo", 0)
     if _is_special_step(passo):
         ancora = (passo.get("ancora") or "").strip()
-        return not ancora
+        micro = (passo.get("micro_narracao") or "").strip()
+        return not ancora and not micro
     else:
         ancora = (passo.get("ancora") or "").strip().replace("(vazio)", "").strip()
         micro = (passo.get("micro_narracao") or "").strip().replace("(vazio)", "").strip()
@@ -296,11 +297,17 @@ def _build_apostila_elements(
 
         if _is_special_step(passo):
             # Passo 0 (introdução) e passo 999 (conclusão):
-            # exibe apenas a âncora em largura total, sem label nem screenshot.
             ancora = (passo.get("ancora") or "").strip()
+            micro = (passo.get("micro_narracao") or "").strip()
+            
+            label_text = "Introdução" if num == 0 else "Conclusão"
+            elements.append(Paragraph(label_text, estilo_passo_num))
+            
             if ancora:
                 elements.append(Paragraph(ancora, estilo_ancora))
-                elements.append(Spacer(1, 0.3 * cm))
+            if micro:
+                elements.append(Paragraph(micro, estilo_narracao))
+            elements.append(Spacer(1, 0.3 * cm))
         else:
             # Passos regulares: label → âncora → narração → screenshot
             ancora = (passo.get("ancora") or "").strip()
