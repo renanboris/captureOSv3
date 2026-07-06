@@ -1277,13 +1277,14 @@
                         shareVideoBtn.textContent = "Vídeo Indisponível";
                     }
                 } else {
-                    shareSimlinkBtn.textContent = "Erro ao carregar";
-                    shareVideoBtn.textContent = "Erro ao carregar";
+                    console.error(`[CaptureOS] Fetch artifacts failed: ${res.status}`);
+                    shareSimlinkBtn.textContent = `Erro ${res.status}`;
+                    shareVideoBtn.textContent = `Erro ${res.status}`;
                 }
             } catch(e) {
                 console.error("Erro ao buscar artefatos:", e);
-                shareSimlinkBtn.textContent = "Erro ao carregar";
-                shareVideoBtn.textContent = "Erro ao carregar";
+                shareSimlinkBtn.textContent = "Erro Conexão";
+                shareVideoBtn.textContent = "Erro Conexão";
             }
         });
 

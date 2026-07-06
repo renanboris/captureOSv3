@@ -420,11 +420,12 @@ document.addEventListener('DOMContentLoaded', async () => {
                                     btnSimlink.innerText = 'Indisponível';
                                 }
                             } else {
-                                btnSimlink.innerText = 'Erro';
+                                console.error(`[CaptureOS] Fetch artifacts failed: ${res.status}`);
+                                btnSimlink.innerText = `Erro ${res.status}`;
                             }
                         } catch(err) {
                             console.error(err);
-                            btnSimlink.innerText = 'Erro';
+                            btnSimlink.innerText = 'Erro Conexão';
                         }
                         setTimeout(() => {
                             btnSimlink.innerHTML = origHtml;
@@ -458,11 +459,12 @@ document.addEventListener('DOMContentLoaded', async () => {
                                     btnVideo.innerText = 'Indisponível';
                                 }
                             } else {
-                                btnVideo.innerText = 'Erro';
+                                console.error(`[CaptureOS] Fetch artifacts failed: ${res.status}`);
+                                btnVideo.innerText = `Erro ${res.status}`;
                             }
                         } catch(err) {
                             console.error(err);
-                            btnVideo.innerText = 'Erro';
+                            btnVideo.innerText = 'Erro Conexão';
                         }
                         setTimeout(() => {
                             btnVideo.innerHTML = origHtml;
