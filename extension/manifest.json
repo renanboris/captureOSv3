@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Capture OS",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "description": "Gravação inteligente e criação de tutoriais na velocidade do pensamento.",
   "permissions": [
     "desktopCapture",
