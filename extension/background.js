@@ -110,7 +110,7 @@ function notifyEventPersistenceError(err) {
 // localhost URL from parts (so no production endpoint is ever hardcoded). This
 // fallback exists purely to ease local development and is never used once a
 // real `backendUrl` is configured.
-const DEV_FALLBACK_BACKEND_URL = "http://" + "localhost" + ":8000";
+const DEV_FALLBACK_BACKEND_URL = "https://" + "api.nomadelabs.com.br";
 
 // Resolve the backend endpoint from configurable chrome.storage at request time.
 async function getBackendUrl() {
