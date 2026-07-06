@@ -2,8 +2,9 @@ import os
 import logging
 import asyncio
 from video_eng.tts_generator import gerar_audio
-from video_eng.time_bender import compose_video_with_freeze_frames, DEFAULT_OVERLAY
+from video_eng.time_bender import compose_video_with_freeze_frames, DEFAULT_OVERLAY, _get_media_duration
 from api.status_manager import update_status
+from api.finops_telemetry import FinOpsTracker
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -129,6 +130,14 @@ async def rerenderizar_com_roteiro_aprovado(session_id: str, roteiro_aprovado: l
         overlay_path
     )
     
+    # --- CAPTURA DE DURAÇÃO PARA FINOPS ANTES DO UPLOAD ---
+    try:
+        if os.path.exists(final_mp4_path):
+            video_dur = _get_media_duration(final_mp4_path)
+            FinOpsTracker.set_video_duration(session_id, video_dur)
+    except Exception as e:
+        logger.error(f"Erro ao obter duração do vídeo para FinOps: {e}")
+    
     # Faz o upload para a nuvem (Supabase)
     update_status(session_id, "rendering_final", "☁️ Fazendo upload do vídeo para a nuvem...")
     from api.storage import upload_video
@@ -209,6 +218,14 @@ async def rerenderizar_com_roteiro_aprovado(session_id: str, roteiro_aprovado: l
             logger.error(f"Falha ao empacotar SCORM: {e}")
     except Exception as e:
         logger.error(f"Erro ao atualizar Simlink/SCORM no rerender: {e}")
+
+    # --- FECHAMENTO FINOPS ---
+    try:
+        finops_result = FinOpsTracker.finish_job(session_id, pipeline_type="rerender")
+        if finops_result:
+            logger.info(f"[{session_id}] FinOps Metric: Custo total estimado: ${finops_result.get('estimated_api_cost_usd', 0):.4f} | CpM: ${finops_result.get('api_cost_per_minute_usd', 0):.4f}")
+    except Exception as e:
+        logger.error(f"Erro ao finalizar FinOpsTracker: {e}")
 
     logger.info(f"Re-renderização Concluída! Veja: {final_mp4_path}")
     update_status(session_id, "completed", "Vídeo 100% Finalizado!")

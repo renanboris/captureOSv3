@@ -10,6 +10,7 @@ from api.status_manager import update_status
 from api.rag_engine import buscar_contexto_multi_namespace
 from config.prompt_loader import load_system_instruction
 from config.genai_client import get_genai_client
+from api.finops_telemetry import FinOpsTracker
 
 logger = logging.getLogger(__name__)
 
@@ -104,6 +105,14 @@ async def processar_intencao(image_bytes: bytes, event_data: dict, a11y_tree: li
             )
         )
         res_json = json.loads(response.text)
+        
+        if hasattr(response, "usage_metadata") and response.usage_metadata and session_id:
+            FinOpsTracker.add_tokens(
+                session_id, "gemini", 
+                response.usage_metadata.prompt_token_count, 
+                response.usage_metadata.candidates_token_count
+            )
+            
         if "intencao_detalhada" not in res_json:
             for k, v in res_json.items():
                 if isinstance(v, str) and k != "confidence":
@@ -137,6 +146,14 @@ async def processar_intencao(image_bytes: bytes, event_data: dict, a11y_tree: li
                         temperature=0.0,
                     )
                 res_json = json.loads(_strip_code_fences(completion.choices[0].message.content))
+                
+                if hasattr(completion, "usage") and completion.usage and session_id:
+                    FinOpsTracker.add_tokens(
+                        session_id, "openai", 
+                        completion.usage.prompt_tokens, 
+                        completion.usage.completion_tokens
+                    )
+                
                 if "intencao_detalhada" not in res_json:
                     for k, v in res_json.items():
                         if isinstance(v, str) and k != "confidence":
@@ -150,7 +167,7 @@ async def processar_intencao(image_bytes: bytes, event_data: dict, a11y_tree: li
         return {"intencao_detalhada": "Interagir com o sistema"}
 
 
-async def enriquecer_narrativa(roteiro_bruto: list, transcricao_instrutor: str = None, rag_namespace: str = "auto") -> list:
+async def enriquecer_narrativa(roteiro_bruto: list, transcricao_instrutor: str = None, rag_namespace: str = "auto", session_id: str = None) -> list:
     """
     Passo 2 (Enriquecimento Semântico):
     Olha o cenário completo de cliques e gera a âncora (Big Picture) e a micro narração (Instrução exata).
@@ -210,6 +227,13 @@ O instrutor explicou o processo com as próprias palavras acima. Use o raciocín
             )
         )
         roteiro_enriquecido_ai = _coerce_to_lista_passos(json.loads(response.text))
+        
+        if hasattr(response, "usage_metadata") and response.usage_metadata and session_id:
+            FinOpsTracker.add_tokens(
+                session_id, "gemini", 
+                response.usage_metadata.prompt_token_count, 
+                response.usage_metadata.candidates_token_count
+            )
 
         # Fazer o merge da resposta da IA de volta no roteiro_bruto para preservar a propriedade _simlink (hotspots de tela)
         roteiro_final = []
@@ -266,6 +290,13 @@ O instrutor explicou o processo com as próprias palavras acima. Use o raciocín
                         temperature=0.3
                     )
                 res_text = _strip_code_fences(completion.choices[0].message.content)
+                
+                if hasattr(completion, "usage") and completion.usage and session_id:
+                    FinOpsTracker.add_tokens(
+                        session_id, "openai", 
+                        completion.usage.prompt_tokens, 
+                        completion.usage.completion_tokens
+                    )
 
                 roteiro_enriquecido_ai = _coerce_to_lista_passos(json.loads(res_text))
 

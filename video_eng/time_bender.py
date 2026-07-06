@@ -155,47 +155,35 @@ def _build_filter_complex(segments: list, audio_delays: list, n_audio_inputs: in
     """
     Constrói o filter_complex do FFmpeg para composição em passada única.
     
-    Usa:
-    - trim + setpts para extrair segmentos de vídeo
-    - trim + tpad(clone) para criar freeze frames
-    - concat para juntar todos os segmentos
-    - scale(cover) + crop + pad + overlay para aplicar moldura (se overlay fornecido)
-    - adelay + amix para posicionar e mixar áudios TTS
-
-    Estratégia de moldura (cover por altura): o vídeo é escalado para COBRIR o
-    buraco preservando o aspecto, centralizado e recortado à dimensão exata do
-    buraco. Como o vídeo capturado é mais "largo", isso equivale a escalar pela
-    altura e deixar as laterais transbordarem — a moldura opaca por cima esconde
-    o excesso. Sem tarja preta e sem distorção.
+    Nova estratégia O(1) memória: Usa o filtro 'loop' para duplicar frames in-place 
+    no stream principal. Isso evita abrir o arquivo de vídeo dezenas de vezes e elimina 
+    totalmente a extração de PNGs, resolvendo o gargalo de performance e travamentos.
     """
     filter_chains = []
-    seg_labels = []
 
-    for idx, seg in enumerate(segments):
-        label = f"seg{idx}"
+    # 1. Processar a trilha de vídeo com loops para os freeze frames
+    video_filters = []
+    accumulated_delay_frames = 0
+    
+    for seg in segments:
+        if seg[0] == "freeze":
+            freeze_ts, duration = seg[1], seg[2]
+            # Evita frame inicial borrado
+            extract_ts = 0.2 if freeze_ts == 0.0 else freeze_ts
+            
+            original_frame_idx = round(extract_ts * FPS)
+            adjusted_frame_idx = original_frame_idx + accumulated_delay_frames
+            
+            loop_count = round(duration * FPS)
+            if loop_count > 0:
+                video_filters.append(f"loop=loop={loop_count}:size=1:start={adjusted_frame_idx}")
+                accumulated_delay_frames += loop_count
 
-        if seg[0] == "video":
-            start, end = seg[1], seg[2]
-            # Extrai segmento de vídeo normal com framerate constante
-            filter_chains.append(
-                f"[{idx}:v] trim=start={start:.4f}:end={end:.4f},"
-                f" setpts=PTS-STARTPTS, fps={FPS} [{label}]"
-            )
-        else:
-            # Freeze frame garantido via PNG estático
-            # O input [{idx}:v] já é um stream de vídeo do PNG em loop com a duração correta!
-            filter_chains.append(
-                f"[{idx}:v] setpts=PTS-STARTPTS, fps={FPS} [{label}]"
-            )
-
-        seg_labels.append(f"[{label}]")
-
-    # Concatenar todos os segmentos de vídeo
-    n_segs = len(seg_labels)
-    concat_input = "".join(seg_labels)
-    filter_chains.append(
-        f"{concat_input} concat=n={n_segs}:v=1:a=0 [vconcat]"
-    )
+    if video_filters:
+        loop_chain = ",".join(video_filters)
+        filter_chains.append(f"[0:v] {loop_chain}, setpts=N/FRAME_RATE/TB [vconcat]")
+    else:
+        filter_chains.append(f"[0:v] null [vconcat]")
 
     # Aplicar moldura (overlay) se configurado
     if overlay_input_idx is not None and overlay_hole is not None:
@@ -332,54 +320,18 @@ def compose_video_with_freeze_frames(input_webm: str, output_mp4: str, timeline_
         use_overlay = False
     overlay_input_idx = None
 
-    # Montar inputs FFmpeg: vídeo + todos os áudios + overlay (se houver)
-    inputs = []
-    import tempfile
-    import shutil
-    tmp_dir = tempfile.mkdtemp()
+    # Montar inputs FFmpeg: apenas UM input de vídeo + todos os áudios + overlay
+    inputs = ["-i", process_input]
     
-    for idx, seg in enumerate(segments):
-        if seg[0] == "video":
-            inputs.extend(["-i", process_input])
-        else:
-            freeze_ts, duration = seg[1], seg[2]
-            frame_path = os.path.join(tmp_dir, f"freeze_{idx}.png")
-            # Se for o frame inicial (0.0), a gravação do navegador pode estar borrada 
-            # enquanto o bitrate estabiliza. Pegamos 0.2s à frente para garantir nitidez.
-            extract_ts = 0.2 if freeze_ts == 0.0 else freeze_ts
-
-            # Extrair o frame exato com precisão de tempo (-ss depois do -i) e qualidade máxima
-            subprocess.run([
-                "ffmpeg", "-y", "-i", process_input, "-ss", str(extract_ts),
-                "-frames:v", "1", "-q:v", "2", frame_path
-            ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            
-            # Se estourar o EOF (ex: vídeo ficou mais curto na conversão CFR)
-            if not os.path.exists(frame_path):
-                fallback_ts = max(0.0, freeze_ts - 0.5)
-                subprocess.run([
-                    "ffmpeg", "-y", "-i", process_input, "-ss", str(fallback_ts),
-                    "-frames:v", "1", "-q:v", "2", frame_path
-                ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                
-            # Se ainda assim falhar, gera um frame preto herdando a resolução exata do vídeo (evita crash no concat)
-            if not os.path.exists(frame_path):
-                subprocess.run([
-                    "ffmpeg", "-y", "-i", process_input,
-                    "-vf", "trim=start_frame=0:end_frame=1,drawbox=x=0:y=0:w=iw:h=ih:color=black:t=fill",
-                    "-frames:v", "1", frame_path
-                ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                
-            # Carregar como vídeo infinito limitado pelo tempo (-t antes do -i)
-            inputs.extend(["-loop", "1", "-t", f"{duration:.4f}", "-i", frame_path])
-    
-    audio_start_idx = len(segments)
+    audio_start_idx = 1
     for event in valid_events:
         inputs.extend(["-i", event["audio_path"]])
 
     if use_overlay:
         inputs.extend(["-i", overlay_path])
-        overlay_input_idx = len(segments) + len(valid_events)
+        overlay_input_idx = 1 + len(valid_events)
+    else:
+        overlay_input_idx = None
 
     filter_complex = _build_filter_complex(segments, audio_delays, len(valid_events),
                                            audio_start_idx=audio_start_idx,
