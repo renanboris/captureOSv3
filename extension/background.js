@@ -865,7 +865,8 @@ async function injectContentScriptsToAllTabs() {
             if (tab.url.startsWith('chrome://') || 
                 tab.url.startsWith('chrome-extension://') || 
                 tab.url.startsWith('about:') || 
-                tab.url.startsWith('edge://')) {
+                tab.url.startsWith('edge://') ||
+                tab.url.includes('chromewebstore.google.com')) {
                 continue;
             }
 
@@ -893,7 +894,8 @@ async function ensureContentScriptActive(tabId) {
             tab.url.startsWith('chrome://') || 
             tab.url.startsWith('chrome-extension://') || 
             tab.url.startsWith('about:') ||
-            tab.url.startsWith('edge://')) {
+            tab.url.startsWith('edge://') ||
+            tab.url.includes('chromewebstore.google.com')) {
             console.log(`[CaptureOS] Tab ${tabId} is not eligible for script injection.`);
             return false;
         }
