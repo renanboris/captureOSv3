@@ -452,15 +452,19 @@
                 showToast("processing", msg.msg);
             }
         } else if (msg.action === "show_player_modal") {
-            let toast = document.getElementById("capture-os-toast");
-            if(toast) toast.remove();
+            const toastEl = document.getElementById("capture-os-toast");
+            if (toastEl) {
+                toastEl.style.opacity = "0";
+                toastEl.style.transform = "translateX(-50%) translateY(-30px) scale(0.95)";
+                setTimeout(() => toastEl.remove(), 400);
+            }
             
             mountPlayerModal(msg.url, msg.roteiro, msg.backendUrl);
         } else if (msg.action === "show_error_toast") {
             showToast("error");
         } else if (msg.action === "show_editor_modal") {
-            let toast = document.getElementById("capture-os-toast");
-            if(toast) toast.remove();
+            const toastOverlay = document.getElementById("capture-os-toast");
+            if(toastOverlay) toastOverlay.remove();
             
             mountEditorModal(msg.backendUrl, msg.session_id);
         } else if (msg.action === "show_prep_toast") {

@@ -280,7 +280,7 @@ async def _renderizar_exportacao_impl(payload: dict, session_id: str):
             titulo_inteligente = await gerar_titulo_inteligente(roteiro_enriquecido, rag_namespace)
         except Exception as e:
             logger.error(f"Erro ao gerar titulo inteligente: {e}")
-            titulo_inteligente = f"[{rag_namespace.upper()}]_Tutorial" if rag_namespace != "auto" else "Tutorial"
+            titulo_inteligente = f"[{rag_namespace.upper()}] Tutorial" if rag_namespace != "auto" else "Tutorial"
 
     try:
         os.makedirs("data/roteiros", exist_ok=True)

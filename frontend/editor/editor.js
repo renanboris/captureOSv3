@@ -61,7 +61,11 @@ async function carregarRoteiro() {
         const response = await authFetch(`/api/v1/session/${sessionId}/roteiro`);
         if (!response.ok) throw new Error('Falha ao buscar roteiro');
         const data = await response.json();
-        roteiroAtual = data.roteiro;
+        roteiroAtual = data.roteiro.filter(p => {
+            const ancora = (p.ancora || '').toLowerCase().replace(/\(vazio\)/g, '').trim();
+            const micro = (p.micro_narracao || '').toLowerCase().replace(/\(vazio\)/g, '').trim();
+            return ancora.length > 0 || micro.length > 0;
+        });
         const tituloInput = document.getElementById('treinamento-titulo');
         if (tituloInput) {
             tituloInput.value = data.titulo || ("Tutorial — Sessão " + sessionId.slice(-8));

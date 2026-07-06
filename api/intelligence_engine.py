@@ -370,21 +370,21 @@ async def gerar_titulo_inteligente(roteiro: list, namespace: str = "auto") -> st
     try:
         client = get_genai_client()
     except RuntimeError:
-        return "Tutorial_Sem_Titulo"
+        return "Tutorial Sem Título"
         
     acoes = " ".join([p.get('intencao_original', '') for p in roteiro[:4]])
     if not acoes.strip():
-        return "Tutorial_Gravado"
+        return "Tutorial Gravado"
         
     prompt = f"""
-Crie um nome de arquivo (slug) extremamente conciso e descritivo para um tutorial passo a passo baseado nas seguintes ações gravadas pelo usuário.
+Crie um título conciso e descritivo para um tutorial passo a passo baseado nas seguintes ações gravadas pelo usuário.
 Ações: {acoes}
 
 Regras:
 1. Comece com um verbo de ação se possível (ex: Cadastrar, Configurar).
-2. Sem acentos, sem caracteres especiais, e use Underscore no lugar de espaços.
-3. Máximo de 4 ou 5 palavras (ex: Cadastrar_Novo_Colaborador).
-4. Retorne APENAS o slug gerado, sem mais nada.
+2. Não use acentos nem pontuação. Use espaços normais entre as palavras. PROIBIDO usar underscore (_).
+3. Máximo de 4 ou 5 palavras (ex: Cadastrar Novo Colaborador).
+4. Retorne APENAS o título gerado, sem mais nada.
 """
     try:
         response = await client.aio.models.generate_content(
@@ -392,16 +392,16 @@ Regras:
             contents=prompt,
             config=genai_types.GenerateContentConfig(temperature=0.2)
         )
-        slug = response.text.strip().replace(" ", "_")
+        title = response.text.strip()
         
-        # Limpar caracteres não permitidos
+        # Limpar caracteres não permitidos, mantendo espaços
         import re
-        slug = re.sub(r'[^A-Za-z0-9_]', '', slug)
+        title = re.sub(r'[^A-Za-z0-9 ]', '', title).strip()
         
         if namespace and namespace != "auto":
-            slug = f"[{namespace.upper()}]_{slug}"
+            title = f"[{namespace.upper()}] {title}"
             
-        return slug
+        return title
     except Exception as e:
         logger.error(f"Erro ao gerar titulo inteligente: {e}")
-        return "Tutorial_Gerado"
+        return "Tutorial Gerado"
