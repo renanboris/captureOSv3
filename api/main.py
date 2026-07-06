@@ -511,9 +511,9 @@ async def tts_preview(payload: TTSPreviewPayload):
     return {"audio_url": url}
 
 @app.get("/api/v1/session/{session_id}/artifacts", dependencies=_auth_deps)
-async def get_artifacts(session_id: str):
+async def get_artifacts(session_id: str, request: Request):
     """Retorna URLs de todos os artefatos gerados para uma sessão."""
-    base = settings.backend_url
+    base = str(request.base_url).rstrip("/")
     art_dir = f"data/artifacts/{session_id}"
     sim_dir = f"data/simlink"
 
@@ -811,7 +811,7 @@ async def registrar_conclusao_simlink(modulo_id: str, payload: dict):
     return {"status": "ok"}
 
 @app.post("/api/v1/session/{session_id}/simlink/configure", dependencies=_auth_deps)
-async def configurar_simlink(session_id: str, payload: dict):
+async def configurar_simlink(session_id: str, payload: dict, request: Request):
     filepath = f"data/simlink/{session_id}.json"
     if not os.path.exists(filepath):
         raise HTTPException(status_code=404, detail="Módulo Simlink não gerado ainda")
@@ -827,7 +827,8 @@ async def configurar_simlink(session_id: str, payload: dict):
     with open(filepath, "w", encoding="utf-8") as f:
         json.dump(mod, f, ensure_ascii=False, indent=2)
         
-    return {"simlink_url": f"{settings.backend_url}/simlink?modulo={mod['modulo_id']}"}
+    base = str(request.base_url).rstrip("/")
+    return {"simlink_url": f"{base}/simlink?modulo={mod['modulo_id']}"}
 
 @app.post("/api/v1/ratings")
 async def submit_rating(payload: RatingPayload, request: Request):
