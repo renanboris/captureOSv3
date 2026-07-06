@@ -550,7 +550,7 @@ async def get_artifacts(session_id: str):
 
     return {
         "session_id": session_id,
-        "video_url":       url_if_exists(f"data/videos_gerados/{session_id}_final.mp4", _get_video_url()),
+        "video_url":       _get_video_url() if (os.path.exists(f"data/videos_gerados/{session_id}_final.mp4") or (settings.supabase_url and settings.supabase_key)) else None,
         "pdf_url":         url_if_exists(f"{art_dir}/apostila.pdf",
                                          f"{base}/artifacts/{session_id}/apostila.pdf"),
         "transcript_url":  url_if_exists(f"{art_dir}/transcricao.txt",
@@ -562,7 +562,7 @@ async def get_artifacts(session_id: str):
         "status":          get_status(session_id).get("status", "unknown")
     }
 
-@app.get("/api/v1/simlink/{modulo_id}", dependencies=_auth_deps)
+@app.get("/api/v1/simlink/{modulo_id}")
 async def get_simlink_modulo(modulo_id: str):
     # Procura pelo módulo — offloaded to a thread so the event loop is not blocked
     import glob
@@ -776,7 +776,7 @@ async def listar_modulos(dominio: str = "", limit: int = 0, offset: int = 0):
 
     return {"modulos": modulos, "total": total, "count": len(modulos), "offset": offset, "limit": limit}
 
-@app.post("/api/v1/simlink/{modulo_id}/conclusao", dependencies=_auth_deps)
+@app.post("/api/v1/simlink/{modulo_id}/conclusao")
 async def registrar_conclusao_simlink(modulo_id: str, payload: dict):
     # Busca módulo e dispara callback LMS se necessário — offloaded so the event loop is not blocked
     import glob
