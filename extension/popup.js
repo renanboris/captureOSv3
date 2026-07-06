@@ -589,7 +589,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     // Check if processing
-    chrome.storage.local.get(['isProcessing', 'ragNamespace', 'backendUrl', 'authToken'], (res) => {
+    chrome.storage.local.get(['isProcessing', 'ragNamespace', 'backendUrl', 'authToken', 'ragContext'], (res) => {
         if (res.isProcessing) {
             enterProcessingState();
         } else {
@@ -598,6 +598,22 @@ document.addEventListener('DOMContentLoaded', async () => {
         
         if (res.ragNamespace && selectRagNamespace) {
             selectRagNamespace.value = res.ragNamespace;
+        }
+
+        // Recover RAG Context upload state if present
+        const btnClearRag = document.getElementById('btn-clear-rag');
+        if (res.ragContext && res.ragContext.filename) {
+            if (ragFileName) {
+                ragFileName.textContent = res.ragContext.filename;
+                ragFileName.style.display = 'block';
+            }
+            if (btnClearRag) btnClearRag.style.display = 'inline-flex';
+            if (btnUploadRag) btnUploadRag.style.display = 'none';
+            if (ragUploadStatus) {
+                ragUploadStatus.textContent = 'Contexto anexado!';
+                ragUploadStatus.style.display = 'block';
+                ragUploadStatus.style.color = '#34C759';
+            }
         }
         
         // Fetch dynamic namespaces from Pinecone.
@@ -634,6 +650,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const ragFileName = document.getElementById('rag-file-name');
     const ragUploadStatus = document.getElementById('rag-upload-status');
     const selectRagNamespace = document.getElementById('rag-namespace');
+    const btnClearRag = document.getElementById('btn-clear-rag');
 
     if (btnUploadRag && inputRagFile) {
         btnUploadRag.addEventListener('click', () => {
@@ -646,9 +663,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             ragFileName.textContent = file.name;
             ragFileName.style.display = 'block';
+            if (btnClearRag) btnClearRag.style.display = 'inline-flex';
             btnUploadRag.style.display = 'none';
             ragUploadStatus.style.display = 'block';
             ragUploadStatus.textContent = 'Vetorizando arquivo...';
+            ragUploadStatus.style.color = '#00998F';
             
             // Disable start recording
             btnStart.disabled = true;
@@ -663,9 +682,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 });
 
                 const namespace = selectRagNamespace.value;
-                const { backendUrl, authToken } = await chrome.storage.local.get(['backendUrl', 'authToken']);
-                
-                if (!backendUrl) throw new Error("Servidor não configurado");
+                const { backendUrl: storedBackendUrl, authToken } = await chrome.storage.local.get(['backendUrl', 'authToken']);
+                const backendUrl = storedBackendUrl || "https://api.nomadelabs.com.br";
 
                 const res = await fetch(`${backendUrl}/api/v1/rag/upload_context`, {
                     method: 'POST',
@@ -703,6 +721,19 @@ document.addEventListener('DOMContentLoaded', async () => {
         selectRagNamespace.addEventListener('change', () => {
             chrome.storage.local.set({ ragNamespace: selectRagNamespace.value });
         });
+
+        if (btnClearRag) {
+            btnClearRag.addEventListener('click', () => {
+                inputRagFile.value = '';
+                ragFileName.textContent = '';
+                ragFileName.style.display = 'none';
+                btnClearRag.style.display = 'none';
+                btnUploadRag.style.display = 'block';
+                ragUploadStatus.style.display = 'none';
+                ragUploadStatus.textContent = '';
+                chrome.storage.local.remove('ragContext');
+            });
+        }
     }
 
     // ═══════════════════════════════════════════

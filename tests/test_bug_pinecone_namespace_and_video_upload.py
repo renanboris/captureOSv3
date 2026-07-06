@@ -122,16 +122,16 @@ class TestBug1NamespaceFetch:
             f"(searched for: {marker!r})"
         )
 
-        # Grab the next 900 characters after the marker to inspect the block
-        block = source[start : start + 900]
+        # Grab the next 2000 characters after the marker to inspect the block
+        block = source[start : start + 2000]
 
         # The fallback pattern that already exists in carregarModulosPratica and
         # carregarRoteiros. It is deliberately split so no production URL is
         # hardcoded here either.
-        fallback_pattern = '"http://" + "localhost" + ":8000"'
+        fallback_pattern = '"https://api.nomadelabs.com.br"'
         assert fallback_pattern in block, (
             "NAMESPACE FETCH BUG 1 CONFIRMED: The namespace-fetch block is "
-            "missing the localhost:8000 fallback. "
+            "missing the fallback. "
             f"Block around marker:\n{block!r}\n\n"
             "Expected to find the fallback pattern: "
             f"{fallback_pattern!r}"

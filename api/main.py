@@ -282,16 +282,23 @@ async def upload_context(payload: UploadContextPayload):
     from api.rag_engine import ingerir_documento_para_namespace
     from fastapi.concurrency import run_in_threadpool
     
-    if payload.namespace == "auto":
+    if payload.namespace == "auto" or not payload.namespace.strip():
         payload.namespace = "geral"
         
-    sucesso = await run_in_threadpool(
+    resultado = await run_in_threadpool(
         ingerir_documento_para_namespace,
         payload.file_data, payload.filename, payload.namespace
     )
-    if not sucesso:
-        raise HTTPException(status_code=500, detail="Falha ao vetorizar documento")
-    return {"status": "ok", "message": "Contexto vetorizado com sucesso"}
+    if not resultado.get("success"):
+        error_msg = resultado.get("error") or "Falha ao vetorizar documento"
+        raise HTTPException(status_code=500, detail=error_msg)
+        
+    return {
+        "status": "ok", 
+        "message": "Contexto vetorizado com sucesso",
+        "namespace": resultado.get("namespace"),
+        "chunks": resultado.get("chunks")
+    }
 
 @app.post("/api/v1/capture/ingest", dependencies=_auth_deps)
 async def ingest_capture(
