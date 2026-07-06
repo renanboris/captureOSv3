@@ -401,7 +401,7 @@ async def check_status(session_id: str):
         # Só usa URL do Supabase se o arquivo local NÃO existir (significa que o upload foi bem-sucedido
         # e o arquivo local foi removido, ou que estamos em modo cloud-only).
         # Se o arquivo local existe, serve direto do backend para evitar links quebrados.
-        if settings.supabase_url and settings.supabase_key and not os.path.exists(local_path):
+        if settings.supabase_url and settings.supabase_key:
             return f"{settings.supabase_url}/storage/v1/object/public/videos/{session_id}_final.mp4"
         return local_url
 
@@ -523,7 +523,7 @@ async def get_artifacts(session_id: str):
     def _get_video_url() -> str:
         local_path = f"data/videos_gerados/{session_id}_final.mp4"
         local_url = f"{settings.backend_url}/videos_gerados/{session_id}_final.mp4"
-        if settings.supabase_url and settings.supabase_key and not os.path.exists(local_path):
+        if settings.supabase_url and settings.supabase_key:
             return f"{settings.supabase_url}/storage/v1/object/public/videos/{session_id}_final.mp4"
         return local_url
 
