@@ -383,7 +383,7 @@ def compose_video_with_freeze_frames(input_webm: str, output_mp4: str, timeline_
         cmd.extend([
             "-c:v", "libx264",
             "-preset", "fast",
-            "-crf", "23",
+            "-crf", "18",
             "-c:a", "aac",
             "-b:a", "128k",
             "-pix_fmt", "yuv420p",
@@ -441,7 +441,7 @@ def _simple_convert(input_webm: str, output_mp4: str) -> bool:
         subprocess.run([
             "ffmpeg", "-y", "-i", input_webm,
             "-r", str(FPS), "-c:v", "libx264", "-preset", "fast",
-            "-crf", "23", "-c:a", "aac", "-b:a", "128k",
+            "-crf", "18", "-c:a", "aac", "-b:a", "128k",
             "-pix_fmt", "yuv420p", "-movflags", "+faststart",
             output_mp4
         ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -474,7 +474,7 @@ def _compose_legacy_moviepy(input_webm: str, output_mp4: str, timeline_events: l
         subprocess.run([
             "ffmpeg", "-y", "-i", input_webm,
             "-r", "30", "-c:v", "libx264", "-preset", "ultrafast",
-            "-crf", "28", cfr_mp4
+            "-crf", "20", cfr_mp4
         ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         input_file = cfr_mp4
     except Exception as e:

@@ -45,7 +45,12 @@ async function startRecording(useMic) {
     try {
         const displayStream = await navigator.mediaDevices.getDisplayMedia({
             audio: false,
-            video: { displaySurface: "browser" }
+            video: {
+                displaySurface: "browser",
+                width: { ideal: 1920 },
+                height: { ideal: 1080 },
+                frameRate: { ideal: 30 }
+            }
         });
 
         videoElement.srcObject = displayStream;
@@ -68,7 +73,11 @@ async function startRecording(useMic) {
             }
         }
 
-        mediaRecorder = new MediaRecorder(displayStream, { mimeType: 'video/webm' });
+        let options = { mimeType: 'video/webm;codecs=vp9', videoBitsPerSecond: 8000000 };
+        if (typeof MediaRecorder.isTypeSupported === 'function' && !MediaRecorder.isTypeSupported(options.mimeType)) {
+            options = { mimeType: 'video/webm', videoBitsPerSecond: 8000000 };
+        }
+        mediaRecorder = new MediaRecorder(displayStream, options);
 
         mediaRecorder.ondataavailable = (event) => {
             if (event.data.size > 0) recordedChunks.push(event.data);
