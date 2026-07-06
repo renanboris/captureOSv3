@@ -6,6 +6,7 @@ from video_eng.tts_generator import gerar_audio
 from video_eng.time_bender import compose_video_with_freeze_frames
 from api.intelligence_engine import processar_intencao, enriquecer_narrativa, gerar_titulo_inteligente
 from api.status_manager import update_status
+from api.finops_telemetry import FinOpsTracker
 import json
 
 logger = logging.getLogger(__name__)
@@ -118,6 +119,7 @@ async def renderizar_exportacao(payload: dict):
 
 async def _renderizar_exportacao_impl(payload: dict, session_id: str):
     start_time_ms = payload.get("recording_start_time", 0)
+    FinOpsTracker.start_job(session_id)
     
     # 1. Salva o vídeo WebM Cru
     # Task 14.4: accept raw bytes from the binary upload (payload["video_bytes"])
@@ -269,7 +271,7 @@ async def _renderizar_exportacao_impl(payload: dict, session_id: str):
         update_status(session_id, "processing", "✍️ Assistente montando o roteiro do seu tutorial...")
         rag_namespace = payload.get("rag_namespace", "auto")
         try:
-            roteiro_enriquecido = await enriquecer_narrativa(roteiro, transcricao_instrutor, rag_namespace)
+            roteiro_enriquecido = await enriquecer_narrativa(roteiro, transcricao_instrutor, rag_namespace, session_id=session_id)
         except Exception as e:
             logger.error(f"Erro no enriquecimento da narrativa: {e}")
             roteiro_enriquecido = roteiro

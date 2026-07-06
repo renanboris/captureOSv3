@@ -4,6 +4,9 @@ import subprocess
 import json
 import shutil
 import static_ffmpeg
+import concurrent.futures
+import tempfile
+import uuid
 
 # Injeta o binário do FFmpeg
 static_ffmpeg.add_paths()
@@ -83,13 +86,6 @@ def _calculate_segments(timeline_events: list, video_duration: float) -> tuple:
     """
     Calcula os segmentos de vídeo e freeze frames.
     Single shared timing rule for both FFmpeg and MoviePy paths.
-    
-    segments: lista de tuplas:
-        ("video", start, end) — segmento de vídeo normal
-        ("freeze", freeze_t, duration) — frame congelado
-    
-    audio_delays: lista de tuplas:
-        (audio_path, delay_seconds, audio_duration) — posição do áudio na timeline final
     """
     segments = []
     audio_delays = []
@@ -104,12 +100,12 @@ def _calculate_segments(timeline_events: list, video_duration: float) -> tuple:
         if event.get('is_loading', False):
             # Property 1: keep the recording running; no freeze for loading events.
             run_end = min(current_time + dur, video_duration)
-            if run_end > current_time:
+            if run_end > current_time + 0.001:
                 segments.append(("video", current_time, run_end))
             # If the recording ends before the narration, hold the last frame
             # so the narration is fully covered and the timeline stays consistent.
             remainder = dur - (run_end - current_time)
-            if remainder > 0:
+            if remainder > 0.001:
                 hold_t = max(0, video_duration - 0.1)
                 segments.append(("freeze", hold_t, remainder))
             # Audio positioned over the running segment
@@ -118,11 +114,10 @@ def _calculate_segments(timeline_events: list, video_duration: float) -> tuple:
             current_time = run_end
         else:
             # Property 2: freeze on the click frame (cursor on correct target).
-            # clamp(ts, lower=current_time, upper=video_duration - 0.1)
             freeze_ts = max(current_time, min(ts, video_duration - 0.1))
 
             # 1. Segmento de vídeo normal até o momento do congelamento
-            if freeze_ts > current_time:
+            if freeze_ts > current_time + 0.001:
                 end_ts = min(freeze_ts, video_duration)
                 segments.append(("video", current_time, end_ts))
                 shifted_time += (end_ts - current_time)
@@ -137,7 +132,7 @@ def _calculate_segments(timeline_events: list, video_duration: float) -> tuple:
             current_time = freeze_ts
 
     # 4. Restante do vídeo após o último evento
-    if current_time < video_duration:
+    if current_time < video_duration - 0.001:
         segments.append(("video", current_time, video_duration))
 
     # 5. Freeze frame final de 3.5 segundos
@@ -148,64 +143,28 @@ def _calculate_segments(timeline_events: list, video_duration: float) -> tuple:
     return segments, audio_delays
 
 
-def _build_filter_complex(segments: list, audio_delays: list, n_audio_inputs: int,
+
+
+
+def _build_filter_complex(audio_delays: list, n_audio_inputs: int,
+                          n_video_segments: int,
                           audio_start_idx: int,
                           overlay_input_idx: int | None = None,
                           overlay_hole: tuple | None = None) -> str:
-    """
-    Constrói o filter_complex do FFmpeg para composição em passada única.
-    
-    Usa:
-    - trim + setpts para extrair segmentos de vídeo
-    - trim + tpad(clone) para criar freeze frames
-    - concat para juntar todos os segmentos
-    - scale(cover) + crop + pad + overlay para aplicar moldura (se overlay fornecido)
-    - adelay + amix para posicionar e mixar áudios TTS
-
-    Estratégia de moldura (cover por altura): o vídeo é escalado para COBRIR o
-    buraco preservando o aspecto, centralizado e recortado à dimensão exata do
-    buraco. Como o vídeo capturado é mais "largo", isso equivale a escalar pela
-    altura e deixar as laterais transbordarem — a moldura opaca por cima esconde
-    o excesso. Sem tarja preta e sem distorção.
-    """
     filter_chains = []
-    seg_labels = []
 
-    for idx, seg in enumerate(segments):
-        label = f"seg{idx}"
-
-        if seg[0] == "video":
-            start, end = seg[1], seg[2]
-            # Extrai segmento de vídeo normal com framerate constante
-            filter_chains.append(
-                f"[{idx}:v] trim=start={start:.4f}:end={end:.4f},"
-                f" setpts=PTS-STARTPTS, fps={FPS} [{label}]"
-            )
-        else:
-            # Freeze frame garantido via PNG estático
-            # O input [{idx}:v] já é um stream de vídeo do PNG em loop com a duração correta!
-            filter_chains.append(
-                f"[{idx}:v] setpts=PTS-STARTPTS, fps={FPS} [{label}]"
-            )
-
-        seg_labels.append(f"[{label}]")
-
-    # Concatenar todos os segmentos de vídeo
-    n_segs = len(seg_labels)
-    concat_input = "".join(seg_labels)
+    # 1. Concatenar todos os chunks de video físicos
+    concat_inputs = "".join([f"[{i}:v]" for i in range(n_video_segments)])
     filter_chains.append(
-        f"{concat_input} concat=n={n_segs}:v=1:a=0 [vconcat]"
+        f"{concat_inputs}concat=n={n_video_segments}:v=1:a=0[vcat]"
     )
 
-    # Aplicar moldura (overlay) se configurado
+    # 2. Aplicar moldura (overlay) se configurado
     if overlay_input_idx is not None and overlay_hole is not None:
         hx, hy, hw, hh, cw, ch = overlay_hole
-        # 1. Escalar o vídeo pela altura do buraco (preserva aspecto)
         filter_chains.append(
-            f"[vconcat] scale=-2:{hh},setsar=1,setpts=PTS-STARTPTS [vscaled]"
+            f"[vcat] scale=-2:{hh},setsar=1,setpts=N/({FPS}*TB) [vscaled]"
         )
-        # 2. Moldura como BASE, vídeo posicionado POR CIMA centralizado no buraco
-        #    x = hx + (hw - video_w) / 2  →  usa expressão nativa do FFmpeg
         filter_chains.append(
             f"[{overlay_input_idx}:v] format=rgba [ovr]"
         )
@@ -213,29 +172,24 @@ def _build_filter_complex(segments: list, audio_delays: list, n_audio_inputs: in
             f"[ovr][vscaled] overlay={hx}+(({hw}-overlay_w)/2):{hy}:format=auto [vout]"
         )
     else:
-        # Sem overlay — renomeia vconcat para vout
         filter_chains.append(
-            f"[vconcat] null [vout]"
+            f"[vcat] setpts=N/({FPS}*TB) [vout]"
         )
 
-    # Processar áudios TTS (posicionar cada um no timestamp correto)
+    # 3. Processar áudios TTS
+    audio_labels = []
     if audio_delays:
-        audio_labels = []
-        for idx, (audio_path, delay_sec, audio_dur) in enumerate(audio_delays):
-            audio_input_idx = audio_start_idx + idx
-            delay_ms = int(delay_sec * 1000)
-            label = f"a{idx}"
-            # adelay posiciona o áudio no momento correto da timeline final
+        for i, (path, shift, dur) in enumerate(audio_delays):
+            idx = audio_start_idx + i
+            delay_ms = int(shift * 1000)
             filter_chains.append(
-                f"[{audio_input_idx}:a] adelay={delay_ms}|{delay_ms} [{label}]"
+                f"[{idx}:a] adelay={delay_ms}|{delay_ms} [a{i}]"
             )
-            audio_labels.append(f"[{label}]")
+            audio_labels.append(f"[a{i}]")
 
-        # Mixar todos os áudios (sem normalização para preservar volume)
         n_audio = len(audio_labels)
         audio_input_str = "".join(audio_labels)
         if n_audio == 1:
-            # Com apenas 1 áudio, amix não é necessário — renomeia para [aout]
             filter_chains.append(
                 f"{audio_input_str} anull [aout]"
             )
@@ -247,61 +201,102 @@ def _build_filter_complex(segments: list, audio_delays: list, n_audio_inputs: in
     return ";\n".join(filter_chains)
 
 
+
+
+def _generate_dummy_chunk(idx, duration, tmp_dir, process_input):
+    chunk_path = os.path.join(tmp_dir, f"seg_{idx}_dummy.mp4").replace('\\', '/')
+    frame_png_path = os.path.join(tmp_dir, f"dummy_frame_{idx}.png")
+    
+    subprocess.run([
+        "ffmpeg", "-y", "-ss", "0.1", "-i", process_input,
+        "-frames:v", "1", "-q:v", "2", frame_png_path
+    ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    
+    if not os.path.exists(frame_png_path):
+        subprocess.run([
+            "ffmpeg", "-y", "-f", "lavfi", "-i", f"color=c=black:s=1920x1080:r={FPS}",
+            "-t", str(duration), "-c:v", "libx264", "-preset", "ultrafast",
+            "-g", "1", "-keyint_min", "1", "-crf", "18", "-pix_fmt", "yuv420p", "-an", chunk_path
+        ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return chunk_path
+        
+    subprocess.run([
+        "ffmpeg", "-y", "-loop", "1", "-framerate", str(FPS), "-i", frame_png_path,
+        "-t", str(duration), "-c:v", "libx264", "-preset", "ultrafast",
+        "-g", "1", "-keyint_min", "1", "-crf", "18", "-pix_fmt", "yuv420p", "-an", chunk_path
+    ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    return chunk_path
+
+def _generate_video_chunk(idx, start, end, process_input, tmp_dir):
+    chunk_path = os.path.join(tmp_dir, f"seg_{idx}.mp4").replace('\\', '/')
+    subprocess.run([
+        "ffmpeg", "-y", "-ss", str(start), "-to", str(end),
+        "-i", process_input, "-c", "copy", chunk_path
+    ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    return idx, chunk_path
+
+def _generate_freeze_clip(idx, freeze_ts, duration, process_input, tmp_dir):
+    chunk_path = os.path.join(tmp_dir, f"seg_{idx}.mp4").replace('\\', '/')
+    frame_png_path = os.path.join(tmp_dir, f"frame_{idx}.png")
+    
+    extract_ts = 0.2 if freeze_ts == 0.0 else freeze_ts
+    
+    subprocess.run([
+        "ffmpeg", "-y", "-ss", str(extract_ts), "-i", process_input,
+        "-frames:v", "1", "-q:v", "2", frame_png_path
+    ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    
+    if not os.path.exists(frame_png_path):
+        fallback_ts = max(0.0, freeze_ts - 0.5)
+        subprocess.run([
+            "ffmpeg", "-y", "-ss", str(fallback_ts), "-i", process_input,
+            "-frames:v", "1", "-q:v", "2", frame_png_path
+        ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        
+    subprocess.run([
+        "ffmpeg", "-y", "-loop", "1", "-framerate", str(FPS), "-i", frame_png_path,
+        "-t", str(duration), "-c:v", "libx264", "-preset", "ultrafast",
+        "-g", "1", "-keyint_min", "1", "-crf", "18", "-pix_fmt", "yuv420p", "-an", chunk_path
+    ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    
+    return idx, chunk_path
+
+
+
+
+
+
 def compose_video_with_freeze_frames(input_webm: str, output_mp4: str, timeline_events: list,
                                      overlay_path: str | None = DEFAULT_OVERLAY):
-    """
-    Compõe vídeo final com freeze frames e narração TTS.
-    
-    Pipeline otimizada: FFmpeg puro com filter_complex (passada única).
-    Fallback: MoviePy (código legado) se o FFmpeg falhar.
-    
-    Args:
-        input_webm: Caminho do vídeo de entrada (.webm)
-        output_mp4: Caminho do vídeo de saída (.mp4)
-        timeline_events: Lista de eventos com timestamp e audio_path
-        overlay_path: Caminho do PNG da moldura (None para desativar)
-    
-    timeline_events = [
-        {"timestamp": 2.5, "audio_path": "audios/passo_1.mp3"},
-        {"timestamp": 5.0, "audio_path": "audios/passo_2.mp3"}
-    ]
-    """
     if not os.path.exists(input_webm):
         logger.error("Vídeo de entrada não encontrado.")
         return False
 
-    # Sem eventos: apenas converte formato
     if not timeline_events:
         return _simple_convert(input_webm, output_mp4)
 
-    # Passo 1: Converter WebM VFR bruto para CFR antes de fatiar
-    # Como o Chrome produz WebMs com framerate absurdamente variável (frames só quando a tela muda),
-    # o filtro 'trim' do FFmpeg falha e o vídeo corre solto. Precisamos preencher os quadros primeiro.
     cfr_mp4 = input_webm.replace(".webm", "_cfr.mp4")
     try:
-        print("Pré-convertendo WebM VFR para CFR para garantir cortes precisos no FFmpeg...")
+        print("Pré-convertendo WebM VFR para CFR silencioso...")
         subprocess.run([
             "ffmpeg", "-y", "-i", input_webm,
             "-vf", f"fps={FPS}", "-c:v", "libx264", "-preset", "ultrafast",
-            "-crf", "28", cfr_mp4
+            "-g", "1", "-keyint_min", "1", "-crf", "28", "-pix_fmt", "yuv420p", "-an", cfr_mp4
         ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         process_input = cfr_mp4
     except Exception as e:
         logger.error(f"Falha na conversão inicial para CFR: {e}")
         process_input = input_webm
 
-    # Obter duração do vídeo
     video_duration = _get_media_duration(process_input)
     if video_duration <= 0:
         logger.error("Não foi possível determinar a duração do vídeo.")
         return False
 
-    # Validar e obter duração de cada áudio
     valid_events = []
     for event in timeline_events:
         audio_path = event['audio_path']
         if not os.path.exists(audio_path):
-            logger.warning(f"Áudio não encontrado: {audio_path}")
             continue
         dur = _get_media_duration(audio_path)
         if dur > 0:
@@ -313,125 +308,105 @@ def compose_video_with_freeze_frames(input_webm: str, output_mp4: str, timeline_
             })
 
     if not valid_events:
-        logger.warning("Nenhum áudio válido encontrado. Convertendo sem narração.")
         return _simple_convert(input_webm, output_mp4)
 
-    # Calcular segmentos e posições de áudio
     segments, audio_delays = _calculate_segments(valid_events, video_duration)
-
     if not segments:
-        logger.error("Nenhum segmento gerado na timeline.")
         return False
 
-    # Construir filter_complex
-    # Determinar se overlay está ativo e detectar a geometria do buraco
-    use_overlay = bool(overlay_path and os.path.exists(overlay_path))
-    overlay_hole = _detect_overlay_hole(overlay_path) if use_overlay else None
-    # Se a detecção falhar (sem área transparente / Pillow ausente), desativa o overlay
-    if use_overlay and overlay_hole is None:
-        use_overlay = False
-    overlay_input_idx = None
-
-    # Montar inputs FFmpeg: vídeo + todos os áudios + overlay (se houver)
-    inputs = []
-    import tempfile
-    import shutil
-    tmp_dir = tempfile.mkdtemp()
+    tmp_dir = os.path.join(os.path.dirname(process_input), f"tmp_{uuid.uuid4().hex[:8]}")
+    os.makedirs(tmp_dir, exist_ok=True)
     
-    for idx, seg in enumerate(segments):
-        if seg[0] == "video":
-            inputs.extend(["-i", process_input])
-        else:
-            freeze_ts, duration = seg[1], seg[2]
-            frame_path = os.path.join(tmp_dir, f"freeze_{idx}.png")
-            # Se for o frame inicial (0.0), a gravação do navegador pode estar borrada 
-            # enquanto o bitrate estabiliza. Pegamos 0.2s à frente para garantir nitidez.
-            extract_ts = 0.2 if freeze_ts == 0.0 else freeze_ts
-
-            # Extrair o frame exato com precisão de tempo (-ss depois do -i) e qualidade máxima
-            subprocess.run([
-                "ffmpeg", "-y", "-i", process_input, "-ss", str(extract_ts),
-                "-frames:v", "1", "-q:v", "2", frame_path
-            ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            
-            # Se estourar o EOF (ex: vídeo ficou mais curto na conversão CFR)
-            if not os.path.exists(frame_path):
-                fallback_ts = max(0.0, freeze_ts - 0.5)
-                subprocess.run([
-                    "ffmpeg", "-y", "-i", process_input, "-ss", str(fallback_ts),
-                    "-frames:v", "1", "-q:v", "2", frame_path
-                ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                
-            # Se ainda assim falhar, gera um frame preto herdando a resolução exata do vídeo (evita crash no concat)
-            if not os.path.exists(frame_path):
-                subprocess.run([
-                    "ffmpeg", "-y", "-i", process_input,
-                    "-vf", "trim=start_frame=0:end_frame=1,drawbox=x=0:y=0:w=iw:h=ih:color=black:t=fill",
-                    "-frames:v", "1", frame_path
-                ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                
-            # Carregar como vídeo infinito limitado pelo tempo (-t antes do -i)
-            inputs.extend(["-loop", "1", "-t", f"{duration:.4f}", "-i", frame_path])
-    
-    audio_start_idx = len(segments)
-    for event in valid_events:
-        inputs.extend(["-i", event["audio_path"]])
-
-    if use_overlay:
-        inputs.extend(["-i", overlay_path])
-        overlay_input_idx = len(segments) + len(valid_events)
-
-    filter_complex = _build_filter_complex(segments, audio_delays, len(valid_events),
-                                           audio_start_idx=audio_start_idx,
-                                           overlay_input_idx=overlay_input_idx,
-                                           overlay_hole=overlay_hole)
-
-    # Determinar mapeamento de áudio
-    has_audio = len(audio_delays) > 0
-    audio_map_label = "[aout]" if has_audio else None
-
-    # Construir comando FFmpeg completo
-    cmd = ["ffmpeg", "-y"] + inputs + [
-        "-filter_complex", filter_complex,
-        "-map", "[vout]",
-    ]
-
-    if audio_map_label:
-        cmd.extend(["-map", audio_map_label])
-
-    cmd.extend([
-        "-c:v", "libx264",
-        "-preset", "fast",
-        "-crf", "23",
-        "-c:a", "aac",
-        "-b:a", "128k",
-        "-pix_fmt", "yuv420p",
-        "-movflags", "+faststart",
-        output_mp4
-    ])
-
-    # Executar FFmpeg
     try:
-        logger.info(f"Renderizando MP4 via FFmpeg puro: {output_mp4}")
-        print("Iniciando renderização FFmpeg (passada única)...")
-        print(f"  Segmentos de vídeo: {len(segments)}")
-        print(f"  Faixas de áudio: {len(audio_delays)}")
+        print("Gerando chunks físicos O(1) memoria...")
+        seg_results = {}
+        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+            futures = []
+            for idx, seg in enumerate(segments):
+                if seg[0] == "freeze":
+                    futures.append(executor.submit(_generate_freeze_clip, idx, seg[1], seg[2], process_input, tmp_dir))
+                else:
+                    futures.append(executor.submit(_generate_video_chunk, idx, seg[1], seg[2], process_input, tmp_dir))
+                    
+            for future in concurrent.futures.as_completed(futures):
+                idx, path = future.result()
+                seg_results[idx] = path
+
+        inputs = []
+        n_video_segments = len(segments)
+        for idx in range(n_video_segments):
+            path = seg_results.get(idx)
+            if not path or not os.path.exists(path) or os.path.getsize(path) < 100:
+                print(f"[AVISO] Segmento {idx} falhou ou vazio. Gerando fallback preto...")
+                seg = segments[idx]
+                dur = seg[2] if seg[0] == "freeze" else (seg[2] - seg[1])
+                path = _generate_dummy_chunk(idx, max(0.1, dur), tmp_dir, process_input)
+            abs_path = os.path.abspath(path).replace('\\', '/')
+            inputs.extend(["-i", abs_path])
+        
+        audio_start_idx = n_video_segments
+        for event in valid_events:
+            inputs.extend(["-i", event["audio_path"]])
+
+        use_overlay = bool(overlay_path and os.path.exists(overlay_path))
+        overlay_hole = _detect_overlay_hole(overlay_path) if use_overlay else None
+        if use_overlay and overlay_hole is None:
+            use_overlay = False
+
         if use_overlay:
-            print(f"  Overlay: {os.path.basename(overlay_path)}")
+            inputs.extend(["-i", overlay_path])
+            overlay_input_idx = n_video_segments + len(valid_events)
+        else:
+            overlay_input_idx = None
+
+        filter_complex = _build_filter_complex(audio_delays, len(valid_events),
+                                               n_video_segments=n_video_segments,
+                                               audio_start_idx=audio_start_idx,
+                                               overlay_input_idx=overlay_input_idx,
+                                               overlay_hole=overlay_hole)
+
+        has_audio = len(audio_delays) > 0
+        audio_map_label = "[aout]" if has_audio else None
+
+        cmd = ["ffmpeg", "-y"] + inputs + [
+            "-filter_complex", filter_complex,
+            "-map", "[vout]",
+        ]
+
+        if audio_map_label:
+            cmd.extend(["-map", audio_map_label])
+
+        cmd.extend([
+            "-c:v", "libx264",
+            "-preset", "fast",
+            "-crf", "23",
+            "-c:a", "aac",
+            "-b:a", "128k",
+            "-pix_fmt", "yuv420p",
+            "-movflags", "+faststart",
+            output_mp4
+        ])
+
+        logger.info(f"Renderizando MP4 via FFmpeg Filter Concat: {output_mp4}")
+        print("Iniciando renderização FFmpeg (Filter Concat com múltiplos inputs)...")
 
         result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='ignore', timeout=600)
+
+        # Cleanup
+        try:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+        except:
+            pass
 
         if result.returncode != 0:
             logger.error(f"FFmpeg retornou código {result.returncode}")
             stderr_text = result.stderr[-2000:] if result.stderr else "Nenhum erro detalhado disponível."
             logger.error(f"FFmpeg stderr: {stderr_text}")
-            print("[AVISO] FFmpeg filter_complex falhou. Tentando fallback MoviePy...")
+            print("[AVISO] FFmpeg falhou. Tentando fallback MoviePy...")
             return _compose_legacy_moviepy(input_webm, output_mp4, timeline_events, overlay_path)
 
-        # Verificar se o arquivo foi criado
         if not os.path.exists(output_mp4) or os.path.getsize(output_mp4) < 1000:
             logger.error("Arquivo de saída não foi gerado corretamente.")
-            print("[AVISO] Saída inválida. Tentando fallback MoviePy...")
             return _compose_legacy_moviepy(input_webm, output_mp4, timeline_events, overlay_path)
 
         output_size_mb = os.path.getsize(output_mp4) / (1024 * 1024)
@@ -441,14 +416,19 @@ def compose_video_with_freeze_frames(input_webm: str, output_mp4: str, timeline_
 
     except subprocess.TimeoutExpired:
         logger.error("FFmpeg excedeu o timeout de 600 segundos.")
-        print("[AVISO] Timeout FFmpeg. Tentando fallback MoviePy...")
+        try:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+        except:
+            pass
         return _compose_legacy_moviepy(input_webm, output_mp4, timeline_events, overlay_path)
 
     except Exception as e:
         logger.error(f"Erro na execução do FFmpeg: {e}")
-        print(f"[AVISO] Erro FFmpeg: {e}. Tentando fallback MoviePy...")
+        try:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+        except:
+            pass
         return _compose_legacy_moviepy(input_webm, output_mp4, timeline_events, overlay_path)
-
 
 def _simple_convert(input_webm: str, output_mp4: str) -> bool:
     """Conversão simples WebM→MP4 sem freeze frames."""
