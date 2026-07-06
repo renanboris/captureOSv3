@@ -828,8 +828,17 @@ async function injectScriptsIntoTab(tabId, files, allFrames = true) {
         });
         return true;
     } catch (err) {
+        const errMsg = (err && err.message) || "";
+        const isRestricted = errMsg.includes("cannot be scripted") || 
+                             errMsg.includes("extensions gallery") || 
+                             errMsg.includes("restricted") || 
+                             errMsg.includes("privileged") ||
+                             errMsg.includes("Cannot access");
+
         if (allFrames) {
-            console.warn(`[CaptureOS] Injection failed for all frames on tab ${tabId}. Retrying for main frame only...`, err);
+            if (!isRestricted) {
+                console.warn(`[CaptureOS] Injection failed for all frames on tab ${tabId}. Retrying for main frame only...`, err);
+            }
             try {
                 await chrome.scripting.executeScript({
                     target: { tabId: tabId, allFrames: false },
@@ -837,10 +846,24 @@ async function injectScriptsIntoTab(tabId, files, allFrames = true) {
                 });
                 return true;
             } catch (fallbackErr) {
-                console.error(`[CaptureOS] Fallback injection failed on tab ${tabId}:`, fallbackErr);
+                const fallbackMsg = (fallbackErr && fallbackErr.message) || "";
+                const fallbackRestricted = fallbackMsg.includes("cannot be scripted") || 
+                                           fallbackMsg.includes("extensions gallery") || 
+                                           fallbackMsg.includes("restricted") || 
+                                           fallbackMsg.includes("privileged") ||
+                                           fallbackMsg.includes("Cannot access");
+                if (!fallbackRestricted) {
+                    console.error(`[CaptureOS] Fallback injection failed on tab ${tabId}:`, fallbackErr);
+                } else {
+                    console.log(`[CaptureOS] Suppressed injection on restricted tab ${tabId}: ${fallbackMsg}`);
+                }
             }
         } else {
-            console.error(`[CaptureOS] Main frame injection failed on tab ${tabId}:`, err);
+            if (!isRestricted) {
+                console.error(`[CaptureOS] Main frame injection failed on tab ${tabId}:`, err);
+            } else {
+                console.log(`[CaptureOS] Suppressed injection on restricted tab ${tabId}: ${errMsg}`);
+            }
         }
     }
     return false;
