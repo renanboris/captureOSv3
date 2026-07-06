@@ -274,6 +274,31 @@ async def _renderizar_exportacao_impl(payload: dict, session_id: str):
             logger.error(f"Erro no enriquecimento da narrativa: {e}")
             roteiro_enriquecido = roteiro
 
+        # Limpar passos vazios e re-numerar os passos regulares
+        roteiro_limpo = []
+        contador_passos = 1
+        for p in roteiro_enriquecido:
+            num = str(p.get("passo", ""))
+            if num == "0" or num == "999":
+                roteiro_limpo.append(p)
+                continue
+            
+            # Verifica se o passo tem algum conteúdo válido
+            ancora = str(p.get("ancora", "")).replace("(vazio)", "").strip()
+            micro = str(p.get("micro_narracao", "")).replace("(vazio)", "").strip()
+            intencao = str(p.get("intencao_original", "")).replace("(vazio)", "").strip()
+            
+            if not ancora and not micro and not intencao:
+                # Pula este passo completamente, pois está vazio (ex: navigation)
+                continue
+            
+            # Reatribui o número do passo para garantir sequencialidade sem buracos
+            p["passo"] = contador_passos
+            roteiro_limpo.append(p)
+            contador_passos += 1
+            
+        roteiro_enriquecido = roteiro_limpo
+
         # --- 3. GERAR TÍTULO INTELIGENTE ---
         update_status(session_id, "processing", "🧠 Extraindo intenção para gerar título...")
         try:
