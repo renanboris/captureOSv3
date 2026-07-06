@@ -945,6 +945,26 @@
                 .btn-accent:hover {
                     background: #CCECE9;
                 }
+                .btn:disabled {
+                    opacity: 0.6;
+                    cursor: not-allowed;
+                }
+                .btn-share-simlink {
+                    background: #FFFBEB;
+                    color: #D97706;
+                    border: 1px solid #FCD34D;
+                }
+                .btn-share-simlink:hover:not(:disabled) {
+                    background: #FEF3C7;
+                }
+                .btn-share-video {
+                    background: #F0F9FF;
+                    color: #0284C7;
+                    border: 1px solid #BAE6FD;
+                }
+                .btn-share-video:hover:not(:disabled) {
+                    background: #E0F2FE;
+                }
                 .close-btn {
                     position: absolute;
                     top: 16px;
@@ -989,9 +1009,7 @@
                     
                     <div class="script-content">
                         ${stepsHtml}
-                    </div>
-                    
-                    <div class="script-footer">
+                               <div class="script-footer">
                         <div class="btn-grid-top">
                             <button id="download-video-btn" class="btn btn-primary">
                                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2-2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
@@ -1007,6 +1025,19 @@
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2-2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
                                 SCORM
                             </a>
+                        </div>
+                        <div class="share-section" style="margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border); display: flex; flex-direction: column; gap: 8px;">
+                            <div style="font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">Compartilhar com terceiros</div>
+                            <div class="btn-grid">
+                                <button id="share-simlink-btn" class="btn btn-share-simlink" disabled>
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+                                    Carregando Simlink...
+                                </button>
+                                <button id="share-video-btn" class="btn btn-share-video" disabled>
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+                                    Carregando Vídeo...
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1167,6 +1198,93 @@
             }
             btn.innerHTML = originalHtml;
             btn.disabled = false;
+        });
+
+        // Lógica de compartilhamento
+        const shareSimlinkBtn = shadow.getElementById('share-simlink-btn');
+        const shareVideoBtn = shadow.getElementById('share-video-btn');
+
+        let simlinkUrl = null;
+        let videoLinkUrl = null;
+
+        const copyToClipboard = async (text, btn, originalHtml) => {
+            try {
+                await navigator.clipboard.writeText(text);
+                btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Copiado!`;
+                const origBg = btn.style.background;
+                const origColor = btn.style.color;
+                const origBorder = btn.style.borderColor;
+                btn.style.background = '#ECFDF5';
+                btn.style.color = '#10B981';
+                btn.style.borderColor = '#A7F3D0';
+                setTimeout(() => {
+                    btn.innerHTML = originalHtml;
+                    btn.style.background = origBg;
+                    btn.style.color = origColor;
+                    btn.style.borderColor = origBorder;
+                }, 2000);
+            } catch (err) {
+                console.error('Failed to copy: ', err);
+                const input = document.createElement('textarea');
+                input.value = text;
+                shadow.appendChild(input);
+                input.select();
+                try {
+                    document.execCommand('copy');
+                    btn.innerHTML = `Copiado!`;
+                } catch(e) {
+                    btn.innerHTML = `Erro ao copiar`;
+                }
+                shadow.removeChild(input);
+                setTimeout(() => {
+                    btn.innerHTML = originalHtml;
+                }, 2000);
+            }
+        };
+
+        const simlinkOrigHtml = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg> Copiar Simlink`;
+        const videoOrigHtml = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg> Copiar Vídeo`;
+
+        shareSimlinkBtn.addEventListener('click', () => {
+            if (simlinkUrl) copyToClipboard(simlinkUrl, shareSimlinkBtn, simlinkOrigHtml);
+        });
+
+        shareVideoBtn.addEventListener('click', () => {
+            if (videoLinkUrl) copyToClipboard(videoLinkUrl, shareVideoBtn, videoOrigHtml);
+        });
+
+        chrome.storage.local.get(['authToken'], async (resStorage) => {
+            const headers = {};
+            if (resStorage.authToken) {
+                headers['Authorization'] = `Bearer ${resStorage.authToken}`;
+            }
+            try {
+                const res = await fetch(`${backendUrl}/api/v1/session/${session_id}/artifacts`, { headers });
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.simlink_url) {
+                        simlinkUrl = data.simlink_url;
+                        shareSimlinkBtn.innerHTML = simlinkOrigHtml;
+                        shareSimlinkBtn.disabled = false;
+                    } else {
+                        shareSimlinkBtn.textContent = "Simlink Indisponível";
+                    }
+                    if (data.video_url) {
+                        videoLinkUrl = data.video_url;
+                        shareVideoBtn.innerHTML = videoOrigHtml;
+                        shareVideoBtn.disabled = false;
+                    } else {
+                        shareVideoBtn.textContent = "Vídeo Indisponível";
+                    }
+                } else {
+                    shareSimlinkBtn.textContent = "Erro ao carregar";
+                    shareVideoBtn.textContent = "Erro ao carregar";
+                }
+            } catch(e) {
+                console.error("Erro ao buscar artefatos:", e);
+                shareSimlinkBtn.textContent = "Erro ao carregar";
+                shareVideoBtn.textContent = "Erro ao carregar";
+            }
         });
 
         requestAnimationFrame(() => {

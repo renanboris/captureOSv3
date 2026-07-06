@@ -350,6 +350,23 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                 const div = document.createElement('div');
                 div.className = 'module-item';
+                
+                let shareActionsHtml = '';
+                if (rot.status === 'completed') {
+                    shareActionsHtml = `
+                        <div class="roteiro-share-actions" style="margin-top: 10px; display: flex; gap: 8px; border-top: 1px solid var(--border-default); padding-top: 8px;">
+                            <button class="btn-share-simlink" data-session="${rot.session_id}" style="flex: 1; display: flex; align-items: center; justify-content: center; gap: 4px; background: #FFFBEB; color: #D97706; border: 1px solid #FCD34D; border-radius: 6px; padding: 6px 8px; font-size: 11px; font-weight: 600; cursor: pointer; transition: background 0.2s;">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+                                Simlink
+                            </button>
+                            <button class="btn-share-video" data-session="${rot.session_id}" style="flex: 1; display: flex; align-items: center; justify-content: center; gap: 4px; background: #F0F9FF; color: #0284C7; border: 1px solid #BAE6FD; border-radius: 6px; padding: 6px 8px; font-size: 11px; font-weight: 600; cursor: pointer; transition: background 0.2s;">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+                                Vídeo
+                            </button>
+                        </div>
+                    `;
+                }
+
                 div.innerHTML = `
                     <div class="module-row-top">
                         <div class="module-title-area">
@@ -366,9 +383,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                             </svg>
                         </button>
                     </div>
+                    ${shareActionsHtml}
                 `;
 
-                // Click no card (exceto no botão X) abre o editor
+                // Click no card (exceto no botão X e botões de compartilhar) abre o editor
                 div.querySelector('.module-title-area').style.cursor = 'pointer';
                 div.querySelector('.module-title-area').onclick = () => abrirEditorRoteiro(rot.session_id, backendUrl);
 
@@ -379,6 +397,82 @@ document.addEventListener('DOMContentLoaded', async () => {
                     await excluirRoteiro(rot.session_id, backendUrl, headers);
                     carregarRoteiros(); // Recarrega a lista
                 };
+
+                // Click no Simlink
+                const btnSimlink = div.querySelector('.btn-share-simlink');
+                if (btnSimlink) {
+                    btnSimlink.onclick = async (e) => {
+                        e.stopPropagation();
+                        const origHtml = btnSimlink.innerHTML;
+                        btnSimlink.innerText = 'Carregando...';
+                        btnSimlink.disabled = true;
+                        try {
+                            const res = await fetch(`${backendUrl}/api/v1/session/${rot.session_id}/artifacts`, { headers });
+                            if (res.ok) {
+                                const data = await res.json();
+                                if (data.simlink_url) {
+                                    await navigator.clipboard.writeText(data.simlink_url);
+                                    btnSimlink.innerHTML = 'Copiado! ✓';
+                                    btnSimlink.style.background = '#ECFDF5';
+                                    btnSimlink.style.color = '#10B981';
+                                    btnSimlink.style.borderColor = '#A7F3D0';
+                                } else {
+                                    btnSimlink.innerText = 'Indisponível';
+                                }
+                            } else {
+                                btnSimlink.innerText = 'Erro';
+                            }
+                        } catch(err) {
+                            console.error(err);
+                            btnSimlink.innerText = 'Erro';
+                        }
+                        setTimeout(() => {
+                            btnSimlink.innerHTML = origHtml;
+                            btnSimlink.style.background = '';
+                            btnSimlink.style.color = '';
+                            btnSimlink.style.borderColor = '';
+                            btnSimlink.disabled = false;
+                        }, 2000);
+                    };
+                }
+
+                // Click no Vídeo
+                const btnVideo = div.querySelector('.btn-share-video');
+                if (btnVideo) {
+                    btnVideo.onclick = async (e) => {
+                        e.stopPropagation();
+                        const origHtml = btnVideo.innerHTML;
+                        btnVideo.innerText = 'Carregando...';
+                        btnVideo.disabled = true;
+                        try {
+                            const res = await fetch(`${backendUrl}/api/v1/session/${rot.session_id}/artifacts`, { headers });
+                            if (res.ok) {
+                                const data = await res.json();
+                                if (data.video_url) {
+                                    await navigator.clipboard.writeText(data.video_url);
+                                    btnVideo.innerHTML = 'Copiado! ✓';
+                                    btnVideo.style.background = '#ECFDF5';
+                                    btnVideo.style.color = '#10B981';
+                                    btnVideo.style.borderColor = '#A7F3D0';
+                                } else {
+                                    btnVideo.innerText = 'Indisponível';
+                                }
+                            } else {
+                                btnVideo.innerText = 'Erro';
+                            }
+                        } catch(err) {
+                            console.error(err);
+                            btnVideo.innerText = 'Erro';
+                        }
+                        setTimeout(() => {
+                            btnVideo.innerHTML = origHtml;
+                            btnVideo.style.background = '';
+                            btnVideo.style.color = '';
+                            btnVideo.style.borderColor = '';
+                            btnVideo.disabled = false;
+                        }, 2000);
+                    };
+                }
 
                 container.appendChild(div);
             });
