@@ -64,15 +64,19 @@ class FinOpsTracker:
         m_out = job["tokens"]["minimax"]["output"]
         cost += (m_in / 1_000_000) * 0.10 + (m_out / 1_000_000) * 0.10
 
+        usd_to_brl = float(os.getenv("USD_TO_BRL", "5.60"))
         job["estimated_api_cost_usd"] = cost
+        job["estimated_api_cost_brl"] = round(cost * usd_to_brl, 4)
         job["total_tokens"] = g_in + g_out + o_in + o_out + m_in + m_out
 
         # Compute cost per minute
         if job["video_duration_sec"] > 0:
             minutes = job["video_duration_sec"] / 60.0
             job["api_cost_per_minute_usd"] = round(cost / minutes, 4)
+            job["api_cost_per_minute_brl"] = round((cost * usd_to_brl) / minutes, 4)
         else:
             job["api_cost_per_minute_usd"] = 0.0
+            job["api_cost_per_minute_brl"] = 0.0
 
         # Log estruturado no console
         logger.info(json.dumps({"finops_metric": job}, ensure_ascii=False))
@@ -81,7 +85,7 @@ class FinOpsTracker:
         os.makedirs("data/finops", exist_ok=True)
         try:
             with open("data/finops/metrics.jsonl", "a", encoding="utf-8") as f:
-                f.write(json.dumps(job, ensure_ascii=False) + "\\n")
+                f.write(json.dumps(job, ensure_ascii=False) + "\n")
         except Exception as e:
             logger.error(f"Erro ao salvar métrica finops: {e}")
 

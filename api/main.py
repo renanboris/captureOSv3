@@ -447,9 +447,9 @@ async def save_roteiro(session_id: str, payload: RoteiroEditadoPayload):
         json.dump(existing_data, f, ensure_ascii=False, indent=2)
         
     if payload.aprovado:
-        status_data = get_status(session_id)
-        if status_data.get("status") == "rendering_final":
-            return {"status": "ok", "message": "Já está renderizando"}
+        if session_id in active_tasks:
+            active_tasks[session_id].cancel()
+            await asyncio.sleep(0)
         
         update_status(session_id, "rendering_final", "Renderizando vídeo final com roteiro aprovado...")
         task = asyncio.create_task(

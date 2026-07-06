@@ -223,7 +223,11 @@ async def rerenderizar_com_roteiro_aprovado(session_id: str, roteiro_aprovado: l
     try:
         finops_result = FinOpsTracker.finish_job(session_id, pipeline_type="rerender")
         if finops_result:
-            logger.info(f"[{session_id}] FinOps Metric: Custo total estimado: ${finops_result.get('estimated_api_cost_usd', 0):.4f} | CpM: ${finops_result.get('api_cost_per_minute_usd', 0):.4f}")
+            usd_cost = finops_result.get('estimated_api_cost_usd', 0)
+            brl_cost = finops_result.get('estimated_api_cost_brl', 0)
+            usd_cpm = finops_result.get('api_cost_per_minute_usd', 0)
+            brl_cpm = finops_result.get('api_cost_per_minute_brl', 0)
+            logger.info(f"[{session_id}] FinOps Metric: Custo total estimado: ${usd_cost:.4f} (R${brl_cost:.4f}) | CpM: ${usd_cpm:.4f} (R${brl_cpm:.4f})")
     except Exception as e:
         logger.error(f"Erro ao finalizar FinOpsTracker: {e}")
 
