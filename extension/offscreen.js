@@ -8,7 +8,7 @@ let canvasElement = document.createElement('canvas');
 chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
     if (message.target === 'offscreen') {
         if (message.action === 'start_recording') {
-            await startRecording(message.useMic);
+            await startRecording(message.useMic, message.streamId, message.systemAudio);
             sendResponse({ status: 'started' });
         } else if (message.action === 'stop_recording') {
             stopRecording();
@@ -38,20 +38,49 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
     return true; // Keep message channel open for async response
 });
 
-async function startRecording(useMic) {
+async function startRecording(useMic, streamId = null, systemAudio = false) {
     if (mediaRecorder && mediaRecorder.state === 'recording') return;
     recordedChunks = [];
 
     try {
-        const displayStream = await navigator.mediaDevices.getDisplayMedia({
-            audio: false,
-            video: {
-                displaySurface: "browser",
-                width: { ideal: 1920 },
-                height: { ideal: 1080 },
-                frameRate: { ideal: 30 }
+        let displayStream;
+        if (streamId) {
+            const videoConstraints = {
+                mandatory: {
+                    chromeMediaSource: 'desktop',
+                    chromeMediaSourceId: streamId,
+                    maxWidth: 1920,
+                    maxHeight: 1080,
+                    maxFrameRate: 30
+                }
+            };
+
+            let audioConstraints = false;
+            if (systemAudio) {
+                audioConstraints = {
+                    mandatory: {
+                        chromeMediaSource: 'desktop',
+                        chromeMediaSourceId: streamId
+                    }
+                };
             }
-        });
+
+            displayStream = await navigator.mediaDevices.getUserMedia({
+                video: videoConstraints,
+                audio: audioConstraints
+            });
+        } else {
+            // Fallback caso não venha streamId
+            displayStream = await navigator.mediaDevices.getDisplayMedia({
+                audio: false,
+                video: {
+                    displaySurface: "browser",
+                    width: { ideal: 1920 },
+                    height: { ideal: 1080 },
+                    frameRate: { ideal: 30 }
+                }
+            });
+        }
 
         videoElement.srcObject = displayStream;
 
