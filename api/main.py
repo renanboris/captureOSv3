@@ -293,7 +293,7 @@ async def upload_context(payload: UploadContextPayload):
         raise HTTPException(status_code=500, detail="Falha ao vetorizar documento")
     return {"status": "ok", "message": "Contexto vetorizado com sucesso"}
 
-@app.post("/api/v1/capture/ingest", dependencies=_auth_deps)
+@app.post("/api/v1/capture/ingest")
 async def ingest_capture(
     session_id: str = Form(...),
     recording_start_time: int = Form(0),
@@ -301,26 +301,21 @@ async def ingest_capture(
     modo_input: str = Form("A"),
     rag_namespace: str = Form("auto"),
     roteiro_manual: str = Form("[]"),
+    detected_interface_type: str = Form("unknown"),
     video: UploadFile = File(...),
     audio: Optional[UploadFile] = File(None),
+    user_dict: dict = Depends(require_auth),
 ):
-    """Accept a binary multipart upload for the capture recording.
+    """Accept a binary multipart upload for the capture recording."""
+    logger.info(f"Recebido payload da sessão: {session_id} do user {user_dict.get('id')}")
 
-    Task 14.4 (C4): replaces the old base64-in-JSON ``EventPayload`` with
-    multipart/form-data so large recordings do not exhaust memory or time out.
-
-    Form fields:
-    - session_id (str, required)
-    - recording_start_time (int, default 0)
-    - events (str, JSON-encoded list, default "[]")
-    - modo_input (str, default "A"; "C" is rejected by the middleware above)
-    - roteiro_manual (str, JSON-encoded list, default "[]")
-
-    Files:
-    - video (required): the WebM recording as raw bytes
-    - audio (optional): the instructor microphone WebM as raw bytes
-    """
-    logger.info(f"Recebido payload da sessão: {session_id}")
+    # Cria ou busca a org e inicializa o PipelineRun
+    from api.db_services import get_or_create_organization_for_user, create_pipeline_run
+    user_id = user_dict.get("id")
+    email = user_dict.get("email", "")
+    org_id = get_or_create_organization_for_user(user_id, email)
+    if org_id:
+        create_pipeline_run(session_id, user_id, org_id, detected_interface_type)
 
     # Validate modo_input (belt-and-suspenders; middleware also checks)
     if modo_input == "C":
@@ -418,6 +413,97 @@ async def check_status(session_id: str):
         
     return status_data
 
+@app.get("/api/v1/admin/pipeline-runs", dependencies=_auth_deps)
+async def admin_get_pipeline_runs(limit: int = 50, offset: int = 0, status: Optional[str] = None, user_dict: dict = Depends(require_auth)):
+    from api.db_services import get_or_create_organization_for_user, get_pipeline_runs_for_organization
+    user_id = user_dict.get("id")
+    email = user_dict.get("email", "")
+    
+    org_id = get_or_create_organization_for_user(user_id, email)
+    if not org_id:
+        raise HTTPException(status_code=403, detail="Organização não encontrada para o usuário.")
+        
+    return get_pipeline_runs_for_organization(org_id, limit, offset, status)
+
+@app.post("/api/v1/admin/report-error/{session_id}", dependencies=_auth_deps)
+async def admin_report_error(session_id: str, payload: dict, user_dict: dict = Depends(require_auth)):
+    from api.db_services import update_pipeline_run_status
+    update_status(session_id, "user_reported_error", payload.get("message", "Erro reportado pelo usuário"))
+    update_pipeline_run_status(session_id, "user_reported_error", "capture")
+    return {"status": "ok"}
+
+@app.post("/api/v1/session/{session_id}/publish", dependencies=_auth_deps)
+async def track_publish(session_id: str, payload: dict, user_dict: dict = Depends(require_auth)):
+    from api.db_services import get_supabase_client
+    client = get_supabase_client()
+    if not client:
+        return {"status": "error", "message": "DB_UNAVAILABLE"}
+    try:
+        run_res = client.table("pipeline_runs").select("id").eq("session_id", session_id).execute()
+        if run_res.data:
+            client.table("published_modules").insert({
+                "pipeline_run_id": run_res.data[0]["id"],
+                "published_by": user_dict.get("id"),
+                "destination": payload.get("destination", "SCORM_DOWNLOAD")
+            }).execute()
+        return {"status": "ok"}
+    except Exception as e:
+        logger.error(f"Erro ao rastrear publicação: {e}")
+        return {"status": "error"}
+
+@app.get("/api/v1/admin/metrics", dependencies=_auth_deps)
+async def admin_get_metrics(user_dict: dict = Depends(require_auth)):
+    from api.db_services import get_or_create_organization_for_user
+    from api.metrics_engine import get_organization_metrics
+    
+    user_id = user_dict.get("id")
+    email = user_dict.get("email", "")
+    org_id = get_or_create_organization_for_user(user_id, email)
+    
+    if not org_id:
+        raise HTTPException(status_code=403, detail="Organização não encontrada.")
+        
+    return get_organization_metrics(org_id)
+
+@app.get("/api/v1/admin/publications", dependencies=_auth_deps)
+async def admin_get_publications(limit: int = 20, user_dict: dict = Depends(require_auth)):
+    """Camada 3.3: Trilha de Publicação e Export."""
+    from api.db_services import get_or_create_organization_for_user, get_supabase_client
+    client = get_supabase_client()
+    if not client:
+        return {"publications": []}
+        
+    user_id = user_dict.get("id")
+    org_id = get_or_create_organization_for_user(user_id, user_dict.get("email", ""))
+    
+    if not org_id:
+        raise HTTPException(status_code=403, detail="Organização não encontrada.")
+        
+    try:
+        # Join com pipeline_runs para filtrar por organização
+        # No Supabase o join é feito pela relação Foreign Key
+        res = client.table("published_modules") \
+            .select("id, published_at, destination, published_by, pipeline_runs!inner(session_id, organization_id)") \
+            .eq("pipeline_runs.organization_id", org_id) \
+            .order("published_at", desc=True) \
+            .limit(limit) \
+            .execute()
+            
+        pubs = res.data if res.data else []
+        formatted = []
+        for p in pubs:
+            formatted.append({
+                "id": p["id"],
+                "published_at": p["published_at"],
+                "destination": p["destination"],
+                "published_by": p["published_by"],
+                "session_id": p["pipeline_runs"]["session_id"] if p.get("pipeline_runs") else "Desconhecido"
+            })
+        return {"publications": formatted}
+    except Exception as e:
+        logger.error(f"Erro ao buscar publicações: {e}")
+        return {"publications": []}
+
 @app.get("/api/v1/session/{session_id}/roteiro", dependencies=_auth_deps)
 async def get_roteiro(session_id: str):
     roteiro_path = f"data/roteiros/{session_id}.json"
@@ -427,11 +513,13 @@ async def get_roteiro(session_id: str):
         return json.load(f)
 
 @app.post("/api/v1/session/{session_id}/roteiro", dependencies=_auth_deps)
-async def save_roteiro(session_id: str, payload: RoteiroEditadoPayload):
+async def save_roteiro(session_id: str, payload: RoteiroEditadoPayload, user_dict: dict = Depends(require_auth)):
+    from api.db_services import save_roteiro_version, get_supabase_client
     roteiro_path = f"data/roteiros/{session_id}.json"
     
     existing_data = {}
-    if os.path.exists(roteiro_path):
+    is_first_api_save = not os.path.exists(roteiro_path)
+    if not is_first_api_save:
         with open(roteiro_path, "r", encoding="utf-8") as f:
             try:
                 existing_data = json.load(f)
@@ -445,6 +533,25 @@ async def save_roteiro(session_id: str, payload: RoteiroEditadoPayload):
     
     with open(roteiro_path, "w", encoding="utf-8") as f:
         json.dump(existing_data, f, ensure_ascii=False, indent=2)
+
+    # Gap 1: Captura do diff IA vs humano
+    roteiro_str = json.dumps(payload.roteiro, ensure_ascii=False)
+    user_id = user_dict.get("id")
+    
+    client = get_supabase_client()
+    if client:
+        # Verifica se já temos a versão 1 (IA)
+        run_res = client.table("pipeline_runs").select("id").eq("session_id", session_id).execute()
+        if run_res.data:
+            pid = run_res.data[0]["id"]
+            vers_res = client.table("roteiro_versoes").select("version").eq("pipeline_run_id", pid).execute()
+            existing_versions = [v["version"] for v in vers_res.data]
+            
+            if 1 not in existing_versions:
+                save_roteiro_version(session_id, 1, roteiro_str, user_id)
+
+            if payload.aprovado:
+                save_roteiro_version(session_id, 2, roteiro_str, user_id)
         
     if payload.aprovado:
         if session_id in active_tasks:
