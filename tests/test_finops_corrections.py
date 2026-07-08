@@ -21,10 +21,10 @@ def test_finops_pricing_and_confidence():
     assert job is not None
     assert job["cost_confidence"] == "confirmed"
     
-    # Custo Gemini: 10000 * 0.075/1M ($0.00075) + 5000 * 0.30/1M ($0.0015) = $0.00225
-    # Custo OpenAI: 2000 * 0.15/1M ($0.00030) + 1000 * 0.60/1M ($0.0006) = $0.0009
-    # Total: $0.00315
-    assert abs(job["estimated_api_cost_usd"] - 0.00315) < 1e-6
+    # Custo Gemini: 10000 * 0.30/1M ($0.003) + 5000 * 2.50/1M ($0.0125) = $0.0155
+    # Custo OpenAI: 2000 * 0.15/1M ($0.0003) + 1000 * 0.60/1M ($0.0006) = $0.0009
+    # Total: $0.0164
+    assert abs(job["estimated_api_cost_usd"] - 0.0164) < 1e-6
     assert job["gemini_call_count"] == 1
     
     # 2. Caso 2: Contém MiniMax -> Estimated Unverified

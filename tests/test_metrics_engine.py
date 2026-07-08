@@ -14,10 +14,16 @@ def test_structural_diff_totally_different():
     assert diff > 0.0  # Deveria ser 100.0 se não fosse o thresholding
 
 def test_structural_diff_partial():
-    ia_roteiro = [{"passo": 1, "texto": "O rato roeu a roupa"}]
-    human_roteiro = [{"passo": 1, "texto": "O rato roeu a roupa do rei"}]
+    ia_roteiro = [
+        {"passo": 1, "texto": "O rato roeu a roupa"},
+        {"passo": 2, "texto": "B"}
+    ]
+    human_roteiro = [
+        {"passo": 1, "texto": "O rato roeu a roupa do rei"},
+        {"passo": 2, "texto": "B"}
+    ]
     diff = calculate_structural_diff(ia_roteiro, human_roteiro)
-    assert diff > 0.0 and diff < 100.0
+    assert diff == 50.0
 
 def test_structural_diff_empty():
     assert calculate_structural_diff([], []) == 0.0

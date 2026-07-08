@@ -82,7 +82,7 @@ class TestPreservationPopupFallbackPatterns:
 
         # Search forward for the fallback within a reasonable window (2000 chars)
         block = source[start : start + 2000]
-        fallback = '"http://" + "localhost" + ":8000"'
+        fallback = '"https://api.nomadelabs.com.br"'
         assert fallback in block, (
             f"carregarModulosPratica fallback pattern is missing: {fallback!r}"
         )
@@ -96,7 +96,7 @@ class TestPreservationPopupFallbackPatterns:
         assert start != -1, "carregarRoteiros not found in popup.js"
 
         block = source[start : start + 2000]
-        fallback = '"http://" + "localhost" + ":8000"'
+        fallback = '"https://api.nomadelabs.com.br"'
         assert fallback in block, (
             f"carregarRoteiros fallback pattern is missing: {fallback!r}"
         )

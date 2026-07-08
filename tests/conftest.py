@@ -84,7 +84,12 @@ def client(app) -> Iterator[Any]:
     # Tests specifically testing auth behaviour (test_bug_cors_auth.py) override
     # this fixture or test the dependency directly.
     async def _require_auth_noop():
-        return {"sub": "test-user"}
+        return {
+            "id": "00000000-0000-0000-0000-000000000000",
+            "email": "test@example.com",
+            "sub": "test-user",
+            "org_id": "00000000-0000-0000-0000-000000000000"
+        }
 
     app.dependency_overrides[require_auth] = _require_auth_noop
 

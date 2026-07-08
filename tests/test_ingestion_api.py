@@ -4,7 +4,7 @@ from contracts.handoff_schema import RoteiroHandoff, MetadataRoteiro, PassoRotei
 
 client = TestClient(app)
 
-def test_ingest_endpoint_mock():
+def test_ingest_endpoint_mock(client):
     payload = {
         "session_id": "sess_123",
         "events": [

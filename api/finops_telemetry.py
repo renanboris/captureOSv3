@@ -11,8 +11,8 @@ logger.setLevel(logging.INFO)
 # provedor mudar tabela — não há verificação automática.
 # Fonte: página de pricing oficial de cada provedor.
 # Última verificação: 2026-07-07
-GEMINI_FLASH_INPUT_PER_1M_USD = 0.075
-GEMINI_FLASH_OUTPUT_PER_1M_USD = 0.30
+GEMINI_FLASH_INPUT_PER_1M_USD = 0.30
+GEMINI_FLASH_OUTPUT_PER_1M_USD = 2.50
 OPENAI_GPT4O_MINI_INPUT_PER_1M_USD = 0.15
 OPENAI_GPT4O_MINI_OUTPUT_PER_1M_USD = 0.60
 # MINIMAX_*: valor não verificado com o provedor

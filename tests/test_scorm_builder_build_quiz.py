@@ -366,9 +366,9 @@ class TestGerarScorm:
 
         original_init = ScormBuilder.__init__
 
-        def capturing_init(self, modulo, session_id, titulo, incluir_quiz=False, num_questoes_quiz=3):
+        def capturing_init(self, modulo, session_id, titulo, incluir_quiz=False, num_questoes_quiz=3, quiz_data_path=None):
             captured["incluir_quiz"] = incluir_quiz
-            original_init(self, modulo, session_id, titulo, incluir_quiz, num_questoes_quiz)
+            original_init(self, modulo, session_id, titulo, incluir_quiz, num_questoes_quiz, quiz_data_path)
 
         with patch("scorm_eng.scorm_builder.ScormBuilder.__init__", capturing_init), \
              patch("scorm_eng.scorm_builder.ScormBuilder.build", new_callable=AsyncMock, return_value="x.zip"):
@@ -382,9 +382,9 @@ class TestGerarScorm:
 
         original_init = ScormBuilder.__init__
 
-        def capturing_init(self, modulo, session_id, titulo, incluir_quiz=False, num_questoes_quiz=3):
+        def capturing_init(self, modulo, session_id, titulo, incluir_quiz=False, num_questoes_quiz=3, quiz_data_path=None):
             captured["num_questoes_quiz"] = num_questoes_quiz
-            original_init(self, modulo, session_id, titulo, incluir_quiz, num_questoes_quiz)
+            original_init(self, modulo, session_id, titulo, incluir_quiz, num_questoes_quiz, quiz_data_path)
 
         with patch("scorm_eng.scorm_builder.ScormBuilder.__init__", capturing_init), \
              patch("scorm_eng.scorm_builder.ScormBuilder.build", new_callable=AsyncMock, return_value="x.zip"):

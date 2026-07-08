@@ -389,6 +389,6 @@ class TestManifestContentPropagation:
         orgs = root.find(_tag(NS_CP, "organizations"))
         org = orgs.find(_tag(NS_CP, "organization"))
         title = org.find(_tag(NS_CP, "title"))
-        assert "Módulo de Validação" in title.text, (
-            f"<organization><title> should contain module titulo, got: {title.text!r}"
+        assert title.text == "\u200b", (
+            f"<organization><title> should prevent LMS narration using zero-width space, got: {title.text!r}"
         )
