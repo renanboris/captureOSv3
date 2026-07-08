@@ -336,7 +336,7 @@ O instrutor explicou o processo com as próprias palavras acima. Use o raciocín
         return roteiro_bruto
 
 
-async def regerar_passo_isolado(passo_alvo: dict, passo_anterior: dict = None, passo_seguinte: dict = None) -> dict:
+async def regerar_passo_isolado(passo_alvo: dict, passo_anterior: dict = None, passo_seguinte: dict = None, session_id: str = None) -> dict:
     """
     Regera a âncora e a micro narração de um passo específico,
     levando em consideração o contexto dos passos adjacentes.
@@ -377,6 +377,14 @@ async def regerar_passo_isolado(passo_alvo: dict, passo_anterior: dict = None, p
             )
         )
         resultado = json.loads(response.text)
+        
+        if hasattr(response, "usage_metadata") and response.usage_metadata and session_id:
+            FinOpsTracker.add_tokens(
+                session_id, "gemini", 
+                response.usage_metadata.prompt_token_count, 
+                response.usage_metadata.candidates_token_count
+            )
+            
         passo_alvo["ancora"] = resultado.get("ancora", "")
         passo_alvo["micro_narracao"] = resultado.get("micro_narracao", "")
         return passo_alvo
@@ -396,6 +404,14 @@ async def regerar_passo_isolado(passo_alvo: dict, passo_anterior: dict = None, p
                     temperature=0.3
                 )
                 resultado = json.loads(_strip_code_fences(completion.choices[0].message.content))
+                
+                if hasattr(completion, "usage") and completion.usage and session_id:
+                    FinOpsTracker.add_tokens(
+                        session_id, "openai", 
+                        completion.usage.prompt_tokens, 
+                        completion.usage.completion_tokens
+                    )
+                    
                 if isinstance(resultado, dict):
                     passo_alvo["ancora"] = resultado.get("ancora", passo_alvo.get("ancora", ""))
                     passo_alvo["micro_narracao"] = resultado.get("micro_narracao", passo_alvo.get("micro_narracao", ""))
@@ -405,7 +421,7 @@ async def regerar_passo_isolado(passo_alvo: dict, passo_anterior: dict = None, p
 
         return passo_alvo
 
-async def gerar_titulo_inteligente(roteiro: list, namespace: str = "auto") -> str:
+async def gerar_titulo_inteligente(roteiro: list, namespace: str = "auto", session_id: str = None) -> str:
     """Analisa as intenções iniciais e gera um slug descritivo para o nome do arquivo."""
     try:
         client = get_genai_client()
@@ -434,6 +450,13 @@ Regras:
         )
         title = response.text.strip()
         
+        if hasattr(response, "usage_metadata") and response.usage_metadata and session_id:
+            FinOpsTracker.add_tokens(
+                session_id, "gemini", 
+                response.usage_metadata.prompt_token_count, 
+                response.usage_metadata.candidates_token_count
+            )
+            
         # Limpar caracteres não permitidos, mantendo espaços
         import re
         title = re.sub(r'[^A-Za-z0-9 ]', '', title).strip()

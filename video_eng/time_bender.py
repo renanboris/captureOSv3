@@ -390,7 +390,7 @@ def compose_video_with_freeze_frames(input_webm: str, output_mp4: str, timeline_
         logger.info(f"Renderizando MP4 via FFmpeg Filter Concat: {output_mp4}")
         print("Iniciando renderização FFmpeg (Filter Concat com múltiplos inputs)...")
 
-                result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='ignore', timeout=600)
+        result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='ignore', timeout=600)
 
         # Cleanup
         try:

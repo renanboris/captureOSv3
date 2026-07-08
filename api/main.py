@@ -256,7 +256,7 @@ class RatingPayload(BaseModel):
 
 from fastapi import HTTPException
 
-async def processar_sessao_background(session_id: str, modo_input: str, events: list, start_time: int, rag_namespace: str = "auto", video_bytes: bytes = b"", audio_bytes: bytes = b"", roteiro_manual: list = []):
+async def processar_sessao_background(session_id: str, modo_input: str, events: list, start_time: int, rag_namespace: str = "auto", video_bytes: bytes = b"", audio_bytes: bytes = b"", roteiro_manual: list = [], user_id: str = None, org_id: str = None):
     from api.export_pipeline import renderizar_exportacao
     payload = {
         "session_id": session_id,
@@ -267,6 +267,8 @@ async def processar_sessao_background(session_id: str, modo_input: str, events: 
         "roteiro_manual": roteiro_manual,
         "video_bytes": video_bytes,
         "audio_bytes": audio_bytes,
+        "user_id": user_id,
+        "org_id": org_id,
     }
     await renderizar_exportacao(payload)
 
@@ -357,7 +359,11 @@ async def ingest_capture(
         "roteiro_manual": roteiro_manual_list,
     }
 
-    task = asyncio.create_task(processar_sessao_background(session_id, modo_input, events_list, recording_start_time, rag_namespace, video_bytes, audio_bytes, roteiro_manual_list))
+    task = asyncio.create_task(processar_sessao_background(
+        session_id, modo_input, events_list, recording_start_time, 
+        rag_namespace, video_bytes, audio_bytes, roteiro_manual_list,
+        user_id=user_id, org_id=org_id
+    ))
     active_tasks[session_id] = task
     task.add_done_callback(_task_exception_handler)
     task.add_done_callback(lambda t: active_tasks.pop(session_id, None))
@@ -372,7 +378,15 @@ async def abort_capture(session_id: str):
     if current.get("status") in ("roteiro_pronto", "rendering_final", "completed"):
         logger.info(f"Abort ignorado — sessão {session_id} já está em '{current.get('status')}'")
         return {"status": "ok", "ignored": True}
+    
     update_status(session_id, "failed", "Processamento cancelado pelo usuário.")
+    
+    try:
+        from api.finops_telemetry import FinOpsTracker
+        FinOpsTracker.finish_job(session_id, pipeline_type="abandoned_or_error")
+    except Exception as finops_err:
+        logger.error(f"Erro ao fechar FinOps no abort: {finops_err}")
+
     if session_id in active_tasks:
         task = active_tasks[session_id]
         if not task.done():
@@ -568,8 +582,8 @@ async def save_roteiro(session_id: str, payload: RoteiroEditadoPayload, user_dic
         
     return {"status": "ok"}
 
-@app.post("/api/v1/session/{session_id}/passo/{passo_num}/regerar", dependencies=_auth_deps)
-async def regerar_passo(session_id: str, passo_num: int):
+@app.post("/api/v1/session/{session_id}/passo/{passo_num}/regerar")
+async def regerar_passo(session_id: str, passo_num: int, user: dict = Depends(require_auth)):
     """
     Rechama a Aura para regeração de um único passo, com contexto dos vizinhos.
     Retorna o passo atualizado sem salvar — o editor decide se aceita.
@@ -591,7 +605,7 @@ async def regerar_passo(session_id: str, passo_num: int):
     passo_seguinte = next((p for p in roteiro if p.get("passo") == passo_num + 1), None)
 
     from api.intelligence_engine import regerar_passo_isolado
-    passo_atualizado = await regerar_passo_isolado(passo_alvo, passo_anterior, passo_seguinte)
+    passo_atualizado = await regerar_passo_isolado(passo_alvo, passo_anterior, passo_seguinte, session_id=session_id)
 
     return {"passo": passo_atualizado}
 
@@ -1078,3 +1092,87 @@ async def reset_sandbox(payload: dict):
         if os.path.exists(path):
             os.remove(path)
     return {"status": "ok"}
+
+
+@app.get("/api/v1/admin/costs")
+async def get_admin_costs(user: dict = Depends(require_auth)):
+    """Retorna dados agregados de custos de API (FinOps)."""
+    user_metadata = user.get("user_metadata") or {}
+    app_metadata = user.get("app_metadata") or {}
+    auth_org_id = user.get("org_id") or user_metadata.get("org_id") or app_metadata.get("org_id")
+
+    total_cost_usd = 0.0
+    total_cost_brl = 0.0
+    run_count = 0
+    
+    instructor_costs = {}
+    runs = []
+    unverified_cost_warning = False
+
+    metrics_path = "data/finops/metrics.jsonl"
+    if os.path.exists(metrics_path):
+        try:
+            with open(metrics_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        job = json.loads(line)
+                    except:
+                        continue
+                    
+                    job_org_id = job.get("org_id")
+                    if job_org_id != auth_org_id:
+                        continue
+                    
+                    cost_usd = job.get("estimated_api_cost_usd", 0.0)
+                    cost_brl = job.get("estimated_api_cost_brl", 0.0)
+                    user_id = job.get("user_id") or "unknown"
+                    session_id = job.get("session_id", "sess_unknown")
+                    gemini_call_count = job.get("gemini_call_count", 0)
+                    
+                    if job.get("cost_confidence") == "estimated_unverified":
+                        unverified_cost_warning = True
+                    
+                    total_cost_usd += cost_usd
+                    total_cost_brl += cost_brl
+                    run_count += 1
+                    
+                    if user_id not in instructor_costs:
+                        instructor_costs[user_id] = {
+                            "user_id": user_id,
+                            "total_cost_usd": 0.0,
+                            "run_count": 0
+                        }
+                    instructor_costs[user_id]["total_cost_usd"] += cost_usd
+                    instructor_costs[user_id]["run_count"] += 1
+                    
+                    runs.append({
+                        "session_id": session_id,
+                        "cost_usd": cost_usd,
+                        "gemini_call_count": gemini_call_count
+                    })
+        except Exception as e:
+            logger.error(f"Erro ao ler arquivo de métricas finops: {e}")
+
+    avg_cost_per_run_usd = round(total_cost_usd / run_count, 4) if run_count > 0 else 0.0
+    
+    cost_by_instructor = []
+    for inst_id, stats in instructor_costs.items():
+        stats["total_cost_usd"] = round(stats["total_cost_usd"], 4)
+        cost_by_instructor.append(stats)
+        
+    runs.sort(key=lambda r: r["cost_usd"], reverse=True)
+    most_expensive_runs = runs[:5]
+    for r in most_expensive_runs:
+        r["cost_usd"] = round(r["cost_usd"], 4)
+
+    return {
+        "total_cost_usd": round(total_cost_usd, 4),
+        "total_cost_brl": round(total_cost_brl, 4),
+        "avg_cost_per_run_usd": avg_cost_per_run_usd,
+        "cost_by_instructor": cost_by_instructor,
+        "most_expensive_runs": most_expensive_runs,
+        "unverified_cost_warning": unverified_cost_warning
+    }

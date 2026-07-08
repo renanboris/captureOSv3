@@ -35,6 +35,10 @@ async def rerenderizar_com_roteiro_aprovado(session_id: str, roteiro_aprovado: l
 
     if not os.path.exists(raw_webm_path):
         logger.error(f"Vídeo original não encontrado para re-renderização: {raw_webm_path}")
+        try:
+            FinOpsTracker.finish_job(session_id, pipeline_type="abandoned_or_error")
+        except Exception as finops_err:
+            logger.error(f"Erro ao fechar FinOps no erro de rerender: {finops_err}")
         update_status(session_id, "error", "Vídeo original não encontrado para re-renderização")
         return
 

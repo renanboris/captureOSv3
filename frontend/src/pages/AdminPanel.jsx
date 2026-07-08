@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Download } from 'lucide-react';
+import { Download, AlertTriangle } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 
 import KpiCard from '../components/KpiCard';
@@ -20,6 +20,14 @@ export default function AdminPanel() {
     time_saved_hours: 0,
     runs_by_instructor: []
   });
+  const [costs, setCosts] = useState({
+    total_cost_usd: 0.0,
+    total_cost_brl: 0.0,
+    avg_cost_per_run_usd: 0.0,
+    cost_by_instructor: [],
+    most_expensive_runs: [],
+    unverified_cost_warning: false
+  });
   
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -38,21 +46,24 @@ export default function AdminPanel() {
       const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
       const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
 
-      const [runsRes, metricsRes, pubsRes] = await Promise.all([
+      const [runsRes, metricsRes, pubsRes, costsRes] = await Promise.all([
         fetch(`${API_URL}/api/v1/admin/pipeline-runs`, { headers }),
         fetch(`${API_URL}/api/v1/admin/metrics`, { headers }),
-        fetch(`${API_URL}/api/v1/admin/publications`, { headers })
+        fetch(`${API_URL}/api/v1/admin/publications`, { headers }),
+        fetch(`${API_URL}/api/v1/admin/costs`, { headers })
       ]);
 
-      if (runsRes.ok && metricsRes.ok && pubsRes.ok) {
+      if (runsRes.ok && metricsRes.ok && pubsRes.ok && costsRes.ok) {
         const runsData = await runsRes.json();
         const metricsData = await metricsRes.json();
         const pubsData = await pubsRes.json();
+        const costsData = await costsRes.json();
         
         setIsMock(false);
         setRuns(runsData.runs || []);
         setMetrics(metricsData);
         setPublications(pubsData.publications || []);
+        setCosts(costsData);
         setLoading(false);
         return;
       }
@@ -76,6 +87,20 @@ export default function AdminPanel() {
             { instructor_id: 'Maria P.', total_runs: 15, completed_runs: 14 },
             { instructor_id: 'Carlos R.', total_runs: 10, completed_runs: 9 }
           ]
+        });
+        setCosts({
+          total_cost_usd: 12.4530,
+          total_cost_brl: 69.7368,
+          avg_cost_per_run_usd: 0.2767,
+          cost_by_instructor: [
+            { user_id: 'João S.', total_cost_usd: 5.10, run_count: 20 },
+            { user_id: 'Maria P.', total_cost_usd: 4.85, run_count: 15 }
+          ],
+          most_expensive_runs: [
+            { session_id: 'sess_1780690407909', cost_usd: 1.85, gemini_call_count: 12 },
+            { session_id: 'sess_9981234567890', cost_usd: 0.95, gemini_call_count: 6 }
+          ],
+          unverified_cost_warning: true
         });
         setLoading(false);
       } else {
@@ -151,10 +176,38 @@ export default function AdminPanel() {
         </p>
       </header>
 
+      {/* Alerta de Execuções Extras / Caras */}
+      {!loading && costs.most_expensive_runs?.some(run => run.gemini_call_count > 5) && (
+        <div className="bg-status-warn/10 border border-status-warn/30 rounded-xl p-4 mb-8 flex items-start gap-3">
+          <div className="p-2 bg-status-warn/20 text-status-warn rounded-lg">
+            <AlertTriangle size={20} />
+          </div>
+          <div>
+            <h4 className="font-semibold text-slate-900 dark:text-white text-sm">
+              Alerta de Custo Elevado (Execuções Extras)
+            </h4>
+            <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
+              As seguintes sessões ultrapassaram o limite sugerido de chamadas da API Gemini (&gt; 5 chamadas):
+            </p>
+            <div className="mt-3 flex flex-col gap-2">
+              {costs.most_expensive_runs
+                .filter(run => run.gemini_call_count > 5)
+                .map(run => (
+                  <div key={run.session_id} className="text-xs font-mono bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-700 px-3 py-2 rounded flex items-center justify-between gap-4 max-w-lg">
+                    <span>Sessão: {run.session_id}</span>
+                    <span className="font-semibold text-status-error">{run.gemini_call_count} chamadas</span>
+                    <span className="font-semibold text-slate-700 dark:text-slate-300">${run.cost_usd.toFixed(4)} USD</span>
+                  </div>
+                ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 1. KPI Bar */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
         {loading ? (
-          Array.from({ length: 4 }).map((_, i) => (
+          Array.from({ length: 5 }).map((_, i) => (
             <div key={i} className="bg-white dark:bg-surface-800 p-6 rounded-xl shadow-sm border border-surface-200 dark:border-surface-700">
               <div className="h-3 w-16 bg-surface-200 dark:bg-surface-700 rounded mb-4 animate-pulse"></div>
               <div className="h-8 w-24 bg-surface-200 dark:bg-surface-700 rounded animate-pulse"></div>
@@ -166,6 +219,29 @@ export default function AdminPanel() {
             <KpiCard title="Taxa de Sucesso" value={`${metrics.success_rate}%`} status={metrics.success_rate > 90 ? 'ok' : 'warn'} />
             <KpiCard title="Tempo Economizado" value={`${metrics.time_saved_hours}h`} status="info" />
             <KpiCard title="Modos Reportados" value="0" />
+            
+            {/* Custo da Operação KPI Card */}
+            <div className="bg-white dark:bg-surface-800 p-6 rounded-xl shadow-sm border border-surface-200 dark:border-surface-700 flex flex-col justify-center relative">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs uppercase tracking-widest text-zinc-500 dark:text-zinc-400">
+                  Custo Operacional
+                </p>
+                {costs.unverified_cost_warning && (
+                  <div 
+                    className="w-2.5 h-2.5 rounded-full bg-status-warn cursor-help relative group"
+                    title="Inclui estimativa de custo não confirmada para um dos provedores de IA"
+                  >
+                    <span className="absolute -top-1 -left-1 w-4.5 h-4.5 rounded-full border border-status-warn animate-ping opacity-75"></span>
+                  </div>
+                )}
+              </div>
+              <p className="font-mono text-3xl font-bold text-slate-900 dark:text-slate-100">
+                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(costs.total_cost_brl)}
+              </p>
+              <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1 font-mono">
+                Média/run: ${costs.avg_cost_per_run_usd.toFixed(4)} USD
+              </p>
+            </div>
           </>
         )}
       </div>

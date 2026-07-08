@@ -159,10 +159,18 @@ def test_gemini_call_sites_use_current_sdk_api_surface():
     )
 
     # Current unified-SDK surface markers.
-    assert "genai.Client(" in source, (
-        "Expected the current SDK client constructor `genai.Client(...)` at the "
+    assert "get_genai_client(" in source, (
+        "Expected the GenAI client factory function `get_genai_client(...)` at the "
         "call sites."
     )
+
+    # Also assert that genai.Client is instantiated in the factory config.
+    factory_file = REPO_ROOT / "config" / "genai_client.py"
+    assert factory_file.exists()
+    assert "genai.Client(" in factory_file.read_text(encoding="utf-8"), (
+        "Expected `genai.Client(...)` in the config factory."
+    )
+
     assert "client.aio.models.generate_content(" in source, (
         "Expected the current SDK async call "
         "`client.aio.models.generate_content(...)` at the call sites."

@@ -114,12 +114,18 @@ async def renderizar_exportacao(payload: dict):
         await _renderizar_exportacao_impl(payload, session_id)
     except Exception as e:
         logger.error(f"[{session_id}] Pipeline falhou com exceção não tratada: {e}", exc_info=True)
+        try:
+            FinOpsTracker.finish_job(session_id, pipeline_type="abandoned_or_error")
+        except Exception as finops_err:
+            logger.error(f"Erro ao finalizar FinOps no erro de pipeline: {finops_err}")
         update_status(session_id, "failed", f"Erro interno no pipeline: {e}")
 
 
 async def _renderizar_exportacao_impl(payload: dict, session_id: str):
     start_time_ms = payload.get("recording_start_time", 0)
-    FinOpsTracker.start_job(session_id)
+    user_id = payload.get("user_id")
+    org_id = payload.get("org_id")
+    FinOpsTracker.start_job(session_id, user_id=user_id, org_id=org_id)
     
     # 1. Salva o vídeo WebM Cru
     # Task 14.4: accept raw bytes from the binary upload (payload["video_bytes"])
@@ -236,7 +242,7 @@ async def _renderizar_exportacao_impl(payload: dict, session_id: str):
                     pass
                     
             try:
-                resultado = await processar_intencao(annotated_bytes, event_data, a11y_tree)
+                resultado = await processar_intencao(annotated_bytes, event_data, a11y_tree, session_id=session_id)
                 return {
                     "passo": passo,
                     "timestamp": ev.get("timestamp"),
@@ -304,7 +310,7 @@ async def _renderizar_exportacao_impl(payload: dict, session_id: str):
         # --- 3. GERAR TÍTULO INTELIGENTE ---
         update_status(session_id, "processing", "🧠 Extraindo intenção para gerar título...")
         try:
-            titulo_inteligente = await gerar_titulo_inteligente(roteiro_enriquecido, rag_namespace)
+            titulo_inteligente = await gerar_titulo_inteligente(roteiro_enriquecido, rag_namespace, session_id=session_id)
         except Exception as e:
             logger.error(f"Erro ao gerar titulo inteligente: {e}")
             titulo_inteligente = f"[{rag_namespace.upper()}] Tutorial" if rag_namespace != "auto" else "Tutorial"

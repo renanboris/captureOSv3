@@ -7,20 +7,37 @@ from typing import Dict
 logger = logging.getLogger("finops")
 logger.setLevel(logging.INFO)
 
+# Preços de referência por 1M tokens (USD). Atualizar manualmente quando o
+# provedor mudar tabela — não há verificação automática.
+# Fonte: página de pricing oficial de cada provedor.
+# Última verificação: 2026-07-07
+GEMINI_FLASH_INPUT_PER_1M_USD = 0.075
+GEMINI_FLASH_OUTPUT_PER_1M_USD = 0.30
+OPENAI_GPT4O_MINI_INPUT_PER_1M_USD = 0.15
+OPENAI_GPT4O_MINI_OUTPUT_PER_1M_USD = 0.60
+# MINIMAX_*: valor não verificado com o provedor
+MINIMAX_INPUT_PER_1M_USD = 0.10
+MINIMAX_OUTPUT_PER_1M_USD = 0.10
+
+
 class FinOpsTracker:
     _jobs: Dict[str, dict] = {}
 
     @classmethod
-    def start_job(cls, session_id: str):
+    def start_job(cls, session_id: str, user_id: str = None, org_id: str = None):
+        cls.sweep_stale_jobs()
         if session_id not in cls._jobs:
             cls._jobs[session_id] = {
                 "session_id": session_id,
+                "user_id": user_id,
+                "org_id": org_id,
                 "start_time": time.time(),
                 "tokens": {
                     "gemini": {"input": 0, "output": 0},
                     "openai": {"input": 0, "output": 0},
                     "minimax": {"input": 0, "output": 0},
                 },
+                "gemini_call_count": 0,
                 "video_duration_sec": 0.0,
                 "pipeline_type": "express",
             }
@@ -30,6 +47,8 @@ class FinOpsTracker:
         if session_id in cls._jobs and provider in cls._jobs[session_id]["tokens"]:
             cls._jobs[session_id]["tokens"][provider]["input"] += input_tokens
             cls._jobs[session_id]["tokens"][provider]["output"] += output_tokens
+            if provider == "gemini":
+                cls._jobs[session_id]["gemini_call_count"] = cls._jobs[session_id].get("gemini_call_count", 0) + 1
 
     @classmethod
     def set_video_duration(cls, session_id: str, duration_sec: float):
@@ -37,32 +56,51 @@ class FinOpsTracker:
             cls._jobs[session_id]["video_duration_sec"] = duration_sec
 
     @classmethod
+    def sweep_stale_jobs(cls, max_age_seconds: int = 3600):
+        now = time.time()
+        stale_session_ids = []
+        for session_id, job in list(cls._jobs.items()):
+            start_time = job.get("start_time", now)
+            if now - start_time > max_age_seconds:
+                stale_session_ids.append(session_id)
+        
+        for session_id in stale_session_ids:
+            logger.info(f"Sweeping stale job: {session_id}")
+            cls.finish_job(session_id, pipeline_type="abandoned_or_error")
+
+    @classmethod
     def finish_job(cls, session_id: str, pipeline_type: str = "express"):
         if session_id not in cls._jobs:
-            return
+            return None
 
         job = cls._jobs.pop(session_id)
         job["end_time"] = time.time()
         job["execution_time_sec"] = round(job["end_time"] - job["start_time"], 2)
         job["pipeline_type"] = pipeline_type
 
-        # Cálculo estimado de custos (valores em USD baseados em tabelas públicas)
+        # Cálculo estimado de custos
         cost = 0.0
         
-        # Gemini 1.5 Flash (aprox $0.075/1M in, $0.30/1M out)
+        # Gemini 1.5 Flash
         g_in = job["tokens"]["gemini"]["input"]
         g_out = job["tokens"]["gemini"]["output"]
-        cost += (g_in / 1_000_000) * 0.075 + (g_out / 1_000_000) * 0.30
+        cost += (g_in / 1_000_000) * GEMINI_FLASH_INPUT_PER_1M_USD + (g_out / 1_000_000) * GEMINI_FLASH_OUTPUT_PER_1M_USD
 
-        # OpenAI GPT-4o-mini (aprox $0.15/1M in, $0.60/1M out)
+        # OpenAI GPT-4o-mini
         o_in = job["tokens"]["openai"]["input"]
         o_out = job["tokens"]["openai"]["output"]
-        cost += (o_in / 1_000_000) * 0.15 + (o_out / 1_000_000) * 0.60
+        cost += (o_in / 1_000_000) * OPENAI_GPT4O_MINI_INPUT_PER_1M_USD + (o_out / 1_000_000) * OPENAI_GPT4O_MINI_OUTPUT_PER_1M_USD
 
-        # MiniMax (aprox similar ou dependendo da tabela) - Mock: $0.10/1M
+        # MiniMax
         m_in = job["tokens"]["minimax"]["input"]
         m_out = job["tokens"]["minimax"]["output"]
-        cost += (m_in / 1_000_000) * 0.10 + (m_out / 1_000_000) * 0.10
+        cost += (m_in / 1_000_000) * MINIMAX_INPUT_PER_1M_USD + (m_out / 1_000_000) * MINIMAX_OUTPUT_PER_1M_USD
+
+        # Confiabilidade do preço do MiniMax
+        if m_in > 0 or m_out > 0:
+            job["cost_confidence"] = "estimated_unverified"
+        else:
+            job["cost_confidence"] = "confirmed"
 
         usd_to_brl = float(os.getenv("USD_TO_BRL", "5.60"))
         job["estimated_api_cost_usd"] = cost
