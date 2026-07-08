@@ -269,7 +269,7 @@ def extrair_texto_documento(file_data_b64: str, filename: str) -> str:
     try:
         raw_bytes = base64.b64decode(file_data_b64)
         if filename.lower().endswith(".pdf"):
-            from PyPDF2 import PdfReader
+            from pypdf import PdfReader
             pdf_file = io.BytesIO(raw_bytes)
             reader = PdfReader(pdf_file)
             texto = []
