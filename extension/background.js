@@ -185,7 +185,12 @@ async function refreshAuthHeaderRule() {
 }
 
 // Register/refresh the rule on startup and whenever the token/backend changes.
-chrome.runtime.onInstalled.addListener(() => { refreshAuthHeaderRule(); });
+chrome.runtime.onInstalled.addListener((details) => {
+    refreshAuthHeaderRule();
+    if (details.reason === 'install' || details.reason === 'update') {
+        injectContentScriptsToAllTabs();
+    }
+});
 chrome.runtime.onStartup.addListener(() => { refreshAuthHeaderRule(); });
 chrome.storage.onChanged.addListener((changes, area) => {
     if (area === 'local' && (changes.authToken || changes.backendUrl)) {
@@ -366,7 +371,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
     
     if (message.action === 'start_recording') {
-        startCapture();
+        chrome.tabs.query({ active: true, currentWindow: true }, async (tabs) => {
+            if (tabs[0] && tabs[0].id) {
+                await ensureContentScriptActive(tabs[0].id);
+            }
+            startCapture();
+        });
     }
     
     if (message.target === 'background' && message.action === 'stream_ready') {
@@ -480,32 +490,34 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.action === "INICIAR_SESSAO_ARBITRO") {
         const { moduloId, tabId } = message;
 
-        authedFetch(`/api/v1/simlink/${moduloId}`)
-            .then(r => r.json())
-            .then(modulo => {
-                chrome.storage.local.set({
-                    sandboxMode: true,
-                    sandboxSessionId: moduloId,
-                    sandboxTotalPassos: modulo.total_passos,
-                    sandboxPassoAtual: 0,
-                    sandboxHotspots: modulo.hotspots,
-                    sandboxXP: 0,
-                    sandboxStats: { errors: 0, hints: 0, skips: 0 }
+        ensureContentScriptActive(tabId).then(() => {
+            authedFetch(`/api/v1/simlink/${moduloId}`)
+                .then(r => r.json())
+                .then(modulo => {
+                    chrome.storage.local.set({
+                        sandboxMode: true,
+                        sandboxSessionId: moduloId,
+                        sandboxTotalPassos: modulo.total_passos,
+                        sandboxPassoAtual: 0,
+                        sandboxHotspots: modulo.hotspots,
+                        sandboxXP: 0,
+                        sandboxStats: { errors: 0, hints: 0, skips: 0 }
+                    });
+
+                    // Resetar estado do sandbox no backend
+                    authedFetch(`/api/v1/sandbox/reset`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ session_id: moduloId })
+                    }).catch(() => {});
+
+                    sendResponse({ ok: true, total_passos: modulo.total_passos });
+                })
+                .catch(err => {
+                    console.error("Erro ao iniciar árbitro:", err);
+                    sendResponse({ ok: false, error: err.message });
                 });
-
-                // Resetar estado do sandbox no backend
-                authedFetch(`/api/v1/sandbox/reset`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ session_id: moduloId })
-                }).catch(() => {});
-
-                sendResponse({ ok: true, total_passos: modulo.total_passos });
-            })
-            .catch(err => {
-                console.error("Erro ao iniciar árbitro:", err);
-                sendResponse({ ok: false, error: err.message });
-            });
+        });
         return true; // async response
     }
 
@@ -571,6 +583,42 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         });
         return true; // async response
     }
+
+    if (message.action === 'auth_fetch') {
+        (async () => {
+            try {
+                const { authToken } = await chrome.storage.local.get(['authToken']);
+                const backendUrl = await getBackendUrl();
+                
+                let targetUrl = message.url || '';
+                if (message.path) {
+                    targetUrl = `${backendUrl}${message.path}`;
+                }
+                
+                const options = { ...(message.options || {}) };
+                const headers = { ...(options.headers || {}) };
+                if (authToken) {
+                    headers['Authorization'] = `Bearer ${authToken}`;
+                }
+                options.headers = headers;
+
+                const res = await fetch(targetUrl, options);
+                if (res.ok) {
+                    let data = {};
+                    try {
+                        data = await res.json();
+                    } catch(e) {}
+                    sendResponse({ ok: true, status: res.status, data: data });
+                } else {
+                    sendResponse({ ok: false, status: res.status });
+                }
+            } catch (err) {
+                console.error("Erro no auth_fetch do background:", err);
+                sendResponse({ ok: false, status: 0, error: err.message });
+            }
+        })();
+        return true; // async response
+    }
     
     if (message.action === 'resume_polling') {
         startPolling(message.session_id);
@@ -621,6 +669,7 @@ function startPolling(sessionId) {
                                     action: "show_player_modal",
                                     url: status.url,
                                     roteiro: status.roteiro || [],
+                                    titulo: status.titulo || "",
                                     backendUrl: backendUrl
                                 }).catch(() => {});
                             }
@@ -654,18 +703,40 @@ async function startCapture() {
     // persisted to chrome.storage.local — bug C5 fix).
     clearEventsDB().catch((err) => console.warn('[CaptureOS] Could not clear events DB before capture:', err));
     
-    // Configura offscreen
-    await setupOffscreenDocument('offscreen.html');
+    // Consulta a tab ativa na janela atual para servir de âncora ao diálogo de seleção
+    chrome.tabs.query({ active: true, currentWindow: true }, async (tabs) => {
+        const activeTab = tabs[0];
+        if (!activeTab) {
+            console.error("[CaptureOS] Nenhuma aba ativa encontrada para ancorar o seletor.");
+            return;
+        }
 
-    // Gravação delegada ao Picker nativo
-    chrome.storage.local.get(['useMic'], (res) => {
-        chrome.runtime.sendMessage({
-            target: 'offscreen',
-            action: 'start_recording',
-            useMic: res.useMic || false
-        }).catch(err => console.error("Erro ao iniciar gravação no offscreen:", err));
+        // Abre o seletor de mídia nativo do Chrome ancorado à janela da aba ativa
+        chrome.desktopCapture.chooseDesktopMedia(
+            ['screen', 'window', 'tab'],
+            activeTab,
+            async (streamId, options) => {
+                if (!streamId) {
+                    console.log("[CaptureOS] Seleção de tela cancelada pelo usuário.");
+                    return;
+                }
+
+                // Configura offscreen somente se o usuário selecionou algo
+                await setupOffscreenDocument('offscreen.html');
+
+                chrome.storage.local.get(['useMic'], (res) => {
+                    chrome.runtime.sendMessage({
+                        target: 'offscreen',
+                        action: 'start_recording',
+                        streamId: streamId,
+                        useMic: res.useMic || false,
+                        systemAudio: options.canRequestAudioTrack || false
+                    }).catch(err => console.error("Erro ao iniciar gravação no offscreen:", err));
+                });
+                console.log("Gravação Delegada ao Offscreen via desktopCapture e streamId");
+            }
+        );
     });
-    console.log("Gravação Delegada ao Offscreen via getDisplayMedia nativo");
 }
 
 async function stopCapture() {
@@ -796,4 +867,152 @@ function fetch_ingest(sessionId, formData) {
             }
         });
     });
+}
+
+// ─── Content Script Resiliency and Injection Helpers ─────────────────────────
+
+/**
+ * Helper to dynamically inject scripts into a tab, trying allFrames first
+ * and falling back to main frame only if a sub-frame is restricted/blocked.
+ * @param {number} tabId
+ * @param {string[]} files
+ * @param {boolean} allFrames
+ * @returns {Promise<boolean>}
+ */
+async function injectScriptsIntoTab(tabId, files, allFrames = true) {
+    try {
+        await chrome.scripting.executeScript({
+            target: { tabId: tabId, allFrames: allFrames },
+            files: files
+        });
+        return true;
+    } catch (err) {
+        const errMsg = (err && err.message) || "";
+        const isRestricted = errMsg.includes("cannot be scripted") || 
+                             errMsg.includes("extensions gallery") || 
+                             errMsg.includes("restricted") || 
+                             errMsg.includes("privileged") ||
+                             errMsg.includes("Cannot access");
+
+        if (allFrames) {
+            if (!isRestricted) {
+                console.warn(`[CaptureOS] Injection failed for all frames on tab ${tabId}. Retrying for main frame only...`, err);
+            }
+            try {
+                await chrome.scripting.executeScript({
+                    target: { tabId: tabId, allFrames: false },
+                    files: files
+                });
+                return true;
+            } catch (fallbackErr) {
+                const fallbackMsg = (fallbackErr && fallbackErr.message) || "";
+                const fallbackRestricted = fallbackMsg.includes("cannot be scripted") || 
+                                           fallbackMsg.includes("extensions gallery") || 
+                                           fallbackMsg.includes("restricted") || 
+                                           fallbackMsg.includes("privileged") ||
+                                           fallbackMsg.includes("Cannot access");
+                if (!fallbackRestricted) {
+                    console.error(`[CaptureOS] Fallback injection failed on tab ${tabId}:`, fallbackErr);
+                } else {
+                    console.log(`[CaptureOS] Suppressed injection on restricted tab ${tabId}: ${fallbackMsg}`);
+                }
+            }
+        } else {
+            if (!isRestricted) {
+                console.error(`[CaptureOS] Main frame injection failed on tab ${tabId}:`, err);
+            } else {
+                console.log(`[CaptureOS] Suppressed injection on restricted tab ${tabId}: ${errMsg}`);
+            }
+        }
+    }
+    return false;
+}
+
+/**
+ * Sweeps all open HTTP/HTTPS tabs and injects the content scripts defined
+ * in the manifest. This runs on installation or update to ensure all open pages
+ * are interactive immediately without needing a refresh.
+ */
+async function injectContentScriptsToAllTabs() {
+    const manifest = chrome.runtime.getManifest();
+    const contentScripts = manifest.content_scripts || [];
+    
+    try {
+        const tabs = await chrome.tabs.query({ url: ['http://*/*', 'https://*/*'] });
+        console.log(`[CaptureOS] Injecting content scripts into ${tabs.length} tabs on install/update...`);
+        for (const tab of tabs) {
+            if (!tab.id || !tab.url) continue;
+            
+            // Avoid injecting into restricted pages
+            if (tab.url.startsWith('chrome://') || 
+                tab.url.startsWith('chrome-extension://') || 
+                tab.url.startsWith('about:') || 
+                tab.url.startsWith('edge://') ||
+                tab.url.includes('chromewebstore.google.com')) {
+                continue;
+            }
+
+            for (const script of contentScripts) {
+                if (script.js && script.js.length > 0) {
+                    await injectScriptsIntoTab(tab.id, script.js, script.allFrames || false);
+                }
+            }
+        }
+    } catch (err) {
+        console.error('[CaptureOS] Error during bulk injection of content scripts:', err);
+    }
+}
+
+/**
+ * Verifies if the content script is active in the specified tab. If it's not
+ * (or the context is invalidated), it dynamically injects shield.js and radar_v3.js.
+ * @param {number} tabId
+ * @returns {Promise<boolean>}
+ */
+async function ensureContentScriptActive(tabId) {
+    try {
+        const tab = await chrome.tabs.get(tabId);
+        if (!tab || !tab.url || 
+            tab.url.startsWith('chrome://') || 
+            tab.url.startsWith('chrome-extension://') || 
+            tab.url.startsWith('about:') ||
+            tab.url.startsWith('edge://') ||
+            tab.url.includes('chromewebstore.google.com')) {
+            console.log(`[CaptureOS] Tab ${tabId} is not eligible for script injection.`);
+            return false;
+        }
+    } catch (e) {
+        console.warn(`[CaptureOS] Could not get tab info for tab ${tabId}:`, e);
+        return false;
+    }
+
+    try {
+        const response = await new Promise((resolve, reject) => {
+            chrome.tabs.sendMessage(tabId, { action: 'ping' }, (res) => {
+                if (chrome.runtime.lastError) {
+                    reject(chrome.runtime.lastError);
+                } else {
+                    resolve(res);
+                }
+            });
+        });
+        if (response && response.status === 'pong') {
+            console.log(`[CaptureOS] Content script already active on tab ${tabId}`);
+            return true;
+        }
+    } catch (err) {
+        console.log(`[CaptureOS] Content script not responding on tab ${tabId}. Attempting dynamic injection...`);
+    }
+
+    // Try injecting shield.js and radar_v3.js dynamically (with allFrames: true, falling back if needed)
+    const shieldOk = await injectScriptsIntoTab(tabId, ['content_scripts/shield.js'], true);
+    const radarOk = await injectScriptsIntoTab(tabId, ['content_scripts/radar_v3.js'], true);
+    
+    if (shieldOk && radarOk) {
+        console.log(`[CaptureOS] Dynamically injected content scripts successfully into tab ${tabId}`);
+        // Small delay to allow the script to evaluate and set up listeners
+        await new Promise(resolve => setTimeout(resolve, 150));
+        return true;
+    }
+    return false;
 }

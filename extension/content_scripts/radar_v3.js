@@ -1,8 +1,9 @@
 // radar_v3.js (Content Script)
 (function() {
-    console.log("Capture OS v3 - Radar Injetado");
+    const currentScriptId = Math.random().toString(36).substring(2) + "_" + Date.now();
+    window.__capture_os_active_script_id = currentScriptId;
 
-    console.log("Capture OS v3 - Radar Injetado");
+    console.log("Capture OS v3 - Radar Injetado", currentScriptId);
 
     let eventCounter = 1;
     let isSandboxMode = false;
@@ -13,6 +14,9 @@
     let sandboxStats = { errors: 0, hints: 0, skips: 0 };
 
     chrome.storage.local.get(['sandboxMode', 'sandboxSessionId', 'sandboxTotalPassos', 'sandboxPassoAtual', 'sandboxXP', 'sandboxHotspots', 'sandboxStats'], (res) => {
+        if (window.__capture_os_active_script_id !== currentScriptId) {
+            return;
+        }
         isSandboxMode = res.sandboxMode || false;
         sandboxSessionId = res.sandboxSessionId || null;
         sandboxTotalPassos = res.sandboxTotalPassos || 0;
@@ -29,6 +33,9 @@
     });
 
     chrome.storage.onChanged.addListener((changes) => {
+        if (window.__capture_os_active_script_id !== currentScriptId) {
+            return;
+        }
         if (changes.sandboxMode) isSandboxMode = changes.sandboxMode.newValue;
         if (changes.sandboxSessionId) sandboxSessionId = changes.sandboxSessionId.newValue;
         if (changes.sandboxTotalPassos) sandboxTotalPassos = changes.sandboxTotalPassos.newValue;
@@ -219,6 +226,9 @@
     }
 
     function interceptEvent(e, type) {
+        if (window.__capture_os_active_script_id !== currentScriptId) {
+            return;
+        }
         // Encontra a árvore atual
         const tree = getSemanticSnapshot();
         
@@ -340,6 +350,10 @@
 
     let hasShownInvalidated = false;
     function showContextInvalidatedWarning() {
+        if (window.__capture_os_active_script_id !== currentScriptId) {
+            console.log("Capture OS: Instância de script antiga ignorando aviso de contexto invalidado.");
+            return;
+        }
         if (hasShownInvalidated) return;
         hasShownInvalidated = true;
         
@@ -403,6 +417,7 @@
     let urlAtual = window.location.href;
     let spaDebounce = null;
     const observerSPA = new MutationObserver(() => {
+        if (window.__capture_os_active_script_id !== currentScriptId) return;
         if (spaDebounce) return;
         spaDebounce = setTimeout(() => {
             spaDebounce = null;
@@ -437,6 +452,15 @@
 
     // --- UX Feedback (Toast & Widget) ---
     chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+        if (window.__capture_os_active_script_id !== currentScriptId) {
+            return;
+        }
+
+        if (msg && msg.action === "ping") {
+            sendResponse({ status: "pong" });
+            return;
+        }
+
         // Bloqueia a renderização de UI dentro de Iframes! O UI deve aparecer apenas na janela principal.
         const isUIAction = ["show_toast", "update_toast", "show_player_modal", "show_pin_tooltip", "show_editor_modal", "show_prep_toast"].includes(msg.action);
         if (isUIAction && window !== window.top) return;
@@ -459,7 +483,7 @@
                 setTimeout(() => toastEl.remove(), 400);
             }
             
-            mountPlayerModal(msg.url, msg.roteiro, msg.backendUrl);
+            mountPlayerModal(msg.url, msg.roteiro, msg.backendUrl, msg.titulo);
         } else if (msg.action === "show_error_toast") {
             showToast("error");
         } else if (msg.action === "show_editor_modal") {
@@ -532,6 +556,9 @@
 
     // Heartbeat para manter o Service Worker vivo durante a gravação
     setInterval(() => {
+        if (window.__capture_os_active_script_id !== currentScriptId) {
+            return;
+        }
         try {
             if (chrome.runtime && chrome.runtime.sendMessage) {
                 chrome.runtime.sendMessage({ action: "ping" }).catch(() => {});
@@ -697,10 +724,14 @@
 
 
     // --- Player Modal (Vimeo Record Aesthetic) ---
-    function mountPlayerModal(videoUrl, roteiro, receivedBackendUrl) {
+    function mountPlayerModal(videoUrl, roteiro, receivedBackendUrl, titulo = "") {
         // Extrai session_id da URL (ex: sess_1780090948221)
         const match = videoUrl.match(/(sess_\d+)/);
         const session_id = match ? match[1] : '';
+
+        const cleanTitle = titulo ? titulo.replace(/[^a-zA-Z0-9\s]/g, '').trim().replace(/\s+/g, '_') : '';
+        const pdfFilename = cleanTitle ? `${cleanTitle}_apostila.pdf` : `apostila_capture_os_${Date.now()}.pdf`;
+        const scormFilename = cleanTitle ? `${cleanTitle}_scorm.zip` : `pacote_scorm_${session_id}.zip`;
 
         // Usa o backendUrl enviado pelo background.js
         const backendUrl = receivedBackendUrl || 'https://api.nomadelabs.com.br';
@@ -918,6 +949,18 @@
                 .btn-accent:hover {
                     background: #CCECE9;
                 }
+                .btn:disabled {
+                    opacity: 0.6;
+                    cursor: not-allowed;
+                }
+                .btn-share-video {
+                    background: #F0F9FF;
+                    color: #0284C7;
+                    border: 1px solid #BAE6FD;
+                }
+                .btn-share-video:hover:not(:disabled) {
+                    background: #E0F2FE;
+                }
                 .close-btn {
                     position: absolute;
                     top: 16px;
@@ -957,14 +1000,12 @@
                     </button>
                     
                     <div class="script-header">
-                        <h2>Roteiro do Tutorial</h2>
+                        <h2>${titulo || 'Roteiro do Tutorial'}</h2>
                     </div>
                     
                     <div class="script-content">
                         ${stepsHtml}
-                    </div>
-                    
-                    <div class="script-footer">
+                               <div class="script-footer">
                         <div class="btn-grid-top">
                             <button id="download-video-btn" class="btn btn-primary">
                                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2-2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
@@ -972,14 +1013,21 @@
                             </button>
                         </div>
                         <div class="btn-grid">
-                            <a href="${backendUrl}/artifacts/${session_id}/apostila.pdf" target="_blank" download="apostila_capture_os_${Date.now()}.pdf" class="btn btn-secondary">
+                            <a href="${backendUrl}/artifacts/${session_id}/apostila.pdf" target="_blank" download="${pdfFilename}" class="btn btn-secondary">
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
                                 PDF
                             </a>
-                            <a href="${backendUrl}/scorm/${session_id}.zip" target="_blank" download="pacote_scorm_${session_id}.zip" class="btn btn-accent">
+                            <a href="${backendUrl}/scorm/${session_id}.zip" target="_blank" download="${scormFilename}" class="btn btn-accent">
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2-2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
                                 SCORM
                             </a>
+                        </div>
+                        <div class="share-section" style="margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border); display: flex; flex-direction: column; gap: 8px;">
+                            <div style="font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">Compartilhar com terceiros</div>
+                            <button id="share-video-btn" class="btn btn-share-video" disabled style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px;">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"></path><polyline points="16 6 12 2 8 6"></polyline><line x1="12" y1="2" x2="12" y2="15"></line></svg>
+                                Carregando Link do Vídeo...
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -1140,6 +1188,71 @@
             }
             btn.innerHTML = originalHtml;
             btn.disabled = false;
+        });
+
+        // Lógica de compartilhamento
+        const shareVideoBtn = shadow.getElementById('share-video-btn');
+
+        let videoLinkUrl = null;
+
+        const copyToClipboard = async (text, btn, originalHtml) => {
+            try {
+                await navigator.clipboard.writeText(text);
+                btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Copiado!`;
+                const origBg = btn.style.background;
+                const origColor = btn.style.color;
+                const origBorder = btn.style.borderColor;
+                btn.style.background = '#ECFDF5';
+                btn.style.color = '#10B981';
+                btn.style.borderColor = '#A7F3D0';
+                setTimeout(() => {
+                    btn.innerHTML = originalHtml;
+                    btn.style.background = origBg;
+                    btn.style.color = origColor;
+                    btn.style.borderColor = origBorder;
+                }, 2000);
+            } catch (err) {
+                console.error('Failed to copy: ', err);
+                const input = document.createElement('textarea');
+                input.value = text;
+                shadow.appendChild(input);
+                input.select();
+                try {
+                    document.execCommand('copy');
+                    btn.innerHTML = `Copiado!`;
+                } catch(e) {
+                    btn.innerHTML = `Erro ao copiar`;
+                }
+                shadow.removeChild(input);
+                setTimeout(() => {
+                    btn.innerHTML = originalHtml;
+                }, 2000);
+            }
+        };
+
+        const videoOrigHtml = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 6px;"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"></path><polyline points="16 6 12 2 8 6"></polyline><line x1="12" y1="2" x2="12" y2="15"></line></svg> Compartilhar Link do Vídeo`;
+
+        shareVideoBtn.addEventListener('click', () => {
+            if (videoLinkUrl) copyToClipboard(videoLinkUrl, shareVideoBtn, videoOrigHtml);
+        });
+
+        chrome.runtime.sendMessage({
+            action: "auth_fetch",
+            path: `/api/v1/session/${session_id}/artifacts`
+        }, (response) => {
+            if (response && response.ok) {
+                const data = response.data;
+                if (data.video_url) {
+                    videoLinkUrl = data.video_url;
+                    shareVideoBtn.innerHTML = videoOrigHtml;
+                    shareVideoBtn.disabled = false;
+                } else {
+                    shareVideoBtn.textContent = "Vídeo Indisponível";
+                }
+            } else {
+                const status = (response && response.status) || 'Conexão';
+                shareVideoBtn.textContent = `Erro ${status}`;
+            }
         });
 
         requestAnimationFrame(() => {
@@ -1356,6 +1469,9 @@
 
     // Escuta mensagens do background
     chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+        if (window.__capture_os_active_script_id !== currentScriptId) {
+            return;
+        }
         if (request.action === "SHOW_HINT_LOCAL") {
             const step = request.step;
             if (!step) return;

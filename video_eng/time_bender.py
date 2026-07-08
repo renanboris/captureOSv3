@@ -89,7 +89,11 @@ def _calculate_segments(timeline_events: list, video_duration: float) -> tuple:
     """
     segments = []
     audio_delays = []
-    current_time = 0
+    
+    first_ts = timeline_events[0]['timestamp'] if timeline_events else 0.0
+    start_offset = max(0.0, min(0.5, first_ts - 0.2))
+    
+    current_time = start_offset
     shifted_time = 0
 
     for event in timeline_events:
@@ -208,7 +212,7 @@ def _generate_dummy_chunk(idx, duration, tmp_dir, process_input):
     frame_png_path = os.path.join(tmp_dir, f"dummy_frame_{idx}.png")
     
     subprocess.run([
-        "ffmpeg", "-y", "-ss", "0.1", "-i", process_input,
+        "ffmpeg", "-y", "-i", process_input, "-ss", "0.1",
         "-frames:v", "1", "-q:v", "2", frame_png_path
     ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     
@@ -242,14 +246,14 @@ def _generate_freeze_clip(idx, freeze_ts, duration, process_input, tmp_dir):
     extract_ts = 0.2 if freeze_ts == 0.0 else freeze_ts
     
     subprocess.run([
-        "ffmpeg", "-y", "-ss", str(extract_ts), "-i", process_input,
+        "ffmpeg", "-y", "-i", process_input, "-ss", str(extract_ts),
         "-frames:v", "1", "-q:v", "2", frame_png_path
     ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     
     if not os.path.exists(frame_png_path):
         fallback_ts = max(0.0, freeze_ts - 0.5)
         subprocess.run([
-            "ffmpeg", "-y", "-ss", str(fallback_ts), "-i", process_input,
+            "ffmpeg", "-y", "-i", process_input, "-ss", str(fallback_ts),
             "-frames:v", "1", "-q:v", "2", frame_png_path
         ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         
@@ -281,7 +285,7 @@ def compose_video_with_freeze_frames(input_webm: str, output_mp4: str, timeline_
         subprocess.run([
             "ffmpeg", "-y", "-i", input_webm,
             "-vf", f"fps={FPS}", "-c:v", "libx264", "-preset", "ultrafast",
-            "-g", "1", "-keyint_min", "1", "-crf", "28", "-pix_fmt", "yuv420p", "-an", cfr_mp4
+            "-g", "1", "-keyint_min", "1", "-crf", "20", "-pix_fmt", "yuv420p", "-an", cfr_mp4
         ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         process_input = cfr_mp4
     except Exception as e:
@@ -379,7 +383,7 @@ def compose_video_with_freeze_frames(input_webm: str, output_mp4: str, timeline_
         cmd.extend([
             "-c:v", "libx264",
             "-preset", "fast",
-            "-crf", "23",
+            "-crf", "18",
             "-c:a", "aac",
             "-b:a", "128k",
             "-pix_fmt", "yuv420p",
@@ -437,7 +441,7 @@ def _simple_convert(input_webm: str, output_mp4: str) -> bool:
         subprocess.run([
             "ffmpeg", "-y", "-i", input_webm,
             "-r", str(FPS), "-c:v", "libx264", "-preset", "fast",
-            "-crf", "23", "-c:a", "aac", "-b:a", "128k",
+            "-crf", "18", "-c:a", "aac", "-b:a", "128k",
             "-pix_fmt", "yuv420p", "-movflags", "+faststart",
             output_mp4
         ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -470,7 +474,7 @@ def _compose_legacy_moviepy(input_webm: str, output_mp4: str, timeline_events: l
         subprocess.run([
             "ffmpeg", "-y", "-i", input_webm,
             "-r", "30", "-c:v", "libx264", "-preset", "ultrafast",
-            "-crf", "28", cfr_mp4
+            "-crf", "20", cfr_mp4
         ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         input_file = cfr_mp4
     except Exception as e:

@@ -295,7 +295,9 @@ def test_audio_aligned_to_segment_start(events, video_duration):
     # verify the audio_delays match what we independently compute.
     expected_shifted = 0
     event_idx = 0
-    current_t = 0
+    first_ts = events[0]['timestamp'] if events else 0.0
+    start_offset = max(0.0, min(0.5, first_ts - 0.2))
+    current_t = start_offset
 
     for event in events:
         ts = event['timestamp']

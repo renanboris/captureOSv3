@@ -167,6 +167,100 @@ def buscar_contexto_multi_namespace(prompt_usuario: str, namespace_alvo: Optiona
 # =========================================================
 # UPLOAD MANUAL DE CONTEXTO
 # =========================================================
+def sanitizar_namespace(ns: str) -> str:
+    """
+    Sanitiza o nome do namespace para ser compatível com as regras do Pinecone.
+    Remove caracteres não ASCII, substitui espaços por underscores e remove
+    caracteres especiais, mantendo apenas alfanuméricos, hifens, underscores e pontos.
+    """
+    import re
+    if not ns:
+        return "geral"
+    # Trim e minúsculas
+    ns = ns.strip().lower()
+    # Substitui espaços por underscores
+    ns = ns.replace(" ", "_")
+    # Mantém apenas letras, números, hifens, underscores e pontos
+    ns = re.sub(r'[^a-z0-9\-\_\.]', '', ns)
+    if not ns:
+        return "geral"
+    return ns
+
+def split_text_smartly(text: str, chunk_size: int = 1000, chunk_overlap: int = 200) -> List[str]:
+    """
+    Divide o texto em chunks de tamanho máximo `chunk_size`, respeitando limites
+    de parágrafos, linhas e frases, e aplicando um overlap de `chunk_overlap`.
+    """
+    if len(text) <= chunk_size:
+        return [text]
+
+    import re
+    # Divide por parágrafos, linhas ou frases seguidas de espaço/nova linha
+    sentences = re.split(r'(\n\n|\n|\. |\! |\? )', text)
+    
+    parts = []
+    i = 0
+    while i < len(sentences):
+        sentence = sentences[i]
+        if i + 1 < len(sentences):
+            sep = sentences[i+1]
+            parts.append(sentence + sep)
+            i += 2
+        else:
+            parts.append(sentence)
+            i += 1
+            
+    chunks = []
+    current_chunk = []
+    current_len = 0
+    
+    for part in parts:
+        part_len = len(part)
+        if not part.strip():
+            continue
+            
+        # Se uma única parte for maior que o chunk_size, faz split rígido
+        if part_len > chunk_size:
+            if current_chunk:
+                chunks.append("".join(current_chunk))
+                current_chunk = []
+                current_len = 0
+            
+            temp_part = part
+            while len(temp_part) > chunk_size:
+                chunks.append(temp_part[:chunk_size])
+                temp_part = temp_part[chunk_size - chunk_overlap:]
+            if temp_part.strip():
+                current_chunk = [temp_part]
+                current_len = len(temp_part)
+        elif current_len + part_len > chunk_size:
+            chunks.append("".join(current_chunk))
+            
+            # Reconstrói overlap a partir do final do chunk atual
+            overlap_str = ""
+            overlap_parts = []
+            for prev_part in reversed(current_chunk):
+                if len(prev_part) + len(overlap_str) <= chunk_overlap:
+                    overlap_str = prev_part + overlap_str
+                    overlap_parts.insert(0, prev_part)
+                else:
+                    needed = chunk_overlap - len(overlap_str)
+                    if needed > 0:
+                        overlap_str = prev_part[-needed:] + overlap_str
+                        overlap_parts.insert(0, prev_part[-needed:])
+                    break
+            
+            current_chunk = overlap_parts + [part]
+            current_len = len("".join(current_chunk))
+        else:
+            current_chunk.append(part)
+            current_len += part_len
+            
+    if current_chunk:
+        chunks.append("".join(current_chunk))
+        
+    return [c.strip() for c in chunks if c.strip()]
+
 def extrair_texto_documento(file_data_b64: str, filename: str) -> str:
     """Extrai o texto de um PDF ou TXT em base64"""
     import base64
@@ -175,7 +269,7 @@ def extrair_texto_documento(file_data_b64: str, filename: str) -> str:
     try:
         raw_bytes = base64.b64decode(file_data_b64)
         if filename.lower().endswith(".pdf"):
-            from PyPDF2 import PdfReader
+            from pypdf import PdfReader
             pdf_file = io.BytesIO(raw_bytes)
             reader = PdfReader(pdf_file)
             texto = []
@@ -189,27 +283,45 @@ def extrair_texto_documento(file_data_b64: str, filename: str) -> str:
         logger.error(f"Falha ao extrair texto: {e}")
         return ""
 
-def ingerir_documento_para_namespace(file_data_b64: str, filename: str, namespace: str) -> bool:
-    """Extrai texto, gera embeddings e salva no Pinecone sob o namespace"""
+def ingerir_documento_para_namespace(file_data_b64: str, filename: str, namespace: str) -> dict:
+    """Extrai texto, gera embeddings e salva no Pinecone sob o namespace.
+    
+    Returns:
+        dict com {"success": bool, "namespace": str, "chunks": int, "error": str | None}
+    """
     import hashlib
+    global _NAMESPACES_LOADED
     
     if not pinecone_index:
         logger.error("Pinecone não inicializado, impossível vetorizar")
-        return False
+        return {"success": False, "namespace": namespace, "chunks": 0, "error": "Pinecone não inicializado"}
+    
+    if not client_openai:
+        logger.error("OpenAI não inicializado, impossível gerar embeddings")
+        return {"success": False, "namespace": namespace, "chunks": 0, "error": "OpenAI não inicializado"}
         
+    namespace = sanitizar_namespace(namespace)
+    
     texto_puro = extrair_texto_documento(file_data_b64, filename)
     if not texto_puro.strip():
         logger.warning(f"Documento vazio: {filename}")
-        return False
+        return {"success": False, "namespace": namespace, "chunks": 0, "error": "Documento vazio ou ilegível"}
         
-    # Quebrar texto em chunks de ~1000 caracteres
-    chunks = [texto_puro[i:i+1000] for i in range(0, len(texto_puro), 1000)]
+    # Quebrar texto em chunks de forma inteligente
+    chunks = split_text_smartly(texto_puro)
     
     vectors_to_upsert = []
     doc_id = hashlib.md5(filename.encode()).hexdigest()[:10]
+    skipped = 0
     
     for i, chunk in enumerate(chunks):
-        embedding = gerar_embedding(chunk)
+        try:
+            embedding = gerar_embedding(chunk)
+        except Exception as e:
+            logger.warning(f"Falha ao gerar embedding para chunk {i} de '{filename}': {e}")
+            skipped += 1
+            continue
+            
         chunk_id = f"doc_{doc_id}_chunk_{i}"
         
         vectors_to_upsert.append({
@@ -221,11 +333,23 @@ def ingerir_documento_para_namespace(file_data_b64: str, filename: str, namespac
                 "fonte": "Upload Local Release Notes"
             }
         })
+    
+    if not vectors_to_upsert:
+        logger.error(f"Nenhum embedding gerado para '{filename}' (todos os {len(chunks)} chunks falharam)")
+        return {"success": False, "namespace": namespace, "chunks": 0, "error": "Falha ao gerar embeddings"}
         
     try:
-        pinecone_index.upsert(vectors=vectors_to_upsert, namespace=namespace)
-        logger.info(f"Vetorizados {len(vectors_to_upsert)} chunks no namespace '{namespace}'")
-        return True
+        # Batch upserts em grupos de 100 (limite recomendado do Pinecone)
+        BATCH_SIZE = 100
+        for batch_start in range(0, len(vectors_to_upsert), BATCH_SIZE):
+            batch = vectors_to_upsert[batch_start:batch_start + BATCH_SIZE]
+            pinecone_index.upsert(vectors=batch, namespace=namespace)
+        
+        total = len(vectors_to_upsert)
+        logger.info(f"Vetorizados {total} chunks no namespace '{namespace}' ({skipped} chunks ignorados)")
+        # Invalida o cache de namespaces carregados para forçar uma nova consulta da próxima vez
+        _NAMESPACES_LOADED = False
+        return {"success": True, "namespace": namespace, "chunks": total, "error": None}
     except Exception as e:
         logger.error(f"Erro ao upsert no Pinecone: {e}")
-        return False
+        return {"success": False, "namespace": namespace, "chunks": 0, "error": str(e)}

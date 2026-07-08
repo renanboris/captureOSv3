@@ -350,6 +350,19 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                 const div = document.createElement('div');
                 div.className = 'module-item';
+                
+                let shareActionsHtml = '';
+                if (rot.status === 'completed') {
+                    shareActionsHtml = `
+                        <div class="roteiro-share-actions" style="margin-top: 10px; display: flex; border-top: 1px solid var(--border-default); padding-top: 8px;">
+                            <button class="btn-share-video" data-session="${rot.session_id}" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px; background: #F0F9FF; color: #0284C7; border: 1px solid #BAE6FD; border-radius: 6px; padding: 6px 12px; font-size: 11px; font-weight: 600; cursor: pointer; transition: background 0.2s;">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"></path><polyline points="16 6 12 2 8 6"></polyline><line x1="12" y1="2" x2="12" y2="15"></line></svg>
+                                Compartilhar Link do Vídeo
+                            </button>
+                        </div>
+                    `;
+                }
+
                 div.innerHTML = `
                     <div class="module-row-top">
                         <div class="module-title-area">
@@ -366,9 +379,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                             </svg>
                         </button>
                     </div>
+                    ${shareActionsHtml}
                 `;
 
-                // Click no card (exceto no botão X) abre o editor
+                // Click no card (exceto no botão X e botões de compartilhar) abre o editor
                 div.querySelector('.module-title-area').style.cursor = 'pointer';
                 div.querySelector('.module-title-area').onclick = () => abrirEditorRoteiro(rot.session_id, backendUrl);
 
@@ -379,6 +393,50 @@ document.addEventListener('DOMContentLoaded', async () => {
                     await excluirRoteiro(rot.session_id, backendUrl, headers);
                     carregarRoteiros(); // Recarrega a lista
                 };
+
+                // Click no Vídeo
+                const btnVideo = div.querySelector('.btn-share-video');
+                if (btnVideo) {
+                    btnVideo.onclick = (e) => {
+                        e.stopPropagation();
+                        const origHtml = btnVideo.innerHTML;
+                        btnVideo.innerText = 'Carregando...';
+                        btnVideo.disabled = true;
+
+                        chrome.runtime.sendMessage({
+                            action: "auth_fetch",
+                            path: `/api/v1/session/${rot.session_id}/artifacts`
+                        }, async (response) => {
+                            if (response && response.ok) {
+                                const data = response.data;
+                                if (data.video_url) {
+                                    try {
+                                        await navigator.clipboard.writeText(data.video_url);
+                                        btnVideo.innerHTML = 'Copiado! ✓';
+                                        btnVideo.style.background = '#ECFDF5';
+                                        btnVideo.style.color = '#10B981';
+                                        btnVideo.style.borderColor = '#A7F3D0';
+                                    } catch(err) {
+                                        console.error(err);
+                                        btnVideo.innerText = 'Erro ao copiar';
+                                    }
+                                } else {
+                                    btnVideo.innerText = 'Indisponível';
+                                }
+                            } else {
+                                const status = (response && response.status) || 'Conexão';
+                                btnVideo.innerText = `Erro ${status}`;
+                            }
+                            setTimeout(() => {
+                                btnVideo.innerHTML = origHtml;
+                                btnVideo.style.background = '';
+                                btnVideo.style.color = '';
+                                btnVideo.style.borderColor = '';
+                                btnVideo.disabled = false;
+                            }, 2000);
+                        });
+                    };
+                }
 
                 container.appendChild(div);
             });
@@ -589,7 +647,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     // Check if processing
-    chrome.storage.local.get(['isProcessing', 'ragNamespace', 'backendUrl', 'authToken'], (res) => {
+    chrome.storage.local.get(['isProcessing', 'ragNamespace', 'backendUrl', 'authToken', 'ragContext'], (res) => {
         if (res.isProcessing) {
             enterProcessingState();
         } else {
@@ -598,6 +656,22 @@ document.addEventListener('DOMContentLoaded', async () => {
         
         if (res.ragNamespace && selectRagNamespace) {
             selectRagNamespace.value = res.ragNamespace;
+        }
+
+        // Recover RAG Context upload state if present
+        const btnClearRag = document.getElementById('btn-clear-rag');
+        if (res.ragContext && res.ragContext.filename) {
+            if (ragFileName) {
+                ragFileName.textContent = res.ragContext.filename;
+                ragFileName.style.display = 'block';
+            }
+            if (btnClearRag) btnClearRag.style.display = 'inline-flex';
+            if (btnUploadRag) btnUploadRag.style.display = 'none';
+            if (ragUploadStatus) {
+                ragUploadStatus.textContent = 'Contexto anexado!';
+                ragUploadStatus.style.display = 'block';
+                ragUploadStatus.style.color = '#34C759';
+            }
         }
         
         // Fetch dynamic namespaces from Pinecone.
@@ -634,6 +708,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const ragFileName = document.getElementById('rag-file-name');
     const ragUploadStatus = document.getElementById('rag-upload-status');
     const selectRagNamespace = document.getElementById('rag-namespace');
+    const btnClearRag = document.getElementById('btn-clear-rag');
 
     if (btnUploadRag && inputRagFile) {
         btnUploadRag.addEventListener('click', () => {
@@ -646,9 +721,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             ragFileName.textContent = file.name;
             ragFileName.style.display = 'block';
+            if (btnClearRag) btnClearRag.style.display = 'inline-flex';
             btnUploadRag.style.display = 'none';
             ragUploadStatus.style.display = 'block';
             ragUploadStatus.textContent = 'Vetorizando arquivo...';
+            ragUploadStatus.style.color = '#00998F';
             
             // Disable start recording
             btnStart.disabled = true;
@@ -663,9 +740,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 });
 
                 const namespace = selectRagNamespace.value;
-                const { backendUrl, authToken } = await chrome.storage.local.get(['backendUrl', 'authToken']);
-                
-                if (!backendUrl) throw new Error("Servidor não configurado");
+                const { backendUrl: storedBackendUrl, authToken } = await chrome.storage.local.get(['backendUrl', 'authToken']);
+                const backendUrl = storedBackendUrl || "https://api.nomadelabs.com.br";
 
                 const res = await fetch(`${backendUrl}/api/v1/rag/upload_context`, {
                     method: 'POST',
@@ -703,6 +779,19 @@ document.addEventListener('DOMContentLoaded', async () => {
         selectRagNamespace.addEventListener('change', () => {
             chrome.storage.local.set({ ragNamespace: selectRagNamespace.value });
         });
+
+        if (btnClearRag) {
+            btnClearRag.addEventListener('click', () => {
+                inputRagFile.value = '';
+                ragFileName.textContent = '';
+                ragFileName.style.display = 'none';
+                btnClearRag.style.display = 'none';
+                btnUploadRag.style.display = 'block';
+                ragUploadStatus.style.display = 'none';
+                ragUploadStatus.textContent = '';
+                chrome.storage.local.remove('ragContext');
+            });
+        }
     }
 
     // ═══════════════════════════════════════════

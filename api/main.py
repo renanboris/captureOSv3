@@ -284,16 +284,23 @@ async def upload_context(payload: UploadContextPayload):
     from api.rag_engine import ingerir_documento_para_namespace
     from fastapi.concurrency import run_in_threadpool
     
-    if payload.namespace == "auto":
+    if payload.namespace == "auto" or not payload.namespace.strip():
         payload.namespace = "geral"
         
-    sucesso = await run_in_threadpool(
+    resultado = await run_in_threadpool(
         ingerir_documento_para_namespace,
         payload.file_data, payload.filename, payload.namespace
     )
-    if not sucesso:
-        raise HTTPException(status_code=500, detail="Falha ao vetorizar documento")
-    return {"status": "ok", "message": "Contexto vetorizado com sucesso"}
+    if not resultado.get("success"):
+        error_msg = resultado.get("error") or "Falha ao vetorizar documento"
+        raise HTTPException(status_code=500, detail=error_msg)
+        
+    return {
+        "status": "ok", 
+        "message": "Contexto vetorizado com sucesso",
+        "namespace": resultado.get("namespace"),
+        "chunks": resultado.get("chunks")
+    }
 
 @app.post("/api/v1/capture/ingest")
 async def ingest_capture(
@@ -403,26 +410,29 @@ async def check_status(session_id: str):
         # Só usa URL do Supabase se o arquivo local NÃO existir (significa que o upload foi bem-sucedido
         # e o arquivo local foi removido, ou que estamos em modo cloud-only).
         # Se o arquivo local existe, serve direto do backend para evitar links quebrados.
-        if settings.supabase_url and settings.supabase_key and not os.path.exists(local_path):
+        if settings.supabase_url and settings.supabase_key:
             return f"{settings.supabase_url}/storage/v1/object/public/videos/{session_id}_final.mp4"
         return local_url
 
     status_data = get_status(session_id)
     if status_data.get("status") == "completed":
         roteiro_data = []
+        titulo_data = ""
         try:
             roteiro_path = f"data/roteiros/{session_id}.json"
             if os.path.exists(roteiro_path):
                 with open(roteiro_path, "r", encoding="utf-8") as f:
                     roteiro_json = json.load(f)
                     roteiro_data = roteiro_json.get("roteiro", [])
+                    titulo_data = roteiro_json.get("titulo", "")
         except Exception as e:
             logger.error(f"Erro ao ler roteiro para retorno: {e}")
 
         return {
             "status": "completed", 
             "url": _get_video_url(),
-            "roteiro": roteiro_data
+            "roteiro": roteiro_data,
+            "titulo": titulo_data
         }
         
     return status_data
@@ -625,9 +635,9 @@ async def tts_preview(payload: TTSPreviewPayload):
     return {"audio_url": url}
 
 @app.get("/api/v1/session/{session_id}/artifacts", dependencies=_auth_deps)
-async def get_artifacts(session_id: str):
+async def get_artifacts(session_id: str, request: Request):
     """Retorna URLs de todos os artefatos gerados para uma sessão."""
-    base = settings.backend_url
+    base = str(request.base_url).rstrip("/")
     art_dir = f"data/artifacts/{session_id}"
     sim_dir = f"data/simlink"
 
@@ -637,7 +647,7 @@ async def get_artifacts(session_id: str):
     def _get_video_url() -> str:
         local_path = f"data/videos_gerados/{session_id}_final.mp4"
         local_url = f"{settings.backend_url}/videos_gerados/{session_id}_final.mp4"
-        if settings.supabase_url and settings.supabase_key and not os.path.exists(local_path):
+        if settings.supabase_url and settings.supabase_key:
             return f"{settings.supabase_url}/storage/v1/object/public/videos/{session_id}_final.mp4"
         return local_url
 
@@ -664,7 +674,7 @@ async def get_artifacts(session_id: str):
 
     return {
         "session_id": session_id,
-        "video_url":       url_if_exists(f"data/videos_gerados/{session_id}_final.mp4", _get_video_url()),
+        "video_url":       _get_video_url() if (os.path.exists(f"data/videos_gerados/{session_id}_final.mp4") or (settings.supabase_url and settings.supabase_key)) else None,
         "pdf_url":         url_if_exists(f"{art_dir}/apostila.pdf",
                                          f"{base}/artifacts/{session_id}/apostila.pdf"),
         "transcript_url":  url_if_exists(f"{art_dir}/transcricao.txt",
@@ -676,7 +686,7 @@ async def get_artifacts(session_id: str):
         "status":          get_status(session_id).get("status", "unknown")
     }
 
-@app.get("/api/v1/simlink/{modulo_id}", dependencies=_auth_deps)
+@app.get("/api/v1/simlink/{modulo_id}")
 async def get_simlink_modulo(modulo_id: str):
     # Procura pelo módulo — offloaded to a thread so the event loop is not blocked
     import glob
@@ -890,7 +900,7 @@ async def listar_modulos(dominio: str = "", limit: int = 0, offset: int = 0):
 
     return {"modulos": modulos, "total": total, "count": len(modulos), "offset": offset, "limit": limit}
 
-@app.post("/api/v1/simlink/{modulo_id}/conclusao", dependencies=_auth_deps)
+@app.post("/api/v1/simlink/{modulo_id}/conclusao")
 async def registrar_conclusao_simlink(modulo_id: str, payload: dict):
     # Busca módulo e dispara callback LMS se necessário — offloaded so the event loop is not blocked
     import glob
@@ -925,7 +935,7 @@ async def registrar_conclusao_simlink(modulo_id: str, payload: dict):
     return {"status": "ok"}
 
 @app.post("/api/v1/session/{session_id}/simlink/configure", dependencies=_auth_deps)
-async def configurar_simlink(session_id: str, payload: dict):
+async def configurar_simlink(session_id: str, payload: dict, request: Request):
     filepath = f"data/simlink/{session_id}.json"
     if not os.path.exists(filepath):
         raise HTTPException(status_code=404, detail="Módulo Simlink não gerado ainda")
@@ -941,19 +951,18 @@ async def configurar_simlink(session_id: str, payload: dict):
     with open(filepath, "w", encoding="utf-8") as f:
         json.dump(mod, f, ensure_ascii=False, indent=2)
         
-    return {"simlink_url": f"{settings.backend_url}/simlink?modulo={mod['modulo_id']}"}
+    base = str(request.base_url).rstrip("/")
+    return {"simlink_url": f"{base}/simlink?modulo={mod['modulo_id']}"}
 
 @app.post("/api/v1/ratings")
-async def submit_rating(payload: RatingPayload, request: Request):
+async def submit_rating(payload: RatingPayload, request: Request, user: dict = Depends(require_auth)):
     """Salva uma avaliação (NPS/CSAT) no Supabase."""
     if not settings.supabase_url or not settings.supabase_key:
         logger.warning("Supabase não configurado. Avaliação ignorada.")
         return {"status": "ignored"}
     
-    # Extrair user_id do token se disponível. O AuthMiddleware deve colocar em request.state
-    # Se o sistema atual apenas tem uma proteção fraca ou admin único, podemos precisar
-    # usar um fallback ou o UID padrão da plataforma.
-    user_id = getattr(request.state, 'user_id', None)
+    # Extrair user_id do token JWT decodificado pela dependência require_auth
+    user_id = user.get("id") if user else None
     
     # Se não houver user_id explícito na requisição, usamos um namespace dummy ou UUID fixo 
     # para fins de tracking (já que é uma feature inicial).
