@@ -669,6 +669,7 @@ function startPolling(sessionId) {
                                     action: "show_player_modal",
                                     url: status.url,
                                     roteiro: status.roteiro || [],
+                                    titulo: status.titulo || "",
                                     backendUrl: backendUrl
                                 }).catch(() => {});
                             }

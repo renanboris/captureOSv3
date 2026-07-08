@@ -483,7 +483,7 @@
                 setTimeout(() => toastEl.remove(), 400);
             }
             
-            mountPlayerModal(msg.url, msg.roteiro, msg.backendUrl);
+            mountPlayerModal(msg.url, msg.roteiro, msg.backendUrl, msg.titulo);
         } else if (msg.action === "show_error_toast") {
             showToast("error");
         } else if (msg.action === "show_editor_modal") {
@@ -724,10 +724,14 @@
 
 
     // --- Player Modal (Vimeo Record Aesthetic) ---
-    function mountPlayerModal(videoUrl, roteiro, receivedBackendUrl) {
+    function mountPlayerModal(videoUrl, roteiro, receivedBackendUrl, titulo = "") {
         // Extrai session_id da URL (ex: sess_1780090948221)
         const match = videoUrl.match(/(sess_\d+)/);
         const session_id = match ? match[1] : '';
+
+        const cleanTitle = titulo ? titulo.replace(/[^a-zA-Z0-9\s]/g, '').trim().replace(/\s+/g, '_') : '';
+        const pdfFilename = cleanTitle ? `${cleanTitle}_apostila.pdf` : `apostila_capture_os_${Date.now()}.pdf`;
+        const scormFilename = cleanTitle ? `${cleanTitle}_scorm.zip` : `pacote_scorm_${session_id}.zip`;
 
         // Usa o backendUrl enviado pelo background.js
         const backendUrl = receivedBackendUrl || 'https://api.nomadelabs.com.br';
@@ -996,7 +1000,7 @@
                     </button>
                     
                     <div class="script-header">
-                        <h2>Roteiro do Tutorial</h2>
+                        <h2>${titulo || 'Roteiro do Tutorial'}</h2>
                     </div>
                     
                     <div class="script-content">
@@ -1009,11 +1013,11 @@
                             </button>
                         </div>
                         <div class="btn-grid">
-                            <a href="${backendUrl}/artifacts/${session_id}/apostila.pdf" target="_blank" download="apostila_capture_os_${Date.now()}.pdf" class="btn btn-secondary">
+                            <a href="${backendUrl}/artifacts/${session_id}/apostila.pdf" target="_blank" download="${pdfFilename}" class="btn btn-secondary">
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
                                 PDF
                             </a>
-                            <a href="${backendUrl}/scorm/${session_id}.zip" target="_blank" download="pacote_scorm_${session_id}.zip" class="btn btn-accent">
+                            <a href="${backendUrl}/scorm/${session_id}.zip" target="_blank" download="${scormFilename}" class="btn btn-accent">
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2-2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
                                 SCORM
                             </a>

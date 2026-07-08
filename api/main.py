@@ -408,19 +408,22 @@ async def check_status(session_id: str):
     status_data = get_status(session_id)
     if status_data.get("status") == "completed":
         roteiro_data = []
+        titulo_data = ""
         try:
             roteiro_path = f"data/roteiros/{session_id}.json"
             if os.path.exists(roteiro_path):
                 with open(roteiro_path, "r", encoding="utf-8") as f:
                     roteiro_json = json.load(f)
                     roteiro_data = roteiro_json.get("roteiro", [])
+                    titulo_data = roteiro_json.get("titulo", "")
         except Exception as e:
             logger.error(f"Erro ao ler roteiro para retorno: {e}")
 
         return {
             "status": "completed", 
             "url": _get_video_url(),
-            "roteiro": roteiro_data
+            "roteiro": roteiro_data,
+            "titulo": titulo_data
         }
         
     return status_data
