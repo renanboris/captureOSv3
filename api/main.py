@@ -831,16 +831,14 @@ async def configurar_simlink(session_id: str, payload: dict, request: Request):
     return {"simlink_url": f"{base}/simlink?modulo={mod['modulo_id']}"}
 
 @app.post("/api/v1/ratings")
-async def submit_rating(payload: RatingPayload, request: Request):
+async def submit_rating(payload: RatingPayload, request: Request, user: dict = Depends(require_auth)):
     """Salva uma avaliação (NPS/CSAT) no Supabase."""
     if not settings.supabase_url or not settings.supabase_key:
         logger.warning("Supabase não configurado. Avaliação ignorada.")
         return {"status": "ignored"}
     
-    # Extrair user_id do token se disponível. O AuthMiddleware deve colocar em request.state
-    # Se o sistema atual apenas tem uma proteção fraca ou admin único, podemos precisar
-    # usar um fallback ou o UID padrão da plataforma.
-    user_id = getattr(request.state, 'user_id', None)
+    # Extrair user_id do token JWT decodificado pela dependência require_auth
+    user_id = user.get("id") if user else None
     
     # Se não houver user_id explícito na requisição, usamos um namespace dummy ou UUID fixo 
     # para fins de tracking (já que é uma feature inicial).
