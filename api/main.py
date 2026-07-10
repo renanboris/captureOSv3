@@ -438,7 +438,7 @@ async def check_status(session_id: str):
     return status_data
 
 @app.get("/api/v1/admin/pipeline-runs", dependencies=_auth_deps)
-async def admin_get_pipeline_runs(limit: int = 50, offset: int = 0, status: Optional[str] = None, user_dict: dict = Depends(require_auth)):
+def admin_get_pipeline_runs(limit: int = 50, offset: int = 0, status: Optional[str] = None, user_dict: dict = Depends(require_auth)):
     from api.db_services import get_or_create_organization_for_user, get_pipeline_runs_for_organization
     user_id = user_dict.get("id")
     email = user_dict.get("email", "")
@@ -476,7 +476,7 @@ async def track_publish(session_id: str, payload: dict, user_dict: dict = Depend
         return {"status": "error"}
 
 @app.get("/api/v1/admin/metrics", dependencies=_auth_deps)
-async def admin_get_metrics(user_dict: dict = Depends(require_auth)):
+def admin_get_metrics(user_dict: dict = Depends(require_auth)):
     from api.db_services import get_or_create_organization_for_user
     from api.metrics_engine import get_organization_metrics
     
@@ -490,7 +490,7 @@ async def admin_get_metrics(user_dict: dict = Depends(require_auth)):
     return get_organization_metrics(org_id)
 
 @app.get("/api/v1/admin/publications", dependencies=_auth_deps)
-async def admin_get_publications(limit: int = 20, user_dict: dict = Depends(require_auth)):
+def admin_get_publications(limit: int = 20, user_dict: dict = Depends(require_auth)):
     """Camada 3.3: Trilha de Publicação e Export."""
     from api.db_services import get_or_create_organization_for_user, get_supabase_client
     client = get_supabase_client()
@@ -1104,11 +1104,12 @@ async def reset_sandbox(payload: dict):
 
 
 @app.get("/api/v1/admin/costs")
-async def get_admin_costs(user: dict = Depends(require_auth)):
+def get_admin_costs(user: dict = Depends(require_auth)):
     """Retorna dados agregados de custos de API (FinOps)."""
-    user_metadata = user.get("user_metadata") or {}
-    app_metadata = user.get("app_metadata") or {}
-    auth_org_id = user.get("org_id") or user_metadata.get("org_id") or app_metadata.get("org_id")
+    from api.db_services import get_or_create_organization_for_user
+    user_id = user.get("id")
+    email = user.get("email", "")
+    auth_org_id = get_or_create_organization_for_user(user_id, email)
 
     total_cost_usd = 0.0
     total_cost_brl = 0.0

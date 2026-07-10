@@ -19,6 +19,7 @@ auto-login removed with the dead browser-automation code in task 13.2).
 from __future__ import annotations
 
 import json
+import time
 from typing import Any, Dict, Optional
 
 from fastapi import Depends, HTTPException, status
@@ -34,6 +35,10 @@ class InvalidTokenError(Exception):
 
 _bearer_scheme = HTTPBearer(auto_error=False)
 
+# Cache in-memory para validação de tokens JWT do Supabase (TTL de 60 segundos)
+_TOKEN_CACHE: Dict[str, tuple[float, Dict[str, Any]]] = {}
+_CACHE_TTL_SECONDS = 60.0
+
 
 def _unauthorized() -> HTTPException:
     return HTTPException(
@@ -43,7 +48,7 @@ def _unauthorized() -> HTTPException:
     )
 
 
-async def require_auth(
+def require_auth(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer_scheme),
 ) -> Dict[str, Any]:
     """FastAPI dependency enforcing a valid bearer JWT on data routes.
@@ -61,6 +66,15 @@ async def require_auth(
         _log.error(f"[AUTH DEBUG] Scheme inesperado: {credentials.scheme!r}")
         raise _unauthorized()
 
+    token = credentials.credentials
+    now = time.time()
+
+    # Verificar cache em memória antes de fazer chamada de rede para o Supabase
+    if token in _TOKEN_CACHE:
+        cached_time, user_dict = _TOKEN_CACHE[token]
+        if now - cached_time < _CACHE_TTL_SECONDS:
+            return user_dict
+
     settings = get_settings()
     if not settings.supabase_url or not settings.supabase_key:
         _log.error("[AUTH DEBUG] Supabase URL/KEY ausentes no .env.")
@@ -69,12 +83,15 @@ async def require_auth(
     try:
         supabase = create_client(settings.supabase_url, settings.supabase_key)
         # Use Supabase API to validate the token
-        res = supabase.auth.get_user(credentials.credentials)
+        res = supabase.auth.get_user(token)
         if not res or not res.user:
             raise InvalidTokenError("Invalid or expired session token")
         
         user_dict = res.user.model_dump() if hasattr(res.user, 'model_dump') else dict(res.user)
         _log.info(f"[AUTH DEBUG] Token Supabase VÁLIDO. user_email={res.user.email}")
+        
+        # Salvar no cache
+        _TOKEN_CACHE[token] = (now, user_dict)
         return user_dict
     except Exception as e:
         _log.error(f"[AUTH DEBUG] Token INVÁLIDO ou expirado no Supabase: {e}")
