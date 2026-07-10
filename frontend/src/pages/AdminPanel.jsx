@@ -10,17 +10,20 @@ import SkeletonRow from '../components/SkeletonRow';
 import EditRateGauge from '../components/EditRateGauge';
 import DemoBanner from '../components/DemoBanner';
 
+// Cache em memória para transição instantânea de abas (SWR)
+let cachedAdminData = null;
+
 export default function AdminPanel() {
-  const [runs, setRuns] = useState([]);
-  const [publications, setPublications] = useState([]);
-  const [metrics, setMetrics] = useState({
+  const [runs, setRuns] = useState(cachedAdminData ? cachedAdminData.runs : []);
+  const [publications, setPublications] = useState(cachedAdminData ? cachedAdminData.publications : []);
+  const [metrics, setMetrics] = useState(cachedAdminData ? cachedAdminData.metrics : {
     total_runs: 0,
     success_rate: 0,
     avg_edit_rate: 0,
     time_saved_hours: 0,
     runs_by_instructor: []
   });
-  const [costs, setCosts] = useState({
+  const [costs, setCosts] = useState(cachedAdminData ? cachedAdminData.costs : {
     total_cost_usd: 0.0,
     total_cost_brl: 0.0,
     avg_cost_per_run_usd: 0.0,
@@ -29,7 +32,7 @@ export default function AdminPanel() {
     unverified_cost_warning: false
   });
   
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!cachedAdminData);
   const [error, setError] = useState(null);
   const [isMock, setIsMock] = useState(false);
 
@@ -113,9 +116,20 @@ export default function AdminPanel() {
         const costsData = await costsRes.json();
         
         setIsMock(false);
-        setRuns(runsData.runs || []);
+        const runsList = runsData.runs || [];
+        const pubsList = pubsData.publications || [];
+        
+        // Atualiza o cache global
+        cachedAdminData = {
+          runs: runsList,
+          publications: pubsList,
+          metrics: metricsData,
+          costs: costsData
+        };
+        
+        setRuns(runsList);
         setMetrics(metricsData);
-        setPublications(pubsData.publications || []);
+        setPublications(pubsList);
         setCosts(costsData);
         setLoading(false);
         return;
@@ -143,9 +157,20 @@ export default function AdminPanel() {
                 const costsData = await cRes.json();
                 
                 setIsMock(false);
-                setRuns(runsData.runs || []);
+                const runsList = runsData.runs || [];
+                const pubsList = pubsData.publications || [];
+                
+                // Atualiza o cache global
+                cachedAdminData = {
+                  runs: runsList,
+                  publications: pubsList,
+                  metrics: metricsData,
+                  costs: costsData
+                };
+                
+                setRuns(runsList);
                 setMetrics(metricsData);
-                setPublications(pubsData.publications || []);
+                setPublications(pubsList);
                 setCosts(costsData);
                 setLoading(false);
                 return;

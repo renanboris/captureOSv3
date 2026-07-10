@@ -6,13 +6,16 @@ import SkeletonRow from '../components/SkeletonRow';
 import DemoBanner from '../components/DemoBanner';
 import ErrorState from '../components/ErrorState';
 
+// Cache em memória para transição instantânea de abas (SWR)
+let cachedDashboardData = null;
+
 export default function Dashboard() {
-  const [runs, setRuns] = useState([]);
-  const [metrics, setMetrics] = useState({
+  const [runs, setRuns] = useState(cachedDashboardData ? cachedDashboardData.runs : []);
+  const [metrics, setMetrics] = useState(cachedDashboardData ? cachedDashboardData.metrics : {
     total_runs: 0,
     success_rate: 0
   });
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!cachedDashboardData);
   const [error, setError] = useState(null);
   const [isMock, setIsMock] = useState(false);
 
@@ -88,6 +91,10 @@ export default function Dashboard() {
         
         setIsMock(false);
         const recentRuns = (runsData.runs || []).filter(r => r.status === 'completed').slice(0, 5);
+        
+        // Atualiza o cache global
+        cachedDashboardData = { runs: recentRuns, metrics: metricsData };
+        
         setRuns(recentRuns);
         setMetrics(metricsData);
         setLoading(false);
@@ -112,6 +119,10 @@ export default function Dashboard() {
                 const metricsData = await mRes.json();
                 setIsMock(false);
                 const recentRuns = (runsData.runs || []).filter(r => r.status === 'completed').slice(0, 5);
+                
+                // Atualiza o cache global
+                cachedDashboardData = { runs: recentRuns, metrics: metricsData };
+                
                 setRuns(recentRuns);
                 setMetrics(metricsData);
                 setLoading(false);

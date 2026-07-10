@@ -15,7 +15,14 @@ def get_supabase_client() -> Optional[Client]:
         logger.error(f"Failed to create Supabase client: {e}")
         return None
 
+# Cache em memória de mapeamento user_id -> organization_id
+_USER_ORG_CACHE: dict[str, str] = {}
+
+
 def get_or_create_organization_for_user(user_id: str, user_email: str) -> Optional[str]:
+    if user_id in _USER_ORG_CACHE:
+        return _USER_ORG_CACHE[user_id]
+
     client = get_supabase_client()
     if not client:
         return None
@@ -24,7 +31,9 @@ def get_or_create_organization_for_user(user_id: str, user_email: str) -> Option
         # First, check if the user is already in an organization
         res = client.table("organization_members").select("organization_id").eq("user_id", user_id).execute()
         if res.data and len(res.data) > 0:
-            return res.data[0]["organization_id"]
+            org_id = res.data[0]["organization_id"]
+            _USER_ORG_CACHE[user_id] = org_id
+            return org_id
             
         # If not, create a personal workspace (B2C behavior)
         org_name = f"Workspace de {user_email.split('@')[0]}" if user_email else "Personal Workspace"
@@ -43,6 +52,7 @@ def get_or_create_organization_for_user(user_id: str, user_email: str) -> Option
         }).execute()
         
         logger.info(f"Created new personal workspace {org_id} for user {user_id}")
+        _USER_ORG_CACHE[user_id] = org_id
         return org_id
     except Exception as e:
         logger.error(f"Error in get_or_create_organization_for_user: {e}")
