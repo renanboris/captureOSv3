@@ -36,6 +36,24 @@ export default function Dashboard() {
       const urlToken = getQueryParam('token');
       if (urlToken) {
         localStorage.setItem('dev_token', urlToken);
+        // Limpar o token da barra de endereços para segurança e estética (evita vazamento no histórico/compartilhamento)
+        try {
+          if (window.location.search.includes('token=')) {
+            const url = new URL(window.location.href);
+            url.searchParams.delete('token');
+            window.history.replaceState({}, document.title, url.pathname + url.hash);
+          }
+          if (window.location.hash.includes('token=')) {
+            const hash = window.location.hash;
+            const qIndex = hash.indexOf('?');
+            if (qIndex !== -1) {
+              const cleanHash = hash.substring(0, qIndex);
+              window.history.replaceState({}, document.title, window.location.pathname + window.location.search + cleanHash);
+            }
+          }
+        } catch (e) {
+          console.warn("Erro ao limpar a URL:", e);
+        }
       }
 
       let token = urlToken || localStorage.getItem('dev_token');
