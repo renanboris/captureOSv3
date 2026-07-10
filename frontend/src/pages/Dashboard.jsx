@@ -6,16 +6,13 @@ import SkeletonRow from '../components/SkeletonRow';
 import DemoBanner from '../components/DemoBanner';
 import ErrorState from '../components/ErrorState';
 
-// Cache em memória para transição instantânea de abas (SWR)
-let cachedDashboardData = null;
-
 export default function Dashboard() {
-  const [runs, setRuns] = useState(cachedDashboardData ? cachedDashboardData.runs : []);
-  const [metrics, setMetrics] = useState(cachedDashboardData ? cachedDashboardData.metrics : {
+  const [runs, setRuns] = useState(window.cachedDashboardData ? window.cachedDashboardData.runs : []);
+  const [metrics, setMetrics] = useState(window.cachedDashboardData ? window.cachedDashboardData.metrics : {
     total_runs: 0,
     success_rate: 0
   });
-  const [loading, setLoading] = useState(!cachedDashboardData);
+  const [loading, setLoading] = useState(!window.cachedDashboardData);
   const [error, setError] = useState(null);
   const [isMock, setIsMock] = useState(false);
 
@@ -31,19 +28,49 @@ export default function Dashboard() {
     return null;
   };
 
+  const prefetchAdminData = async (token, API_URL) => {
+    try {
+      const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+      const [runsRes, metricsRes, pubsRes, costsRes] = await Promise.all([
+        fetch(`${API_URL}/api/v1/admin/pipeline-runs`, { headers }),
+        fetch(`${API_URL}/api/v1/admin/metrics`, { headers }),
+        fetch(`${API_URL}/api/v1/admin/publications`, { headers }),
+        fetch(`${API_URL}/api/v1/admin/costs`, { headers })
+      ]);
+
+      if (runsRes.ok && metricsRes.ok && pubsRes.ok && costsRes.ok) {
+        const runsData = await runsRes.json();
+        const metricsData = await metricsRes.json();
+        const pubsData = await pubsRes.json();
+        const costsData = await costsRes.json();
+        
+        window.cachedAdminData = {
+          runs: runsData.runs || [],
+          publications: pubsData.publications || [],
+          metrics: metricsData,
+          costs: costsData,
+          timestamp: Date.now()
+        };
+        console.log("[PREFETCH] Painel do Gestor pré-carregado com sucesso.");
+      }
+    } catch (e) {
+      console.warn("Falha no prefetch do Painel do Gestor:", e);
+    }
+  };
+
   const fetchData = async (force = false) => {
     const CACHE_TTL_MS = 30000;
-    if (cachedDashboardData && !force) {
-      const isFresh = (Date.now() - cachedDashboardData.timestamp) < CACHE_TTL_MS;
+    if (window.cachedDashboardData && !force) {
+      const isFresh = (Date.now() - window.cachedDashboardData.timestamp) < CACHE_TTL_MS;
       if (isFresh) {
-        setRuns(cachedDashboardData.runs);
-        setMetrics(cachedDashboardData.metrics);
+        setRuns(window.cachedDashboardData.runs);
+        setMetrics(window.cachedDashboardData.metrics);
         setLoading(false);
         return;
       }
     }
 
-    if (!cachedDashboardData || force) {
+    if (!window.cachedDashboardData || force) {
       setLoading(true);
     }
     setError(null);
@@ -106,11 +133,16 @@ export default function Dashboard() {
         const recentRuns = (runsData.runs || []).filter(r => r.status === 'completed').slice(0, 5);
         
         // Atualiza o cache global com timestamp
-        cachedDashboardData = { runs: recentRuns, metrics: metricsData, timestamp: Date.now() };
+        window.cachedDashboardData = { runs: recentRuns, metrics: metricsData, timestamp: Date.now() };
         
         setRuns(recentRuns);
         setMetrics(metricsData);
         setLoading(false);
+
+        // Dispara prefetch em background após 1 segundo
+        setTimeout(() => {
+          prefetchAdminData(token, API_URL);
+        }, 1000);
         return;
       }
       
@@ -134,11 +166,16 @@ export default function Dashboard() {
                 const recentRuns = (runsData.runs || []).filter(r => r.status === 'completed').slice(0, 5);
                 
                 // Atualiza o cache global com timestamp
-                cachedDashboardData = { runs: recentRuns, metrics: metricsData, timestamp: Date.now() };
+                window.cachedDashboardData = { runs: recentRuns, metrics: metricsData, timestamp: Date.now() };
                 
                 setRuns(recentRuns);
                 setMetrics(metricsData);
                 setLoading(false);
+
+                // Dispara prefetch com o novo token
+                setTimeout(() => {
+                  prefetchAdminData(authData.token, API_URL);
+                }, 1000);
                 return;
               }
             }
@@ -158,11 +195,49 @@ export default function Dashboard() {
         };
 
         // Salvar no cache para navegação instantânea em modo mock
-        cachedDashboardData = {
+        window.cachedDashboardData = {
           runs: mockRuns,
           metrics: mockMetrics,
           timestamp: Date.now()
         };
+
+        // Pré-popular também o mock do AdminPanel para transição imediata no modo mock
+        if (!window.cachedAdminData) {
+          window.cachedAdminData = {
+            runs: [
+              { id: '1', session_id: 's_abc123', status: 'completed', failure_stage: null, detected_interface_type: 'sap_fiori', recording_duration_seconds: 420, created_at: new Date().toISOString() },
+              { id: '2', session_id: 's_xyz789', status: 'tech_error', failure_stage: 'ai_generation', detected_interface_type: 'unknown', recording_duration_seconds: 180, created_at: new Date(Date.now() - 3600000).toISOString() },
+              { id: '3', session_id: 's_def456', status: 'user_reported_error', failure_stage: 'capture', detected_interface_type: 'salesforce_lightning', recording_duration_seconds: 300, created_at: new Date(Date.now() - 7200000).toISOString() },
+              { id: '4', session_id: 's_ghj789', status: 'completed', failure_stage: null, detected_interface_type: 'sap_fiori', recording_duration_seconds: 500, created_at: new Date(Date.now() - 8640000).toISOString() }
+            ],
+            publications: [
+              { id: '1', session_id: 's_abc123', destination: 'SCORM_DOWNLOAD', published_by: 'João Silva', published_at: new Date().toISOString() }
+            ],
+            metrics: {
+              total_runs: 45, success_rate: 94.5, avg_edit_rate: 12.5, time_saved_hours: 168.5,
+              runs_by_instructor: [
+                { instructor_id: 'João S.', total_runs: 20, completed_runs: 19 },
+                { instructor_id: 'Maria P.', total_runs: 15, completed_runs: 14 },
+                { instructor_id: 'Carlos R.', total_runs: 10, completed_runs: 9 }
+              ]
+            },
+            costs: {
+              total_cost_usd: 12.4530,
+              total_cost_brl: 69.7368,
+              avg_cost_per_run_usd: 0.2767,
+              cost_by_instructor: [
+                { user_id: 'João S.', total_cost_usd: 5.10, run_count: 20 },
+                { user_id: 'Maria P.', total_cost_usd: 4.85, run_count: 15 }
+              ],
+              most_expensive_runs: [
+                { session_id: 'sess_1780690407909', cost_usd: 1.85, gemini_call_count: 12 },
+                { session_id: 'sess_9981234567890', cost_usd: 0.95, gemini_call_count: 6 }
+              ],
+              unverified_cost_warning: true
+            },
+            timestamp: Date.now()
+          };
+        }
 
         setRuns(mockRuns);
         setMetrics(mockMetrics);

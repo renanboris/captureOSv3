@@ -10,20 +10,17 @@ import SkeletonRow from '../components/SkeletonRow';
 import EditRateGauge from '../components/EditRateGauge';
 import DemoBanner from '../components/DemoBanner';
 
-// Cache em memória para transição instantânea de abas (SWR)
-let cachedAdminData = null;
-
 export default function AdminPanel() {
-  const [runs, setRuns] = useState(cachedAdminData ? cachedAdminData.runs : []);
-  const [publications, setPublications] = useState(cachedAdminData ? cachedAdminData.publications : []);
-  const [metrics, setMetrics] = useState(cachedAdminData ? cachedAdminData.metrics : {
+  const [runs, setRuns] = useState(window.cachedAdminData ? window.cachedAdminData.runs : []);
+  const [publications, setPublications] = useState(window.cachedAdminData ? window.cachedAdminData.publications : []);
+  const [metrics, setMetrics] = useState(window.cachedAdminData ? window.cachedAdminData.metrics : {
     total_runs: 0,
     success_rate: 0,
     avg_edit_rate: 0,
     time_saved_hours: 0,
     runs_by_instructor: []
   });
-  const [costs, setCosts] = useState(cachedAdminData ? cachedAdminData.costs : {
+  const [costs, setCosts] = useState(window.cachedAdminData ? window.cachedAdminData.costs : {
     total_cost_usd: 0.0,
     total_cost_brl: 0.0,
     avg_cost_per_run_usd: 0.0,
@@ -32,7 +29,7 @@ export default function AdminPanel() {
     unverified_cost_warning: false
   });
   
-  const [loading, setLoading] = useState(!cachedAdminData);
+  const [loading, setLoading] = useState(!window.cachedAdminData);
   const [error, setError] = useState(null);
   const [isMock, setIsMock] = useState(false);
 
@@ -55,19 +52,19 @@ export default function AdminPanel() {
 
   const fetchData = async (force = false) => {
     const CACHE_TTL_MS = 30000;
-    if (cachedAdminData && !force) {
-      const isFresh = (Date.now() - cachedAdminData.timestamp) < CACHE_TTL_MS;
+    if (window.cachedAdminData && !force) {
+      const isFresh = (Date.now() - window.cachedAdminData.timestamp) < CACHE_TTL_MS;
       if (isFresh) {
-        setRuns(cachedAdminData.runs);
-        setPublications(cachedAdminData.publications);
-        setMetrics(cachedAdminData.metrics);
-        setCosts(cachedAdminData.costs);
+        setRuns(window.cachedAdminData.runs);
+        setPublications(window.cachedAdminData.publications);
+        setMetrics(window.cachedAdminData.metrics);
+        setCosts(window.cachedAdminData.costs);
         setLoading(false);
         return;
       }
     }
 
-    if (!cachedAdminData || force) {
+    if (!window.cachedAdminData || force) {
       setLoading(true);
     }
     setError(null);
@@ -135,7 +132,7 @@ export default function AdminPanel() {
         const pubsList = pubsData.publications || [];
         
         // Atualiza o cache global com timestamp
-        cachedAdminData = {
+        window.cachedAdminData = {
           runs: runsList,
           publications: pubsList,
           metrics: metricsData,
@@ -177,7 +174,7 @@ export default function AdminPanel() {
                 const pubsList = pubsData.publications || [];
                 
                 // Atualiza o cache global com timestamp
-                cachedAdminData = {
+                window.cachedAdminData = {
                   runs: runsList,
                   publications: pubsList,
                   metrics: metricsData,
@@ -233,7 +230,7 @@ export default function AdminPanel() {
         };
 
         // Salvar no cache para navegação instantânea em modo mock
-        cachedAdminData = {
+        window.cachedAdminData = {
           runs: mockRuns,
           publications: mockPubs,
           metrics: mockMetrics,
