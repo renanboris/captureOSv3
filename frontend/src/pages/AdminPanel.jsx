@@ -52,18 +52,25 @@ export default function AdminPanel() {
 
   const fetchData = async (force = false) => {
     const CACHE_TTL_MS = 30000;
+    console.log("[CaptureOS Admin] Carregando dados. Status do cache global (window.cachedAdminData):", 
+      window.cachedAdminData ? "Presente" : "Ausente/Nulo");
+
     if (window.cachedAdminData && !force) {
-      const isFresh = (Date.now() - window.cachedAdminData.timestamp) < CACHE_TTL_MS;
+      const elapsed = Date.now() - window.cachedAdminData.timestamp;
+      const isFresh = elapsed < CACHE_TTL_MS;
+      console.log(`[CaptureOS Admin] Cache encontrado. Idade: ${Math.round(elapsed/1000)}s | TTL: 30s | Válido/Fresh: ${isFresh}`);
       if (isFresh) {
         setRuns(window.cachedAdminData.runs);
         setPublications(window.cachedAdminData.publications);
         setMetrics(window.cachedAdminData.metrics);
         setCosts(window.cachedAdminData.costs);
         setLoading(false);
+        console.log("[CaptureOS Admin] SUCESSO: Renderização instantânea usando cache válido.");
         return;
       }
     }
 
+    console.log("[CaptureOS Admin] Cache ausente ou expirado. Iniciando busca de dados na API...");
     if (!window.cachedAdminData || force) {
       setLoading(true);
     }

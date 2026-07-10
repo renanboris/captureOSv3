@@ -29,6 +29,7 @@ export default function Dashboard() {
   };
 
   const prefetchAdminData = async (token, API_URL) => {
+    console.log("[CaptureOS Prefetch] Iniciando pré-carregamento do Painel do Gestor...");
     try {
       const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
       const [runsRes, metricsRes, pubsRes, costsRes] = await Promise.all([
@@ -51,10 +52,13 @@ export default function Dashboard() {
           costs: costsData,
           timestamp: Date.now()
         };
-        console.log("[PREFETCH] Painel do Gestor pré-carregado com sucesso.");
+        console.log("[CaptureOS Prefetch] SUCESSO: Painel do Gestor pré-carregado com sucesso no cache.");
+      } else {
+        console.warn("[CaptureOS Prefetch] FALHA: Algum endpoint retornou status não-ok:", 
+          { runs: runsRes.status, metrics: metricsRes.status, pubs: pubsRes.status, costs: costsRes.status });
       }
     } catch (e) {
-      console.warn("Falha no prefetch do Painel do Gestor:", e);
+      console.error("[CaptureOS Prefetch] ERRO excepcional durante prefetch:", e);
     }
   };
 
