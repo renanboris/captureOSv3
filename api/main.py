@@ -653,19 +653,109 @@ async def save_roteiro(session_id: str, payload: RoteiroEditadoPayload, user_dic
     from api.db_services import save_roteiro_version, get_supabase_client
     roteiro_path = f"data/roteiros/{session_id}.json"
     
-    existing_data = {}
+    # 1. Carregar roteiro anterior para comparação de diff
+    old_steps = {}
     is_first_api_save = not os.path.exists(roteiro_path)
     if not is_first_api_save:
+        with open(roteiro_path, "r", encoding="utf-8") as f:
+            try:
+                old_data = json.load(f)
+                for step in old_data.get("roteiro", []):
+                    p_num = step.get("passo")
+                    if p_num is not None:
+                        old_steps[p_num] = step
+            except:
+                pass
+                
+    existing_data = {}
+    if os.path.exists(roteiro_path):
         with open(roteiro_path, "r", encoding="utf-8") as f:
             try:
                 existing_data = json.load(f)
             except:
                 pass
-                
+                 
     existing_data["session_id"] = session_id
     existing_data["roteiro"] = payload.roteiro
     if payload.titulo:
         existing_data["titulo"] = payload.titulo
+        
+    # 2. Verificar diffs de seletores e marcar hitl_corrigido
+    from api.db_services import get_or_create_organization_for_user
+    from sandbox_eng.arbitro_engine import calcular_hash_intencao
+    from datetime import datetime, timezone
+    
+    user_id = user_dict.get("id")
+    email = user_dict.get("email", "")
+    org_id = get_or_create_organization_for_user(user_id, email)
+    
+    modulo_id = session_id
+    simlink_path = f"data/simlink/{session_id}.json"
+    if os.path.exists(simlink_path):
+        with open(simlink_path, "r", encoding="utf-8") as f:
+            try:
+                mod = json.load(f)
+                modulo_id = mod.get("modulo_id", session_id)
+            except:
+                pass
+                
+    client = get_supabase_client()
+    if client and org_id:
+        for step in payload.roteiro:
+            passo_num = step.get("passo")
+            if passo_num is None:
+                continue
+            simlink = step.get("_simlink", {})
+            selector = simlink.get("selector")
+            xpath = simlink.get("xpath")
+            target_text = simlink.get("target_text")
+            
+            if not (selector or xpath):
+                continue
+                
+            old_step = old_steps.get(passo_num)
+            is_modified = False
+            
+            if old_step:
+                old_simlink = old_step.get("_simlink", {})
+                old_selector = old_simlink.get("selector")
+                old_xpath = old_simlink.get("xpath")
+                old_target_text = old_simlink.get("target_text")
+                
+                if (selector != old_selector) or (xpath != old_xpath) or (target_text != old_target_text):
+                    is_modified = True
+            else:
+                is_modified = True
+                
+            if is_modified:
+                hash_intencao = calcular_hash_intencao(modulo_id, passo_num, target_text)
+                estrategia = "css_selector" if selector else "xpath"
+                seletor_vencedor = selector if selector else xpath
+                
+                try:
+                    res_mem = client.table("memoria_semantica").select("id").eq("org_id", org_id).eq("modulo_id", modulo_id).eq("hash_intencao", hash_intencao).execute()
+                    if res_mem.data:
+                        client.table("memoria_semantica").update({
+                            "estrategia_vencedora": estrategia,
+                            "seletor": seletor_vencedor,
+                            "hitl_corrigido": True,
+                            "falhas_consecutivas": 0,
+                            "ultimo_uso": datetime.now(timezone.utc).isoformat()
+                        }).eq("id", res_mem.data[0]["id"]).execute()
+                    else:
+                        client.table("memoria_semantica").insert({
+                            "org_id": org_id,
+                            "modulo_id": modulo_id,
+                            "hash_intencao": hash_intencao,
+                            "estrategia_vencedora": estrategia,
+                            "seletor": seletor_vencedor,
+                            "hits": 1,
+                            "falhas_consecutivas": 0,
+                            "hitl_corrigido": True
+                        }).execute()
+                    logger.info(f"Registro de memoria semantica {hash_intencao} marcado como hitl_corrigido = TRUE.")
+                except Exception as e:
+                    logger.error(f"Erro ao salvar correcao hitl na memoria semantica: {e}")
     
     with open(roteiro_path, "w", encoding="utf-8") as f:
         json.dump(existing_data, f, ensure_ascii=False, indent=2)
@@ -1125,9 +1215,14 @@ class SandboxActionPayload(BaseModel):
     url: str
     action_data: dict
 
-@app.post("/api/v1/sandbox/evaluate", dependencies=_auth_deps)
-async def evaluate_sandbox(payload: SandboxActionPayload):
+@app.post("/api/v1/sandbox/evaluate")
+async def evaluate_sandbox(payload: SandboxActionPayload, user_dict: dict = Depends(require_auth)):
     from sandbox_eng.arbitro_engine import avaliar_acao_sandbox
+    from api.db_services import get_or_create_organization_for_user
+    
+    user_id = user_dict.get("id")
+    email = user_dict.get("email", "")
+    org_id = get_or_create_organization_for_user(user_id, email)
     
     modulo_id = payload.session_id
     session_id = modulo_id
@@ -1135,10 +1230,14 @@ async def evaluate_sandbox(payload: SandboxActionPayload):
     simlink_path = f"data/simlink/{modulo_id}.json"
     if os.path.exists(simlink_path):
         with open(simlink_path, "r", encoding="utf-8") as f:
-            mod = json.load(f)
-            session_id = mod.get("session_id", modulo_id)
+            try:
+                mod = json.load(f)
+                session_id = mod.get("session_id", modulo_id)
+                modulo_id = mod.get("modulo_id", modulo_id)
+            except:
+                pass
 
-    passo_esperado = get_sandbox_state(modulo_id)
+    passo_esperado = get_sandbox_state(payload.session_id)
     
     roteiro_path = f"data/roteiros/{session_id}.json"
     if not os.path.exists(roteiro_path):
@@ -1150,10 +1249,10 @@ async def evaluate_sandbox(payload: SandboxActionPayload):
     # Filtrar apenas os passos reais (ignorar 0 e 999 se houver)
     roteiro_filtrado = [p for p in roteiro if p.get("passo", 0) not in (0, 999)]
     
-    result = await avaliar_acao_sandbox(roteiro_filtrado, passo_esperado, payload.action_data)
+    result = await avaliar_acao_sandbox(roteiro_filtrado, passo_esperado, payload.action_data, org_id=org_id, modulo_id=modulo_id)
     
     if result.get("is_correct"):
-        set_sandbox_state(modulo_id, passo_esperado + 1)
+        set_sandbox_state(payload.session_id, passo_esperado + 1)
         
     return result
 
@@ -1217,6 +1316,42 @@ async def reset_sandbox(payload: dict):
         if os.path.exists(path):
             os.remove(path)
     return {"status": "ok"}
+
+
+@app.post("/api/v1/admin/memoria-semantica/clean")
+async def clean_semantic_memory(user_dict: dict = Depends(require_auth)):
+    from api.db_services import get_supabase_client
+    from sandbox_eng.arbitro_engine import eh_seletor_fragil
+    from datetime import datetime, timezone, timedelta
+    
+    client = get_supabase_client()
+    if not client:
+        raise HTTPException(status_code=500, detail="Supabase client not available")
+        
+    try:
+        # 1. Remover registros com falhas_consecutivas >= 3 e hitl_corrigido = FALSE
+        client.table("memoria_semantica").delete().gte("falhas_consecutivas", 3).eq("hitl_corrigido", False).execute()
+        
+        # 2. Remover registros não usados há mais de 90 dias, EXCETO hitl_corrigido e seletores frágeis
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=90)).isoformat()
+        res = client.table("memoria_semantica").select("*").lt("ultimo_uso", cutoff).eq("hitl_corrigido", False).execute()
+        
+        deleted_count = 0
+        if res.data:
+            to_delete = []
+            for record in res.data:
+                seletor = record.get("seletor", "")
+                if not eh_seletor_fragil(seletor):
+                    to_delete.append(record["id"])
+            if to_delete:
+                client.table("memoria_semantica").delete().in_("id", to_delete).execute()
+                deleted_count = len(to_delete)
+                
+        return {"status": "ok", "deleted_count": deleted_count}
+    except Exception as e:
+        logger.error(f"Erro ao limpar memoria semantica: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 
 @app.get("/api/v1/admin/costs")

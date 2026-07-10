@@ -44,6 +44,48 @@ def calculate_structural_diff(ia_roteiro: List[Dict[str, Any]], human_roteiro: L
             
     return round((edited_steps / total_steps) * 100, 2)
 
+def get_arbitro_telemetria_metrics(org_id: str) -> dict:
+    import os
+    import json
+    path = "data/arbitro_telemetria.jsonl"
+    if not os.path.exists(path):
+        return {"total_evaluations": 0, "camada_0_percentage": 0.0, "resolutions_by_layer": {}}
+    
+    total = 0
+    camada_0_hits = 0
+    layer_counts = {}
+    
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            for line in f:
+                if not line.strip():
+                    continue
+                try:
+                    data = json.loads(line)
+                    if org_id and data.get("org_id") != org_id:
+                        continue
+                    
+                    total += 1
+                    camada = data.get("camada", "unknown")
+                    sucesso = data.get("sucesso", False)
+                    
+                    layer_counts[camada] = layer_counts.get(camada, 0) + 1
+                    if camada == "0_brain" and sucesso:
+                        camada_0_hits += 1
+                except:
+                    pass
+    except Exception as e:
+        logger.error(f"Erro ao ler telemetria do árbitro: {e}")
+        
+    pct = round((camada_0_hits / total * 100), 2) if total > 0 else 0.0
+    return {
+        "total_evaluations": total,
+        "camada_0_hits": camada_0_hits,
+        "camada_0_percentage": pct,
+        "resolutions_by_layer": layer_counts
+    }
+
+
 def get_organization_metrics(organization_id: str) -> dict:
     """
     Agrega as métricas de qualidade (ROI, Taxa de Edição, Tempo Economizado)
@@ -92,12 +134,16 @@ def get_organization_metrics(organization_id: str) -> dict:
         # A IA faz em 15 min. Economia de ~225 min por módulo concluído.
         tempo_economizado_horas = (completed_runs * 225) / 60
         
+        # 4. Telemetria do Árbitro
+        arbitro_telemetria = get_arbitro_telemetria_metrics(organization_id)
+        
         return {
             "total_runs": total_runs,
             "success_rate": round(sucesso_rate, 1),
             "avg_edit_rate": media_taxa_edicao,
             "time_saved_hours": round(tempo_economizado_horas, 1),
-            "runs_by_instructor": runs_by_instructor
+            "runs_by_instructor": runs_by_instructor,
+            "arbitro_telemetria": arbitro_telemetria
         }
     except Exception as e:
         logger.error(f"Error calculating metrics for org {organization_id}: {e}")
