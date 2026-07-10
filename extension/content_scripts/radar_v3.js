@@ -6,7 +6,7 @@
     ];
     const hostname = window.location.hostname;
     const isAllowed = allowedHosts.some(host => hostname === host || hostname.endsWith("." + host)) ||
-                      hostname.split('.').some(label => label === "sandbox" || label === "staging");
+                      hostname.split('.').some(label => label === "sandbox" || label === "staging" || label === "homolog" || label === "homologacao");
 
     if (!isAllowed) {
         console.warn("Capture OS - Radar desativado para este domínio (não permitido pela whitelist de privacidade)");
