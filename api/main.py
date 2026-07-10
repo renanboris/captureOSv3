@@ -1186,3 +1186,59 @@ def get_admin_costs(user: dict = Depends(require_auth)):
         "most_expensive_runs": most_expensive_runs,
         "unverified_cost_warning": unverified_cost_warning
     }
+
+
+@app.get("/api/v1/auth/dev-token")
+def get_dev_token(request: Request):
+    """Retorna um token JWT assinado válido para desenvolvimento local (boris.renan@gmail.com).
+
+    Limitado por segurança apenas a conexões vindas do próprio localhost.
+    """
+    client_host = request.client.host if request.client else "unknown"
+    if client_host not in ("127.0.0.1", "localhost", "::1"):
+        raise HTTPException(status_code=403, detail="Apenas conexões locais são permitidas.")
+
+    import time
+    import hmac
+    import hashlib
+    import base64
+    from config.settings import get_settings
+    
+    settings = get_settings()
+    secret = settings.jwt_secret
+    
+    now = int(time.time())
+    payload = {
+        "iss": f"{settings.supabase_url}/auth/v1",
+        "sub": "3a50c712-73b5-440a-b35f-6dd87339e582",
+        "aud": "authenticated",
+        "exp": now + 86400,  # 24 horas de validade
+        "iat": now,
+        "email": "boris.renan@gmail.com",
+        "app_metadata": {"provider": "email", "providers": ["email"]},
+        "user_metadata": {
+            "email": "boris.renan@gmail.com",
+            "email_verified": True,
+            "sub": "3a50c712-73b5-440a-b35f-6dd87339e582"
+        },
+        "role": "authenticated",
+        "aal": "aal1",
+        "amr": [{"method": "otp", "timestamp": now}],
+        "session_id": "dev_session_active",
+        "is_anonymous": False
+    }
+    
+    def _b64url(data: bytes) -> str:
+        return base64.urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
+        
+    header = {"alg": "HS256", "typ": "JWT"}
+    segments = [
+        _b64url(json.dumps(header, separators=(",", ":")).encode("utf-8")),
+        _b64url(json.dumps(payload, separators=(",", ":")).encode("utf-8")),
+    ]
+    signing_input = ".".join(segments).encode("ascii")
+    signature = hmac.new(secret.encode("utf-8"), signing_input, hashlib.sha256).digest()
+    segments.append(_b64url(signature))
+    token = ".".join(segments)
+    
+    return {"token": token}

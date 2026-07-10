@@ -42,9 +42,26 @@ export default function AdminPanel() {
     setLoading(true);
     setError(null);
     try {
-      const token = localStorage.getItem('dev_token');
-      const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+      let token = localStorage.getItem('dev_token');
       const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+
+      // Se não houver token localmente, tenta obter um de dev
+      if (!token) {
+        try {
+          const authRes = await fetch(`${API_URL}/api/v1/auth/dev-token`);
+          if (authRes.ok) {
+            const authData = await authRes.json();
+            if (authData.token) {
+              token = authData.token;
+              localStorage.setItem('dev_token', token);
+            }
+          }
+        } catch (e) {
+          console.warn("Não foi possível realizar o auto-login de desenvolvimento:", e);
+        }
+      }
+
+      const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
 
       const [runsRes, metricsRes, pubsRes, costsRes] = await Promise.all([
         fetch(`${API_URL}/api/v1/admin/pipeline-runs`, { headers }),
@@ -68,8 +85,42 @@ export default function AdminPanel() {
         return;
       }
       
-      // Fallback para mock visual sem token
       if (runsRes.status === 401) {
+        // Token expirou ou é inválido, tenta renovar uma vez via endpoint de dev
+        try {
+          const authRes = await fetch(`${API_URL}/api/v1/auth/dev-token`);
+          if (authRes.ok) {
+            const authData = await authRes.json();
+            if (authData.token) {
+              localStorage.setItem('dev_token', authData.token);
+              const retryHeaders = { 'Authorization': `Bearer ${authData.token}` };
+              const [rRes, mRes, pRes, cRes] = await Promise.all([
+                fetch(`${API_URL}/api/v1/admin/pipeline-runs`, { headers: retryHeaders }),
+                fetch(`${API_URL}/api/v1/admin/metrics`, { headers: retryHeaders }),
+                fetch(`${API_URL}/api/v1/admin/publications`, { headers: retryHeaders }),
+                fetch(`${API_URL}/api/v1/admin/costs`, { headers: retryHeaders })
+              ]);
+              if (rRes.ok && mRes.ok && pRes.ok && cRes.ok) {
+                const runsData = await rRes.json();
+                const metricsData = await mRes.json();
+                const pubsData = await pRes.json();
+                const costsData = await cRes.json();
+                
+                setIsMock(false);
+                setRuns(runsData.runs || []);
+                setMetrics(metricsData);
+                setPublications(pubsData.publications || []);
+                setCosts(costsData);
+                setLoading(false);
+                return;
+              }
+            }
+          }
+        } catch (e) {
+          console.warn("Falha ao renovar token de dev:", e);
+        }
+
+        // Se mesmo assim não autenticou, cai no mock
         setIsMock(true);
         setRuns([
           { id: '1', session_id: 's_abc123', status: 'completed', failure_stage: null, detected_interface_type: 'sap_fiori', recording_duration_seconds: 420, created_at: new Date().toISOString() },
