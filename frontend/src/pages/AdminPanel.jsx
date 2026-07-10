@@ -52,6 +52,27 @@ export default function AdminPanel() {
 
   const fetchData = async (force = false) => {
     const CACHE_TTL_MS = 30000;
+
+    // Se o prefetch em background está rodando no momento, aguarda ele terminar em vez de duplicar requisições
+    if (window.activePrefetchPromise && !force) {
+      console.log("[CaptureOS Admin] Prefetch em background em execução. Aguardando conclusão...");
+      setLoading(true);
+      try {
+        await window.activePrefetchPromise;
+        if (window.cachedAdminData) {
+          setRuns(window.cachedAdminData.runs);
+          setPublications(window.cachedAdminData.publications);
+          setMetrics(window.cachedAdminData.metrics);
+          setCosts(window.cachedAdminData.costs);
+          setLoading(false);
+          console.log("[CaptureOS Admin] SUCESSO: Renderizado usando os dados concluídos do prefetch.");
+          return;
+        }
+      } catch (e) {
+        console.warn("[CaptureOS Admin] Falha ao aguardar o prefetch em background:", e);
+      }
+    }
+
     console.log("[CaptureOS Admin] Carregando dados. Status do cache global (window.cachedAdminData):", 
       window.cachedAdminData ? "Presente" : "Ausente/Nulo");
 
@@ -329,7 +350,7 @@ export default function AdminPanel() {
             disabled={loading}
             className="flex items-center gap-2 px-3 py-2 bg-white dark:bg-surface-800 hover:bg-slate-50 dark:hover:bg-surface-700 text-slate-700 dark:text-slate-200 font-medium rounded-lg transition-colors border border-surface-200 dark:border-surface-700 shadow-sm"
           >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" className={loading ? "animate-spin" : ""}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={loading ? "animate-spin" : ""}>
               <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
             </svg>
             <span>Atualizar</span>

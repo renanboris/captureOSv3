@@ -32,12 +32,16 @@ export default function Dashboard() {
     console.log("[CaptureOS Prefetch] Iniciando pré-carregamento do Painel do Gestor...");
     try {
       const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
-      const [runsRes, metricsRes, pubsRes, costsRes] = await Promise.all([
+      const fetchPromise = Promise.all([
         fetch(`${API_URL}/api/v1/admin/pipeline-runs`, { headers }),
         fetch(`${API_URL}/api/v1/admin/metrics`, { headers }),
         fetch(`${API_URL}/api/v1/admin/publications`, { headers }),
         fetch(`${API_URL}/api/v1/admin/costs`, { headers })
       ]);
+      
+      window.activePrefetchPromise = fetchPromise;
+
+      const [runsRes, metricsRes, pubsRes, costsRes] = await fetchPromise;
 
       if (runsRes.ok && metricsRes.ok && pubsRes.ok && costsRes.ok) {
         const runsData = await runsRes.json();
@@ -59,6 +63,8 @@ export default function Dashboard() {
       }
     } catch (e) {
       console.error("[CaptureOS Prefetch] ERRO excepcional durante prefetch:", e);
+    } finally {
+      window.activePrefetchPromise = null;
     }
   };
 
