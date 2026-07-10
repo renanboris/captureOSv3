@@ -149,13 +149,23 @@ export default function Dashboard() {
 
         // Se mesmo assim não autenticou, cai no mock
         setIsMock(true);
-        setRuns([
+        const mockRuns = [
           { id: '1', session_id: 's_abc123', status: 'completed', created_at: new Date().toISOString() },
           { id: '4', session_id: 's_ghj789', status: 'completed', created_at: new Date(Date.now() - 8640000).toISOString() }
-        ]);
-        setMetrics({
+        ];
+        const mockMetrics = {
           total_runs: 45, success_rate: 94.5
-        });
+        };
+
+        // Salvar no cache para navegação instantânea em modo mock
+        cachedDashboardData = {
+          runs: mockRuns,
+          metrics: mockMetrics,
+          timestamp: Date.now()
+        };
+
+        setRuns(mockRuns);
+        setMetrics(mockMetrics);
         setLoading(false);
       } else {
         throw new Error("Falha na API");

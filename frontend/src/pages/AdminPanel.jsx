@@ -200,24 +200,24 @@ export default function AdminPanel() {
 
         // Se mesmo assim não autenticou, cai no mock
         setIsMock(true);
-        setRuns([
+        const mockRuns = [
           { id: '1', session_id: 's_abc123', status: 'completed', failure_stage: null, detected_interface_type: 'sap_fiori', recording_duration_seconds: 420, created_at: new Date().toISOString() },
           { id: '2', session_id: 's_xyz789', status: 'tech_error', failure_stage: 'ai_generation', detected_interface_type: 'unknown', recording_duration_seconds: 180, created_at: new Date(Date.now() - 3600000).toISOString() },
           { id: '3', session_id: 's_def456', status: 'user_reported_error', failure_stage: 'capture', detected_interface_type: 'salesforce_lightning', recording_duration_seconds: 300, created_at: new Date(Date.now() - 7200000).toISOString() },
           { id: '4', session_id: 's_ghj789', status: 'completed', failure_stage: null, detected_interface_type: 'sap_fiori', recording_duration_seconds: 500, created_at: new Date(Date.now() - 8640000).toISOString() }
-        ]);
-        setPublications([
+        ];
+        const mockPubs = [
           { id: '1', session_id: 's_abc123', destination: 'SCORM_DOWNLOAD', published_by: 'João Silva', published_at: new Date().toISOString() }
-        ]);
-        setMetrics({
+        ];
+        const mockMetrics = {
           total_runs: 45, success_rate: 94.5, avg_edit_rate: 12.5, time_saved_hours: 168.5,
           runs_by_instructor: [
             { instructor_id: 'João S.', total_runs: 20, completed_runs: 19 },
             { instructor_id: 'Maria P.', total_runs: 15, completed_runs: 14 },
             { instructor_id: 'Carlos R.', total_runs: 10, completed_runs: 9 }
           ]
-        });
-        setCosts({
+        };
+        const mockCosts = {
           total_cost_usd: 12.4530,
           total_cost_brl: 69.7368,
           avg_cost_per_run_usd: 0.2767,
@@ -230,7 +230,21 @@ export default function AdminPanel() {
             { session_id: 'sess_9981234567890', cost_usd: 0.95, gemini_call_count: 6 }
           ],
           unverified_cost_warning: true
-        });
+        };
+
+        // Salvar no cache para navegação instantânea em modo mock
+        cachedAdminData = {
+          runs: mockRuns,
+          publications: mockPubs,
+          metrics: mockMetrics,
+          costs: mockCosts,
+          timestamp: Date.now()
+        };
+
+        setRuns(mockRuns);
+        setPublications(mockPubs);
+        setMetrics(mockMetrics);
+        setCosts(mockCosts);
         setLoading(false);
       } else {
         throw new Error("Falha na API");
