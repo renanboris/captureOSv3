@@ -251,7 +251,7 @@ def test_modo_a_capture_triggers_pipeline_with_auto_narration(client, monkeypatc
     """
     captured = _install_pipeline_probe(monkeypatch)
 
-    session_id = "sess_pres_modo_a_unit"
+    session_id = f"sess_pres_modo_a_unit_{uuid.uuid4().hex[:8]}"
     video_bytes = b"\x00\x01webm-modo-a\xff"
     events = [
         {
@@ -299,7 +299,7 @@ def test_modo_b_capture_preserves_instructor_audio(client, monkeypatch):
     """
     captured = _install_pipeline_probe(monkeypatch)
 
-    session_id = "sess_pres_modo_b_unit"
+    session_id = f"sess_pres_modo_b_unit_{uuid.uuid4().hex[:8]}"
     video_bytes = b"webm-modo-b-bytes"
     audio_bytes = b"instructor-audio-bytes"
     data = {
