@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import time
+import threading
 from typing import Any, Dict, Optional
 
 from fastapi import Depends, HTTPException, status
@@ -35,9 +36,10 @@ class InvalidTokenError(Exception):
 
 _bearer_scheme = HTTPBearer(auto_error=False)
 
-# Cache in-memory para validação de tokens JWT do Supabase (TTL de 60 segundos)
+# Cache em memória para validação de tokens JWT do Supabase (TTL de 60 segundos)
 _TOKEN_CACHE: Dict[str, tuple[float, Dict[str, Any]]] = {}
 _CACHE_TTL_SECONDS = 60.0
+_CACHE_LOCK = threading.Lock()
 
 
 def _unauthorized() -> HTTPException:
@@ -69,30 +71,38 @@ def require_auth(
     token = credentials.credentials
     now = time.time()
 
-    # Verificar cache em memória antes de fazer chamada de rede para o Supabase
+    # 1. Primeiro check sem lock para alta performance (Fast Path)
     if token in _TOKEN_CACHE:
         cached_time, user_dict = _TOKEN_CACHE[token]
         if now - cached_time < _CACHE_TTL_SECONDS:
             return user_dict
 
-    settings = get_settings()
-    if not settings.supabase_url or not settings.supabase_key:
-        _log.error("[AUTH DEBUG] Supabase URL/KEY ausentes no .env.")
-        raise _unauthorized()
-        
-    try:
-        supabase = create_client(settings.supabase_url, settings.supabase_key)
-        # Use Supabase API to validate the token
-        res = supabase.auth.get_user(token)
-        if not res or not res.user:
-            raise InvalidTokenError("Invalid or expired session token")
-        
-        user_dict = res.user.model_dump() if hasattr(res.user, 'model_dump') else dict(res.user)
-        _log.info(f"[AUTH DEBUG] Token Supabase VÁLIDO. user_email={res.user.email}")
-        
-        # Salvar no cache
-        _TOKEN_CACHE[token] = (now, user_dict)
-        return user_dict
-    except Exception as e:
-        _log.error(f"[AUTH DEBUG] Token INVÁLIDO ou expirado no Supabase: {e}")
-        raise _unauthorized()
+    # 2. Se não está no cache, adquire o lock para evitar que chamadas paralelas batam no Supabase juntas (Cache Stampede Protection)
+    with _CACHE_LOCK:
+        # Duplo check após adquirir o lock (outro thread pode ter populado o cache enquanto esperávamos)
+        if token in _TOKEN_CACHE:
+            cached_time, user_dict = _TOKEN_CACHE[token]
+            if now - cached_time < _CACHE_TTL_SECONDS:
+                return user_dict
+
+        settings = get_settings()
+        if not settings.supabase_url or not settings.supabase_key:
+            _log.error("[AUTH DEBUG] Supabase URL/KEY ausentes no .env.")
+            raise _unauthorized()
+            
+        try:
+            supabase = create_client(settings.supabase_url, settings.supabase_key)
+            # Use Supabase API to validate the token
+            res = supabase.auth.get_user(token)
+            if not res or not res.user:
+                raise InvalidTokenError("Invalid or expired session token")
+            
+            user_dict = res.user.model_dump() if hasattr(res.user, 'model_dump') else dict(res.user)
+            _log.info(f"[AUTH DEBUG] Token Supabase VÁLIDO (chamada de rede). user_email={res.user.email}")
+            
+            # Salvar no cache
+            _TOKEN_CACHE[token] = (now, user_dict)
+            return user_dict
+        except Exception as e:
+            _log.error(f"[AUTH DEBUG] Token INVÁLIDO ou expirado no Supabase: {e}")
+            raise _unauthorized()
