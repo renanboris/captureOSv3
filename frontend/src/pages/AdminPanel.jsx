@@ -53,8 +53,23 @@ export default function AdminPanel() {
     return null;
   };
 
-  const fetchData = async () => {
-    setLoading(true);
+  const fetchData = async (force = false) => {
+    const CACHE_TTL_MS = 30000;
+    if (cachedAdminData && !force) {
+      const isFresh = (Date.now() - cachedAdminData.timestamp) < CACHE_TTL_MS;
+      if (isFresh) {
+        setRuns(cachedAdminData.runs);
+        setPublications(cachedAdminData.publications);
+        setMetrics(cachedAdminData.metrics);
+        setCosts(cachedAdminData.costs);
+        setLoading(false);
+        return;
+      }
+    }
+
+    if (!cachedAdminData || force) {
+      setLoading(true);
+    }
     setError(null);
     try {
       // 1. Tentar obter o token dos parâmetros da URL (?token=...)
@@ -119,12 +134,13 @@ export default function AdminPanel() {
         const runsList = runsData.runs || [];
         const pubsList = pubsData.publications || [];
         
-        // Atualiza o cache global
+        // Atualiza o cache global com timestamp
         cachedAdminData = {
           runs: runsList,
           publications: pubsList,
           metrics: metricsData,
-          costs: costsData
+          costs: costsData,
+          timestamp: Date.now()
         };
         
         setRuns(runsList);
@@ -160,12 +176,13 @@ export default function AdminPanel() {
                 const runsList = runsData.runs || [];
                 const pubsList = pubsData.publications || [];
                 
-                // Atualiza o cache global
+                // Atualiza o cache global com timestamp
                 cachedAdminData = {
                   runs: runsList,
                   publications: pubsList,
                   metrics: metricsData,
-                  costs: costsData
+                  costs: costsData,
+                  timestamp: Date.now()
                 };
                 
                 setRuns(runsList);
@@ -281,11 +298,25 @@ export default function AdminPanel() {
     <div className="p-8 max-w-7xl mx-auto">
       <DemoBanner isVisible={isMock} />
 
-      <header className="mb-8">
-        <h1 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">Painel do Gestor</h1>
-        <p className="text-slate-500 dark:text-slate-400 mt-1">
-          Métricas de Qualidade (ROI) e Governança Organizacional.
-        </p>
+      <header className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-8">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">Painel do Gestor</h1>
+          <p className="text-slate-500 dark:text-slate-400 mt-1">
+            Métricas de Qualidade (ROI) e Governança Organizacional.
+          </p>
+        </div>
+        <div className="flex gap-4">
+          <button 
+            onClick={() => fetchData(true)} 
+            disabled={loading}
+            className="flex items-center gap-2 px-3 py-2 bg-white dark:bg-surface-800 hover:bg-slate-50 dark:hover:bg-surface-700 text-slate-700 dark:text-slate-200 font-medium rounded-lg transition-colors border border-surface-200 dark:border-surface-700 shadow-sm"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" className={loading ? "animate-spin" : ""}>
+              <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+            </svg>
+            <span>Atualizar</span>
+          </button>
+        </div>
       </header>
 
       {/* Alerta de Execuções Extras / Caras */}

@@ -31,8 +31,21 @@ export default function Dashboard() {
     return null;
   };
 
-  const fetchData = async () => {
-    setLoading(true);
+  const fetchData = async (force = false) => {
+    const CACHE_TTL_MS = 30000;
+    if (cachedDashboardData && !force) {
+      const isFresh = (Date.now() - cachedDashboardData.timestamp) < CACHE_TTL_MS;
+      if (isFresh) {
+        setRuns(cachedDashboardData.runs);
+        setMetrics(cachedDashboardData.metrics);
+        setLoading(false);
+        return;
+      }
+    }
+
+    if (!cachedDashboardData || force) {
+      setLoading(true);
+    }
     setError(null);
     try {
       // 1. Tentar obter o token dos parâmetros da URL (?token=...)
@@ -92,8 +105,8 @@ export default function Dashboard() {
         setIsMock(false);
         const recentRuns = (runsData.runs || []).filter(r => r.status === 'completed').slice(0, 5);
         
-        // Atualiza o cache global
-        cachedDashboardData = { runs: recentRuns, metrics: metricsData };
+        // Atualiza o cache global com timestamp
+        cachedDashboardData = { runs: recentRuns, metrics: metricsData, timestamp: Date.now() };
         
         setRuns(recentRuns);
         setMetrics(metricsData);
@@ -120,8 +133,8 @@ export default function Dashboard() {
                 setIsMock(false);
                 const recentRuns = (runsData.runs || []).filter(r => r.status === 'completed').slice(0, 5);
                 
-                // Atualiza o cache global
-                cachedDashboardData = { runs: recentRuns, metrics: metricsData };
+                // Atualiza o cache global com timestamp
+                cachedDashboardData = { runs: recentRuns, metrics: metricsData, timestamp: Date.now() };
                 
                 setRuns(recentRuns);
                 setMetrics(metricsData);
@@ -169,6 +182,14 @@ export default function Dashboard() {
           <p className="text-slate-500 dark:text-slate-400 mt-1">Bem-vindo de volta ao seu Workspace</p>
         </div>
         <div className="flex gap-4">
+          <button 
+            onClick={() => fetchData(true)} 
+            disabled={loading}
+            className="flex items-center gap-2 px-3 py-2 bg-white dark:bg-surface-800 hover:bg-slate-50 dark:hover:bg-surface-700 text-slate-700 dark:text-slate-200 font-medium rounded-lg transition-colors border border-surface-200 dark:border-surface-700 shadow-sm"
+          >
+            <Activity size={20} className={loading ? "animate-spin" : ""} />
+            <span>Atualizar</span>
+          </button>
           <button className="flex items-center gap-2 px-4 py-2 bg-brand-600 hover:bg-brand-500 text-white font-medium rounded-lg transition-colors shadow-sm">
             <Video size={20} />
             <span>Novo Roteiro</span>
