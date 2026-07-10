@@ -43,44 +43,16 @@ async function startRecording(useMic, streamId = null, systemAudio = false) {
     recordedChunks = [];
 
     try {
-        let displayStream;
-        if (streamId) {
-            const videoConstraints = {
-                mandatory: {
-                    chromeMediaSource: 'desktop',
-                    chromeMediaSourceId: streamId,
-                    maxWidth: 1920,
-                    maxHeight: 1080,
-                    maxFrameRate: 30
-                }
-            };
-
-            let audioConstraints = false;
-            if (systemAudio) {
-                audioConstraints = {
-                    mandatory: {
-                        chromeMediaSource: 'desktop',
-                        chromeMediaSourceId: streamId
-                    }
-                };
+        // Captura direta via getDisplayMedia nativo no Offscreen (evita erros de origem e expiração do chooseDesktopMedia)
+        const displayStream = await navigator.mediaDevices.getDisplayMedia({
+            audio: systemAudio,
+            video: {
+                displaySurface: "browser",
+                width: { ideal: 1920 },
+                height: { ideal: 1080 },
+                frameRate: { ideal: 30 }
             }
-
-            displayStream = await navigator.mediaDevices.getUserMedia({
-                video: videoConstraints,
-                audio: audioConstraints
-            });
-        } else {
-            // Fallback caso não venha streamId
-            displayStream = await navigator.mediaDevices.getDisplayMedia({
-                audio: false,
-                video: {
-                    displaySurface: "browser",
-                    width: { ideal: 1920 },
-                    height: { ideal: 1080 },
-                    frameRate: { ideal: 30 }
-                }
-            });
-        }
+        });
 
         videoElement.srcObject = displayStream;
 
@@ -106,7 +78,13 @@ async function startRecording(useMic, streamId = null, systemAudio = false) {
         if (typeof MediaRecorder.isTypeSupported === 'function' && !MediaRecorder.isTypeSupported(options.mimeType)) {
             options = { mimeType: 'video/webm', videoBitsPerSecond: 8000000 };
         }
-        mediaRecorder = new MediaRecorder(displayStream, options);
+        
+        try {
+            mediaRecorder = new MediaRecorder(displayStream, options);
+        } catch (recErr) {
+            console.warn("Offscreen: Falha ao instanciar MediaRecorder com opções. Usando padrão...", recErr);
+            mediaRecorder = new MediaRecorder(displayStream);
+        }
 
         mediaRecorder.ondataavailable = (event) => {
             if (event.data.size > 0) recordedChunks.push(event.data);
@@ -151,6 +129,9 @@ async function startRecording(useMic, streamId = null, systemAudio = false) {
 
     } catch (err) {
         console.error("Offscreen: Erro ao iniciar gravação", err);
+        console.error("Detalhes do Erro - Nome:", err?.name);
+        console.error("Detalhes do Erro - Mensagem:", err?.message);
+        console.error("Detalhes do Erro - Stack:", err?.stack);
     }
 }
 

@@ -703,40 +703,23 @@ async function startCapture() {
     // persisted to chrome.storage.local — bug C5 fix).
     clearEventsDB().catch((err) => console.warn('[CaptureOS] Could not clear events DB before capture:', err));
     
-    // Consulta a tab ativa na janela atual para servir de âncora ao diálogo de seleção
-    chrome.tabs.query({ active: true, currentWindow: true }, async (tabs) => {
-        const activeTab = tabs[0];
-        if (!activeTab) {
-            console.error("[CaptureOS] Nenhuma aba ativa encontrada para ancorar o seletor.");
-            return;
-        }
+    try {
+        // Inicializa o offscreen
+        await setupOffscreenDocument('offscreen.html');
 
-        // Abre o seletor de mídia nativo do Chrome ancorado à janela da aba ativa
-        chrome.desktopCapture.chooseDesktopMedia(
-            ['screen', 'window', 'tab'],
-            activeTab,
-            async (streamId, options) => {
-                if (!streamId) {
-                    console.log("[CaptureOS] Seleção de tela cancelada pelo usuário.");
-                    return;
-                }
-
-                // Configura offscreen somente se o usuário selecionou algo
-                await setupOffscreenDocument('offscreen.html');
-
-                chrome.storage.local.get(['useMic'], (res) => {
-                    chrome.runtime.sendMessage({
-                        target: 'offscreen',
-                        action: 'start_recording',
-                        streamId: streamId,
-                        useMic: res.useMic || false,
-                        systemAudio: options.canRequestAudioTrack || false
-                    }).catch(err => console.error("Erro ao iniciar gravação no offscreen:", err));
-                });
-                console.log("Gravação Delegada ao Offscreen via desktopCapture e streamId");
-            }
-        );
-    });
+        // Dispara gravação delegada ao Picker nativo do getDisplayMedia no Offscreen
+        chrome.storage.local.get(['useMic', 'systemAudio'], (res) => {
+            chrome.runtime.sendMessage({
+                target: 'offscreen',
+                action: 'start_recording',
+                useMic: res.useMic || false,
+                systemAudio: res.systemAudio || false
+            }).catch(err => console.error("Erro ao iniciar gravação no offscreen:", err));
+        });
+        console.log("Gravação Delegada ao Offscreen via getDisplayMedia nativo");
+    } catch (err) {
+        console.error("Erro ao preparar documento offscreen:", err);
+    }
 }
 
 async function stopCapture() {
