@@ -431,6 +431,27 @@ async def ingest_capture(
     except (json.JSONDecodeError, ValueError):
         events_list = []
 
+    # Validação da whitelist no backend para evitar uploads de domínios restritos
+    from urllib.parse import urlparse
+    allowed_hosts = ["localhost", "127.0.0.1"]
+    for ev in events_list:
+        url = ev.get("eventData", {}).get("url") or ev.get("url")
+        if url:
+            try:
+                hostname = urlparse(url).hostname
+                if hostname:
+                    is_allowed = (
+                        any(host == hostname or hostname.endswith("." + host) for host in allowed_hosts) or
+                        any(label in ("sandbox", "staging", "homolog", "homologacao") for label in hostname.split('.'))
+                    )
+                    if not is_allowed:
+                        logger.error(f"[INGEST SECURITY] Bloqueado upload contendo evento de domínio não permitido: {hostname}")
+                        raise HTTPException(status_code=403, detail="Contém eventos de domínios não permitidos na whitelist.")
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.warning(f"Erro ao processar URL do evento: {e}")
+
     try:
         roteiro_manual_list = json.loads(roteiro_manual)
     except (json.JSONDecodeError, ValueError):
@@ -1289,6 +1310,11 @@ def get_dev_token(request: Request):
 
     Limitado por segurança apenas a conexões vindas do próprio localhost.
     """
+    from config.settings import get_settings
+    settings = get_settings()
+    if not settings.allow_dev_token:
+        raise HTTPException(status_code=403, detail="Endpoint de dev-token desabilitado neste ambiente.")
+
     client_host = request.client.host if request.client else "unknown"
     if client_host not in ("127.0.0.1", "localhost", "::1"):
         raise HTTPException(status_code=403, detail="Apenas conexões locais são permitidas.")

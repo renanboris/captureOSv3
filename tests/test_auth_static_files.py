@@ -21,8 +21,17 @@ class MockResponse:
 
 @pytest.fixture
 def mock_supabase(monkeypatch):
+    from config.settings import get_settings
+    settings = get_settings()
+    monkeypatch.setattr(settings, "supabase_url", "https://dummy-supabase-url.supabase.co")
+    monkeypatch.setattr(settings, "supabase_key", "dummy-supabase-key")
+
     mock_client = MagicMock()
     monkeypatch.setattr(supabase, "create_client", lambda url, key: mock_client)
+
+    import api.auth
+    monkeypatch.setattr(api.auth, "create_client", lambda url, key: mock_client)
+
     return mock_client
 
 @pytest.fixture
