@@ -47,13 +47,8 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parent.parent
 REQUIREMENTS = REPO_ROOT / "requirements.txt"
 
-# Map: third-party top-level import name -> pip distribution name, for the
-# runtime imports the manifest is missing today (the C7 concrete cases).
-#   config/settings.py        ->  import pydantic_settings   (dist: pydantic-settings)
-#   video_eng/time_bender.py  ->  import static_ffmpeg       (dist: static-ffmpeg)
 MISSING_RUNTIME_DEPENDENCIES = {
     "pydantic_settings": "pydantic-settings",
-    "static_ffmpeg": "static-ffmpeg",
 }
 
 
@@ -158,10 +153,6 @@ def test_runtime_imports_are_covered_by_the_manifest():
         "config.settings",
         reason="config.settings is the import site for pydantic_settings",
     )
-    time_bender_module = pytest.importorskip(
-        "video_eng.time_bender",
-        reason="video_eng.time_bender is the import site for static_ffmpeg",
-    )
     # api.main transitively pulls both in (config.settings + export_pipeline).
     pytest.importorskip(
         "api.main",
@@ -171,9 +162,6 @@ def test_runtime_imports_are_covered_by_the_manifest():
     # Sanity: the modules really do expose the third-party imports we claim.
     assert hasattr(settings_module, "BaseSettings"), (
         "config.settings is expected to import pydantic_settings.BaseSettings."
-    )
-    assert hasattr(time_bender_module, "static_ffmpeg"), (
-        "video_eng.time_bender is expected to import static_ffmpeg at module load."
     )
 
     # The property: every third-party runtime import these modules rely on must

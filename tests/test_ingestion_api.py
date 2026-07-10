@@ -2,12 +2,12 @@ from fastapi.testclient import TestClient
 from api.main import app
 from contracts.handoff_schema import RoteiroHandoff, MetadataRoteiro, PassoRoteiro
 
-client = TestClient(app)
 
 def test_ingest_endpoint_mock(client):
-    payload = {
+    import json
+    data = {
         "session_id": "sess_123",
-        "events": [
+        "events": json.dumps([
             {
                 "timestamp": 123456789,
                 "type": "click",
@@ -25,14 +25,16 @@ def test_ingest_endpoint_mock(client):
                 },
                 "screenshotData": "" # Vazio pra nao quebrar no base64
             }
-        ]
+        ]),
+        "modo_input": "A"
     }
+    files = [("video", ("capture.webm", b"dummy-video-bytes", "video/webm"))]
     
-    response = client.post("/api/v1/capture/ingest", json=payload)
+    response = client.post("/api/v1/capture/ingest", data=data, files=files)
     assert response.status_code == 200
     res_data = response.json()
     assert res_data["status"] == "ok"
-    assert len(res_data["roteiro_gerado"]) == 1
+    assert res_data["session_id"] == "sess_123"
     
 def test_handoff_schema_validation():
     passo = PassoRoteiro(

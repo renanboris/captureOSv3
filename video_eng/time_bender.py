@@ -3,13 +3,22 @@ import logging
 import subprocess
 import json
 import shutil
-import static_ffmpeg
 import concurrent.futures
 import tempfile
 import uuid
 
-# Injeta o binário do FFmpeg
-static_ffmpeg.add_paths()
+# Verifica a disponibilidade do ffmpeg e ffprobe na PATH do sistema
+_ffmpeg_path = shutil.which("ffmpeg")
+_ffprobe_path = shutil.which("ffprobe")
+
+FFMPEG_CMD = _ffmpeg_path if _ffmpeg_path else "ffmpeg"
+FFPROBE_CMD = _ffprobe_path if _ffprobe_path else "ffprobe"
+
+if not _ffmpeg_path or not _ffprobe_path:
+    logging.getLogger("uvicorn.error").warning(
+        "FFmpeg ou FFprobe NÃO encontrados no PATH do sistema. "
+        "Certifique-se de que estão instalados e configurados no PATH."
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +80,7 @@ def _get_media_duration(file_path: str) -> float:
     """Obtém a duração de um arquivo de mídia usando ffprobe."""
     try:
         result = subprocess.run(
-            ["ffprobe", "-v", "quiet", "-show_entries", "format=duration",
+            [FFPROBE_CMD, "-v", "quiet", "-show_entries", "format=duration",
              "-of", "json", file_path],
             capture_output=True, text=True, check=True
         )
@@ -212,20 +221,20 @@ def _generate_dummy_chunk(idx, duration, tmp_dir, process_input):
     frame_png_path = os.path.join(tmp_dir, f"dummy_frame_{idx}.png")
     
     subprocess.run([
-        "ffmpeg", "-y", "-i", process_input, "-ss", "0.1",
+        FFMPEG_CMD, "-y", "-i", process_input, "-ss", "0.1",
         "-frames:v", "1", "-q:v", "2", frame_png_path
     ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     
     if not os.path.exists(frame_png_path):
         subprocess.run([
-            "ffmpeg", "-y", "-f", "lavfi", "-i", f"color=c=black:s=1920x1080:r={FPS}",
+            FFMPEG_CMD, "-y", "-f", "lavfi", "-i", f"color=c=black:s=1920x1080:r={FPS}",
             "-t", str(duration), "-c:v", "libx264", "-preset", "ultrafast",
             "-g", "1", "-keyint_min", "1", "-crf", "18", "-pix_fmt", "yuv420p", "-an", chunk_path
         ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         return chunk_path
         
     subprocess.run([
-        "ffmpeg", "-y", "-loop", "1", "-framerate", str(FPS), "-i", frame_png_path,
+        FFMPEG_CMD, "-y", "-loop", "1", "-framerate", str(FPS), "-i", frame_png_path,
         "-t", str(duration), "-c:v", "libx264", "-preset", "ultrafast",
         "-g", "1", "-keyint_min", "1", "-crf", "18", "-pix_fmt", "yuv420p", "-an", chunk_path
     ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -234,7 +243,7 @@ def _generate_dummy_chunk(idx, duration, tmp_dir, process_input):
 def _generate_video_chunk(idx, start, end, process_input, tmp_dir):
     chunk_path = os.path.join(tmp_dir, f"seg_{idx}.mp4").replace('\\', '/')
     subprocess.run([
-        "ffmpeg", "-y", "-ss", str(start), "-to", str(end),
+        FFMPEG_CMD, "-y", "-ss", str(start), "-to", str(end),
         "-i", process_input, "-c", "copy", chunk_path
     ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     return idx, chunk_path
@@ -246,19 +255,19 @@ def _generate_freeze_clip(idx, freeze_ts, duration, process_input, tmp_dir):
     extract_ts = 0.2 if freeze_ts == 0.0 else freeze_ts
     
     subprocess.run([
-        "ffmpeg", "-y", "-i", process_input, "-ss", str(extract_ts),
+        FFMPEG_CMD, "-y", "-i", process_input, "-ss", str(extract_ts),
         "-frames:v", "1", "-q:v", "2", frame_png_path
     ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     
     if not os.path.exists(frame_png_path):
         fallback_ts = max(0.0, freeze_ts - 0.5)
         subprocess.run([
-            "ffmpeg", "-y", "-i", process_input, "-ss", str(fallback_ts),
+            FFMPEG_CMD, "-y", "-i", process_input, "-ss", str(fallback_ts),
             "-frames:v", "1", "-q:v", "2", frame_png_path
         ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         
     subprocess.run([
-        "ffmpeg", "-y", "-loop", "1", "-framerate", str(FPS), "-i", frame_png_path,
+        FFMPEG_CMD, "-y", "-loop", "1", "-framerate", str(FPS), "-i", frame_png_path,
         "-t", str(duration), "-c:v", "libx264", "-preset", "ultrafast",
         "-g", "1", "-keyint_min", "1", "-crf", "18", "-pix_fmt", "yuv420p", "-an", chunk_path
     ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -283,7 +292,7 @@ def compose_video_with_freeze_frames(input_webm: str, output_mp4: str, timeline_
     try:
         print("Pré-convertendo WebM VFR para CFR silencioso...")
         subprocess.run([
-            "ffmpeg", "-y", "-i", input_webm,
+            FFMPEG_CMD, "-y", "-i", input_webm,
             "-vf", f"fps={FPS}", "-c:v", "libx264", "-preset", "ultrafast",
             "-g", "1", "-keyint_min", "1", "-crf", "20", "-pix_fmt", "yuv420p", "-an", cfr_mp4
         ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -372,7 +381,7 @@ def compose_video_with_freeze_frames(input_webm: str, output_mp4: str, timeline_
         has_audio = len(audio_delays) > 0
         audio_map_label = "[aout]" if has_audio else None
 
-        cmd = ["ffmpeg", "-y"] + inputs + [
+        cmd = [FFMPEG_CMD, "-y"] + inputs + [
             "-filter_complex", filter_complex,
             "-map", "[vout]",
         ]
@@ -439,7 +448,7 @@ def _simple_convert(input_webm: str, output_mp4: str) -> bool:
     try:
         print("Convertendo WebM -> MP4 (sem freeze frames)...")
         subprocess.run([
-            "ffmpeg", "-y", "-i", input_webm,
+            FFMPEG_CMD, "-y", "-i", input_webm,
             "-r", str(FPS), "-c:v", "libx264", "-preset", "fast",
             "-crf", "18", "-c:a", "aac", "-b:a", "128k",
             "-pix_fmt", "yuv420p", "-movflags", "+faststart",
@@ -472,7 +481,7 @@ def _compose_legacy_moviepy(input_webm: str, output_mp4: str, timeline_events: l
     try:
         print("[Fallback MoviePy] Convertendo VFR -> CFR...")
         subprocess.run([
-            "ffmpeg", "-y", "-i", input_webm,
+            FFMPEG_CMD, "-y", "-i", input_webm,
             "-r", "30", "-c:v", "libx264", "-preset", "ultrafast",
             "-crf", "20", cfr_mp4
         ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)

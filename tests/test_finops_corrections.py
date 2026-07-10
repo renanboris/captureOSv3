@@ -57,8 +57,11 @@ def test_finops_stale_job_sweep():
     FinOpsTracker.finish_job("new_sess_trigger")
 
 
-def test_admin_costs_endpoint():
+def test_admin_costs_endpoint(monkeypatch):
     """Valida o endpoint GET /api/v1/admin/costs com isolamento de org_id."""
+    import api.db_services
+    monkeypatch.setattr(api.db_services, "get_or_create_organization_for_user", lambda *args, **kwargs: "org_A")
+
     # Mock do usuário autenticado (pertence a org_A) via dependency overrides do FastAPI
     app.dependency_overrides[require_auth] = lambda: {
         "id": "user_admin",
@@ -67,8 +70,14 @@ def test_admin_costs_endpoint():
     }
     
     # Cria registros falsos no arquivo data/finops/metrics.jsonl
+    import shutil
     metrics_path = "data/finops/metrics.jsonl"
+    backup_path = "data/finops/metrics.jsonl.bak"
     os.makedirs("data/finops", exist_ok=True)
+    
+    backup_exists = os.path.exists(metrics_path)
+    if backup_exists:
+        shutil.move(metrics_path, backup_path)
     
     test_metrics = [
         # org_A - confirmado
@@ -121,3 +130,6 @@ def test_admin_costs_endpoint():
         # Remove arquivo de teste
         if os.path.exists(metrics_path):
             os.remove(metrics_path)
+        # Restaura backup
+        if backup_exists and os.path.exists(backup_path):
+            shutil.move(backup_path, metrics_path)

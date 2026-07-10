@@ -98,7 +98,7 @@ def require_auth(
                 raise InvalidTokenError("Invalid or expired session token")
             
             user_dict = res.user.model_dump() if hasattr(res.user, 'model_dump') else dict(res.user)
-            _log.info(f"[AUTH DEBUG] Token Supabase VÁLIDO (chamada de rede). user_email={res.user.email}")
+            _log.debug(f"[AUTH DEBUG] Token Supabase VÁLIDO (chamada de rede). user_id={res.user.id}")
             
             # Salvar no cache
             _TOKEN_CACHE[token] = (now, user_dict)

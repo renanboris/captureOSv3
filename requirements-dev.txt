@@ -20,3 +20,4 @@ httpx>=0.28.1
 # before this is installed, but PyJWT is the library the production auth
 # dependency (api/auth.py, task 14.2) is expected to validate against.
 PyJWT>=2.8
+tenacity>=8.2.3

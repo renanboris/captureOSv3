@@ -56,6 +56,94 @@ if not settings.jwt_secret or settings.jwt_secret == _DEV_SECRET:
 active_tasks: Dict[str, asyncio.Task] = {}
 
 
+class AuthStaticFiles(StaticFiles):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    async def __call__(self, scope, receive, send):
+        if scope.get("method") == "OPTIONS":
+            response = Response(status_code=200)
+            await response(scope, receive, send)
+            return
+
+        from api.main import app
+        from api.auth import require_auth
+        if require_auth in app.dependency_overrides:
+            await super().__call__(scope, receive, send)
+            return
+
+        request = Request(scope, receive)
+        token = None
+        auth_header = request.headers.get("authorization")
+        if auth_header and auth_header.startswith("Bearer "):
+            token = auth_header.split(" ", 1)[1]
+        else:
+            token = request.query_params.get("token")
+
+        if not token:
+            response = Response("Unauthorized: missing token", status_code=401)
+            await response(scope, receive, send)
+            return
+
+        import re
+        path = scope.get("path", "")
+        match = re.search(r"(sess_[a-zA-Z0-9_\-]+|preservation_[a-zA-Z0-9_\-]+|proptest_[a-zA-Z0-9_\-]+|sess_[0-9]+)", path)
+        session_id = match.group(1) if match else None
+
+        from config.settings import get_settings
+        from supabase import create_client
+        from starlette.concurrency import run_in_threadpool
+        
+        settings = get_settings()
+        if not settings.supabase_url or not settings.supabase_key:
+            response = Response("Supabase configuration missing", status_code=401)
+            await response(scope, receive, send)
+            return
+
+        try:
+            supabase = create_client(settings.supabase_url, settings.supabase_key)
+            res = await run_in_threadpool(supabase.auth.get_user, token)
+            if not res or not res.user:
+                response = Response("Unauthorized", status_code=401)
+                await response(scope, receive, send)
+                return
+            user_id = res.user.id
+        except Exception as e:
+            logger.error(f"[STATIC AUTH] Token verification failed: {e}")
+            response = Response("Unauthorized", status_code=401)
+            await response(scope, receive, send)
+            return
+
+        if session_id:
+            try:
+                org_res = await run_in_threadpool(
+                    lambda: supabase.table("organization_members").select("organization_id").eq("user_id", user_id).execute()
+                )
+                user_orgs = [row["organization_id"] for row in org_res.data] if org_res.data else []
+                
+                run_res = await run_in_threadpool(
+                    lambda: supabase.table("pipeline_runs").select("organization_id").eq("session_id", session_id).execute()
+                )
+                
+                if not run_res.data:
+                    response = Response("Forbidden: session not found", status_code=403)
+                    await response(scope, receive, send)
+                    return
+
+                session_org = run_res.data[0]["organization_id"]
+                if session_org not in user_orgs:
+                    response = Response("Forbidden: session does not belong to your organization", status_code=403)
+                    await response(scope, receive, send)
+                    return
+            except Exception as e:
+                logger.error(f"[STATIC AUTH] Org validation failed: {e}")
+                response = Response("Forbidden", status_code=403)
+                await response(scope, receive, send)
+                return
+
+        await super().__call__(scope, receive, send)
+
+
 def _task_exception_handler(task: asyncio.Task):
     """Log unhandled exceptions from background pipeline tasks."""
     try:
@@ -159,18 +247,18 @@ async def reject_modo_c_middleware(request: Request, call_next):
 
 # Servir os vídeos finalizados como arquivos estáticos (Player)
 os.makedirs("data/videos_gerados", exist_ok=True)
-app.mount("/videos_gerados", StaticFiles(directory="data/videos_gerados"), name="videos_gerados")
+app.mount("/videos_gerados", AuthStaticFiles(directory="data/videos_gerados"), name="videos_gerados")
 
 # Servir frontend editor
 os.makedirs("frontend_legacy/editor", exist_ok=True)
 app.mount("/editor", StaticFiles(directory="frontend_legacy/editor", html=True), name="editor")
 
 os.makedirs("data/artifacts", exist_ok=True)
-app.mount("/artifacts", StaticFiles(directory="data/artifacts"), name="artifacts")
+app.mount("/artifacts", AuthStaticFiles(directory="data/artifacts"), name="artifacts")
 
 # Servir screenshots
 os.makedirs("data/simlink_screenshots", exist_ok=True)
-app.mount("/screenshots", StaticFiles(directory="data/simlink_screenshots"), name="screenshots")
+app.mount("/screenshots", AuthStaticFiles(directory="data/simlink_screenshots"), name="screenshots")
 
 # Servir frontend simlink
 os.makedirs("frontend_legacy/simlink", exist_ok=True)
@@ -181,11 +269,11 @@ os.makedirs("data/simlink", exist_ok=True)
 
 # Servir SCORMs gerados
 os.makedirs("data/scorm", exist_ok=True)
-app.mount("/scorm", StaticFiles(directory="data/scorm"), name="scorm")
+app.mount("/scorm", AuthStaticFiles(directory="data/scorm"), name="scorm")
 
 # Servir Áudios gerados
 os.makedirs("data/audios", exist_ok=True)
-app.mount("/audios", StaticFiles(directory="data/audios"), name="audios")
+app.mount("/audios", AuthStaticFiles(directory="data/audios"), name="audios")
 
 # Servir Player Standalone do SCORM usando os mesmos templates do pacote
 os.makedirs("scorm_eng/templates", exist_ok=True)
@@ -257,7 +345,6 @@ class RatingPayload(BaseModel):
 from fastapi import HTTPException
 
 async def processar_sessao_background(session_id: str, modo_input: str, events: list, start_time: int, rag_namespace: str = "auto", video_bytes: bytes = b"", audio_bytes: bytes = b"", roteiro_manual: list = [], user_id: str = None, org_id: str = None):
-    from api.export_pipeline import renderizar_exportacao
     payload = {
         "session_id": session_id,
         "recording_start_time": start_time,
@@ -315,7 +402,11 @@ async def ingest_capture(
     audio: Optional[UploadFile] = File(None),
     user_dict: dict = Depends(require_auth),
 ):
-    """Accept a binary multipart upload for the capture recording."""
+    # Sanitização do session_id contra path traversal e injeção
+    import re
+    if not re.match(r"^(sess_[a-zA-Z0-9_\-]+|preservation_[a-zA-Z0-9_\-]+|proptest_[a-zA-Z0-9_\-]+|sess_[0-9]+)$", session_id):
+        raise HTTPException(status_code=400, detail="Invalid session_id format")
+
     logger.info(f"Recebido payload da sessão: {session_id} do user {user_dict.get('id')}")
 
     # Cria ou busca a org e inicializa o PipelineRun
@@ -377,7 +468,7 @@ async def ingest_capture(
 
     return {"status": "ok", "session_id": session_id}
 
-@app.post("/api/v1/capture/abort/{session_id}")
+@app.post("/api/v1/capture/abort/{session_id}", dependencies=_auth_deps)
 async def abort_capture(session_id: str):
     logger.info(f"Recebido pedido de abort para sessão: {session_id}")
     # Não sobrescrever se o pipeline já está renderizando ou concluído
@@ -402,7 +493,7 @@ async def abort_capture(session_id: str):
         active_tasks.pop(session_id, None)
     return {"status": "ok"}
 
-@app.get("/api/v1/capture/status/{session_id}")
+@app.get("/api/v1/capture/status/{session_id}", dependencies=_auth_deps)
 async def check_status(session_id: str):
     def _get_video_url() -> str:
         local_path = f"data/videos_gerados/{session_id}_final.mp4"
@@ -410,7 +501,7 @@ async def check_status(session_id: str):
         # Só usa URL do Supabase se o arquivo local NÃO existir (significa que o upload foi bem-sucedido
         # e o arquivo local foi removido, ou que estamos em modo cloud-only).
         # Se o arquivo local existe, serve direto do backend para evitar links quebrados.
-        if settings.supabase_url and settings.supabase_key:
+        if settings.supabase_url and settings.supabase_key and not os.path.exists(local_path):
             return f"{settings.supabase_url}/storage/v1/object/public/videos/{session_id}_final.mp4"
         return local_url
 
@@ -647,11 +738,12 @@ async def get_artifacts(session_id: str, request: Request):
     def _get_video_url() -> str:
         local_path = f"data/videos_gerados/{session_id}_final.mp4"
         local_url = f"{settings.backend_url}/videos_gerados/{session_id}_final.mp4"
-        if settings.supabase_url and settings.supabase_key:
+        if settings.supabase_url and settings.supabase_key and not os.path.exists(local_path):
             return f"{settings.supabase_url}/storage/v1/object/public/videos/{session_id}_final.mp4"
         return local_url
 
     # Buscar modulo_id do simlink
+    mod = {}
     simlink_url = None
     simlink_path = f"{sim_dir}/{session_id}.json"
     if os.path.exists(simlink_path):
@@ -672,21 +764,24 @@ async def get_artifacts(session_id: str, request: Request):
         except:
             pass
 
+    status_data = get_status(session_id)
+    is_completed = (status_data.get("status") == "completed")
+
     return {
         "session_id": session_id,
-        "video_url":       _get_video_url() if (os.path.exists(f"data/videos_gerados/{session_id}_final.mp4") or (settings.supabase_url and settings.supabase_key)) else None,
+        "video_url":       _get_video_url() if (is_completed and (os.path.exists(f"data/videos_gerados/{session_id}_final.mp4") or (settings.supabase_url and settings.supabase_key))) else None,
         "pdf_url":         url_if_exists(f"{art_dir}/apostila.pdf",
-                                         f"{base}/artifacts/{session_id}/apostila.pdf"),
+                                         f"{base}/artifacts/{session_id}/apostila.pdf") if is_completed else None,
         "transcript_url":  url_if_exists(f"{art_dir}/transcricao.txt",
-                                         f"{base}/artifacts/{session_id}/transcricao.txt"),
-        "quiz":            quiz_data,
-        "simlink_url":     simlink_url,
-        "scorm_download_url": url_if_exists(f"data/scorm/{session_id}.zip", f"{base}/scorm/{session_id}.zip"),
-        "scorm_player_url": f"{base}/scorm-player?modulo={mod.get('modulo_id', '')}" if simlink_url else None,
-        "status":          get_status(session_id).get("status", "unknown")
+                                         f"{base}/artifacts/{session_id}/transcricao.txt") if is_completed else None,
+        "quiz":            quiz_data if is_completed else [],
+        "simlink_url":     simlink_url if is_completed else None,
+        "scorm_download_url": url_if_exists(f"data/scorm/{session_id}.zip", f"{base}/scorm/{session_id}.zip") if is_completed else None,
+        "scorm_player_url": (f"{base}/scorm-player?modulo={mod.get('modulo_id', '')}" if simlink_url else None) if is_completed else None,
+        "status":          status_data.get("status", "unknown")
     }
 
-@app.get("/api/v1/simlink/{modulo_id}")
+@app.get("/api/v1/simlink/{modulo_id}", dependencies=_auth_deps)
 async def get_simlink_modulo(modulo_id: str):
     # Procura pelo módulo — offloaded to a thread so the event loop is not blocked
     import glob
@@ -900,7 +995,7 @@ async def listar_modulos(dominio: str = "", limit: int = 0, offset: int = 0):
 
     return {"modulos": modulos, "total": total, "count": len(modulos), "offset": offset, "limit": limit}
 
-@app.post("/api/v1/simlink/{modulo_id}/conclusao")
+@app.post("/api/v1/simlink/{modulo_id}/conclusao", dependencies=_auth_deps)
 async def registrar_conclusao_simlink(modulo_id: str, payload: dict):
     # Busca módulo e dispara callback LMS se necessário — offloaded so the event loop is not blocked
     import glob

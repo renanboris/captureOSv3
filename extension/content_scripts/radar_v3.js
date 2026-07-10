@@ -1,5 +1,18 @@
 // radar_v3.js (Content Script)
 (function() {
+    const allowedHosts = [
+        "localhost",
+        "127.0.0.1"
+    ];
+    const hostname = window.location.hostname;
+    const isAllowed = allowedHosts.some(host => hostname === host || hostname.endsWith("." + host)) ||
+                      hostname.split('.').some(label => label === "sandbox" || label === "staging");
+
+    if (!isAllowed) {
+        console.warn("Capture OS - Radar desativado para este domínio (não permitido pela whitelist de privacidade)");
+        return;
+    }
+
     const currentScriptId = Math.random().toString(36).substring(2) + "_" + Date.now();
     window.__capture_os_active_script_id = currentScriptId;
 

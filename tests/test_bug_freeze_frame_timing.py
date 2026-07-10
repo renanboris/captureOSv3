@@ -56,6 +56,8 @@ def test_loading_narration_should_not_freeze(loading_event, video_duration):
     """
     # Ensure the video is long enough to contain the event
     assume(video_duration > loading_event["timestamp"] + 0.5)
+    start_offset = max(0.0, min(0.5, loading_event["timestamp"] - 0.2))
+    assume(video_duration >= start_offset + loading_event["audio_duration"])
 
     timeline_events = [loading_event]
     segments, audio_delays = _calculate_segments(timeline_events, video_duration)

@@ -225,7 +225,10 @@ def test_completed_session_exposes_videos_gerados_url(client, suffix):
 
     app_settings = get_settings()
     session_id = f"sess_pres_url_{suffix}"
-    expected_url = f"{app_settings.backend_url}/videos_gerados/{session_id}_final.mp4"
+    if app_settings.supabase_url and app_settings.supabase_key:
+        expected_url = f"{app_settings.supabase_url}/storage/v1/object/public/videos/{session_id}_final.mp4"
+    else:
+        expected_url = f"{app_settings.backend_url}/videos_gerados/{session_id}_final.mp4"
 
     try:
         update_status(session_id, "completed", "done")
@@ -235,7 +238,10 @@ def test_completed_session_exposes_videos_gerados_url(client, suffix):
         body = response.json()
         assert body["status"] == "completed"
         assert body["url"] == expected_url
-        assert body["url"].endswith(f"/videos_gerados/{session_id}_final.mp4")
+        if app_settings.supabase_url and app_settings.supabase_key:
+            assert body["url"].endswith(f"/videos/{session_id}_final.mp4")
+        else:
+            assert body["url"].endswith(f"/videos_gerados/{session_id}_final.mp4")
     finally:
         _cleanup_session_files(session_id)
 

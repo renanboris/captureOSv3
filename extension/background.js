@@ -759,7 +759,7 @@ function finalizeUpload(videoBase64, recordingStartTime, eventsLog, micAudioBase
         let modoInput = "A";
         if (res.useMic && micAudioBase64) modoInput = "B";
 
-        const sessionId = "sess_" + Date.now();
+        const sessionId = "sess_" + self.crypto.randomUUID();
 
         // Task 14.4 (C4): convert base64 video to a binary Blob and upload via
         // multipart/form-data instead of embedding it as a base64 string inside
