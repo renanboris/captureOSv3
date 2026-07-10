@@ -854,4 +854,22 @@ document.addEventListener('DOMContentLoaded', async () => {
             chrome.storage.local.remove('backendUrl');
         }
     });
+
+    // Evento para abrir o dashboard passando o token de autenticação atual
+    const btnOpenDashboard = document.getElementById('btn-open-dashboard');
+    if (btnOpenDashboard) {
+        btnOpenDashboard.addEventListener('click', async () => {
+            const { backendUrl, authToken } = await chrome.storage.local.get(['backendUrl', 'authToken']);
+            
+            const isLocal = backendUrl === 'http://localhost:8000';
+            const dashboardBaseUrl = isLocal ? 'http://localhost:5173' : 'https://capture-o-sv3.vercel.app';
+            
+            if (authToken) {
+                const targetUrl = `${dashboardBaseUrl}/?token=${encodeURIComponent(authToken)}`;
+                chrome.tabs.create({ url: targetUrl });
+            } else {
+                chrome.tabs.create({ url: dashboardBaseUrl });
+            }
+        });
+    }
 });
