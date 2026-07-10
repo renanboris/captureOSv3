@@ -47,10 +47,10 @@ from hypothesis import strategies as st
 # --------------------------------------------------------------------------- #
 EXPECTED_MOUNTS: Dict[str, str] = {
     "/videos_gerados": "data/videos_gerados",
-    "/editor": "frontend/editor",
+    "/editor": "frontend_legacy/editor",
     "/artifacts": "data/artifacts",
     "/screenshots": "data/simlink_screenshots",
-    "/simlink": "frontend/simlink",
+    "/simlink": "frontend_legacy/simlink",
     "/scorm": "data/scorm",
     "/audios": "data/audios",
     "/scorm-player": "scorm_eng/templates",

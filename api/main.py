@@ -162,8 +162,8 @@ os.makedirs("data/videos_gerados", exist_ok=True)
 app.mount("/videos_gerados", StaticFiles(directory="data/videos_gerados"), name="videos_gerados")
 
 # Servir frontend editor
-os.makedirs("frontend/editor", exist_ok=True)
-app.mount("/editor", StaticFiles(directory="frontend/editor", html=True), name="editor")
+os.makedirs("frontend_legacy/editor", exist_ok=True)
+app.mount("/editor", StaticFiles(directory="frontend_legacy/editor", html=True), name="editor")
 
 os.makedirs("data/artifacts", exist_ok=True)
 app.mount("/artifacts", StaticFiles(directory="data/artifacts"), name="artifacts")
@@ -173,8 +173,8 @@ os.makedirs("data/simlink_screenshots", exist_ok=True)
 app.mount("/screenshots", StaticFiles(directory="data/simlink_screenshots"), name="screenshots")
 
 # Servir frontend simlink
-os.makedirs("frontend/simlink", exist_ok=True)
-app.mount("/simlink", StaticFiles(directory="frontend/simlink", html=True), name="simlink")
+os.makedirs("frontend_legacy/simlink", exist_ok=True)
+app.mount("/simlink", StaticFiles(directory="frontend_legacy/simlink", html=True), name="simlink")
 
 # Pasta para dados do simlink
 os.makedirs("data/simlink", exist_ok=True)
