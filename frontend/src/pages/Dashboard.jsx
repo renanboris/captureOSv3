@@ -16,14 +16,32 @@ export default function Dashboard() {
   const [error, setError] = useState(null);
   const [isMock, setIsMock] = useState(false);
 
+  const getQueryParam = (name) => {
+    const searchParams = new URLSearchParams(window.location.search);
+    if (searchParams.has(name)) return searchParams.get(name);
+    const hash = window.location.hash;
+    const hashSearchIndex = hash.indexOf('?');
+    if (hashSearchIndex !== -1) {
+      const hashSearchParams = new URLSearchParams(hash.substring(hashSearchIndex));
+      if (hashSearchParams.has(name)) return hashSearchParams.get(name);
+    }
+    return null;
+  };
+
   const fetchData = async () => {
     setLoading(true);
     setError(null);
     try {
-      let token = localStorage.getItem('dev_token');
+      // 1. Tentar obter o token dos parâmetros da URL (?token=...)
+      const urlToken = getQueryParam('token');
+      if (urlToken) {
+        localStorage.setItem('dev_token', urlToken);
+      }
+
+      let token = urlToken || localStorage.getItem('dev_token');
       const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
 
-      // Se não houver token localmente, tenta obter um de dev
+      // Se não houver token localmente nem na URL, tenta obter um de dev (apenas local)
       if (!token) {
         try {
           const authRes = await fetch(`${API_URL}/api/v1/auth/dev-token`);
