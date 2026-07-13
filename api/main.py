@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request, Depends, Response, UploadFile, File, Form
+from fastapi import FastAPI, Request, Depends, Response, UploadFile, File, Form, HTTPException
 import json
 import logging
 import base64
@@ -342,7 +342,7 @@ class RatingPayload(BaseModel):
     score: int
     comment: Optional[str] = None
 
-from fastapi import HTTPException
+
 
 async def processar_sessao_background(session_id: str, modo_input: str, events: list, start_time: int, rag_namespace: str = "auto", video_bytes: bytes = b"", audio_bytes: bytes = b"", roteiro_manual: list = [], user_id: str = None, org_id: str = None):
     payload = {
@@ -419,7 +419,6 @@ async def ingest_capture(
 
     # Validate modo_input (belt-and-suspenders; middleware also checks)
     if modo_input == "C":
-        from fastapi import HTTPException
         raise HTTPException(
             status_code=422,
             detail="modo_input='C' (Modo C) is disabled."
@@ -433,24 +432,34 @@ async def ingest_capture(
 
     # Validação da whitelist no backend para evitar uploads de domínios restritos
     from urllib.parse import urlparse
-    allowed_hosts = ["localhost", "127.0.0.1"]
-    for ev in events_list:
-        url = ev.get("eventData", {}).get("url") or ev.get("url")
-        if url:
-            try:
-                hostname = urlparse(url).hostname
-                if hostname:
-                    is_allowed = (
-                        any(host == hostname or hostname.endswith("." + host) for host in allowed_hosts) or
-                        any(label in ("sandbox", "staging", "homolog", "homologacao") for label in hostname.split('.'))
-                    )
-                    if not is_allowed:
-                        logger.error(f"[INGEST SECURITY] Bloqueado upload contendo evento de domínio não permitido: {hostname}")
-                        raise HTTPException(status_code=403, detail="Contém eventos de domínios não permitidos na whitelist.")
-            except HTTPException:
-                raise
-            except Exception as e:
-                logger.warning(f"Erro ao processar URL do evento: {e}")
+    from api.db_services import get_organization_settings
+    
+    settings_data = get_organization_settings(org_id) if org_id else {
+        "disable_whitelist": False,
+        "allowed_domains": ["localhost", "127.0.0.1", "senior.com.br", "senior.com"]
+    }
+    
+    disable_whitelist = settings_data.get("disable_whitelist", False)
+    allowed_hosts = settings_data.get("allowed_domains", ["localhost", "127.0.0.1", "senior.com.br", "senior.com"])
+    
+    if not disable_whitelist:
+        for ev in events_list:
+            url = ev.get("eventData", {}).get("url") or ev.get("url")
+            if url:
+                try:
+                    hostname = urlparse(url).hostname
+                    if hostname:
+                        is_allowed = (
+                            any(host == hostname or hostname.endswith("." + host) for host in allowed_hosts) or
+                            any(label in ("sandbox", "staging", "homolog", "homologacao") for label in hostname.split('.'))
+                        )
+                        if not is_allowed:
+                            logger.error(f"[INGEST SECURITY] Bloqueado upload contendo evento de domínio não permitido: {hostname}")
+                            raise HTTPException(status_code=403, detail="Contém eventos de domínios não permitidos na whitelist.")
+                except HTTPException:
+                    raise
+                except Exception as e:
+                    logger.warning(f"Erro ao processar URL do evento: {e}")
 
     try:
         roteiro_manual_list = json.loads(roteiro_manual)
@@ -639,6 +648,38 @@ def admin_get_publications(limit: int = 20, user_dict: dict = Depends(require_au
     except Exception as e:
         logger.error(f"Erro ao buscar publicações: {e}")
         return {"publications": []}
+
+
+@app.get("/api/v1/admin/settings", dependencies=_auth_deps)
+def admin_get_settings(user_dict: dict = Depends(require_auth)):
+    from api.db_services import get_or_create_organization_for_user, get_organization_settings
+    user_id = user_dict.get("id")
+    email = user_dict.get("email", "")
+    org_id = get_or_create_organization_for_user(user_id, email)
+    if not org_id:
+        raise HTTPException(status_code=403, detail="Organização não encontrada.")
+    return get_organization_settings(org_id)
+
+
+class OrganizationSettingsPayload(BaseModel):
+    disable_whitelist: bool
+    allowed_domains: List[str]
+
+
+@app.post("/api/v1/admin/settings", dependencies=_auth_deps)
+def admin_save_settings(payload: OrganizationSettingsPayload, user_dict: dict = Depends(require_auth)):
+    from api.db_services import get_or_create_organization_for_user, save_organization_settings
+    user_id = user_dict.get("id")
+    email = user_dict.get("email", "")
+    org_id = get_or_create_organization_for_user(user_id, email)
+    if not org_id:
+        raise HTTPException(status_code=403, detail="Organização não encontrada.")
+    
+    success = save_organization_settings(org_id, payload.model_dump())
+    if not success:
+        raise HTTPException(status_code=500, detail="Erro ao salvar configurações da organização.")
+    return {"status": "ok"}
+
 
 @app.get("/api/v1/session/{session_id}/roteiro", dependencies=_auth_deps)
 async def get_roteiro(session_id: str):

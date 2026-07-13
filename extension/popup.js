@@ -17,6 +17,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             await chrome.storage.local.set({ authToken: session.access_token });
             await chrome.storage.local.remove('awaitingOtpEmail');
             loginOverlay.style.display = 'none';
+            await sincronizarConfiguracoesWhitelist();
         } else {
             loginOverlay.style.display = 'flex';
             const res = await chrome.storage.local.get(['awaitingOtpEmail']);
@@ -26,6 +27,32 @@ document.addEventListener('DOMContentLoaded', async () => {
                 otpContainer.style.display = 'flex';
                 loginError.style.display = 'none';
             }
+        }
+    }
+
+    async function sincronizarConfiguracoesWhitelist() {
+        try {
+            const { backendUrl: storedBackendUrl, authToken } = await chrome.storage.local.get(['backendUrl', 'authToken']);
+            if (!authToken) return;
+            const backendUrl = storedBackendUrl || "https://api.nomadelabs.com.br";
+            
+            const res = await fetch(`${backendUrl}/api/v1/admin/settings`, {
+                headers: {
+                    'Authorization': `Bearer ${authToken}`
+                }
+            });
+            if (res.ok) {
+                const settings = await res.json();
+                await chrome.storage.local.set({
+                    disable_whitelist: settings.disable_whitelist,
+                    allowed_domains: settings.allowed_domains
+                });
+                if (typeof verificarDominioAbaAtiva === 'function') {
+                    await verificarDominioAbaAtiva();
+                }
+            }
+        } catch (e) {
+            console.warn("Erro ao sincronizar configurações da whitelist:", e);
         }
     }
 
@@ -861,7 +888,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         btnOpenDashboard.addEventListener('click', async () => {
             const { backendUrl, authToken } = await chrome.storage.local.get(['backendUrl', 'authToken']);
             
-            const isLocal = backendUrl === 'http://localhost:8000';
+            const isLocal = backendUrl && (backendUrl.includes('localhost') || backendUrl.includes('127.0.0.1'));
             const dashboardBaseUrl = isLocal ? 'http://localhost:5173' : 'https://capture-o-sv3.vercel.app';
             
             if (authToken) {
@@ -872,4 +899,107 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         });
     }
+
+    // ═══════════════════════════════════════════
+    // ACTIVE TAB DOMAIN WHITELIST CHECK
+    // ═══════════════════════════════════════════
+    window.verificarDominioAbaAtiva = async function() {
+        chrome.tabs.query({ active: true, currentWindow: true }, async (tabs) => {
+            if (tabs[0] && tabs[0].url) {
+                try {
+                    const url = new URL(tabs[0].url);
+                    const hostname = url.hostname;
+                    
+                    const res = await chrome.storage.local.get(['disable_whitelist', 'allowed_domains']);
+                    const disableWhitelist = res.disable_whitelist || false;
+                    const allowedHosts = res.allowed_domains || ["localhost", "127.0.0.1", "senior.com.br", "senior.com"];
+                    
+                    // Remove existing warning if any
+                    const existingWarning = document.getElementById("whitelist-warning");
+                    if (existingWarning) {
+                        existingWarning.remove();
+                    }
+                    
+                    if (disableWhitelist) {
+                        // Re-enable start capture button
+                        btnStart.disabled = false;
+                        btnStart.style.opacity = '';
+                        btnStart.style.cursor = '';
+                        btnStart.classList.add('pulse-anim');
+                        btnStart.innerHTML = `
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                              <circle cx="12" cy="12" r="10"></circle>
+                              <circle cx="12" cy="12" r="4" fill="currentColor" stroke="none"></circle>
+                            </svg>
+                            Gravar Agora
+                        `;
+                        return;
+                    }
+                    
+                    const isAllowed = allowedHosts.some(host => hostname === host || hostname.endsWith("." + host)) ||
+                                      hostname.split('.').some(label => label === "sandbox" || label === "staging" || label === "homolog" || label === "homologacao");
+                    
+                    if (!isAllowed) {
+                        // Disable start capture button
+                        btnStart.disabled = true;
+                        btnStart.style.opacity = '0.5';
+                        btnStart.style.cursor = 'not-allowed';
+                        btnStart.classList.remove('pulse-anim');
+                        btnStart.innerHTML = `
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 6px;">
+                                <circle cx="12" cy="12" r="10"></circle>
+                                <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line>
+                            </svg>
+                            Domínio Restrito
+                        `;
+
+                        // Inject alert warning above the start button
+                        const warningDiv = document.createElement('div');
+                        warningDiv.id = "whitelist-warning";
+                        warningDiv.style.background = "#FEF2F2";
+                        warningDiv.style.border = "1px solid #FECACA";
+                        warningDiv.style.borderRadius = "8px";
+                        warningDiv.style.padding = "10px 12px";
+                        warningDiv.style.marginTop = "12px";
+                        warningDiv.style.color = "#991B1B";
+                        warningDiv.style.fontSize = "12px";
+                        warningDiv.style.lineHeight = "1.4";
+                        warningDiv.style.textAlign = "left";
+                        
+                        const mailtoUrl = `mailto:suporte@captureos.com.br?subject=Solicitacao%20de%20Liberacao%20de%20Dominio%20-%20Capture%20OS&body=Ola,%20solicito%20a%20liberacao%20do%20dominio%20${encodeURIComponent(hostname)}%20para%20uso%20no%20Capture%20OS.`;
+                        
+                        warningDiv.innerHTML = `
+                            <div style="font-weight: 700; margin-bottom: 2px;">Domínio Restrito</div>
+                            <div style="color: #7F1D1D; margin-bottom: 6px;">O domínio <strong>${hostname}</strong> não é permitido pela política de privacidade.</div>
+                            <a href="${mailtoUrl}" target="_blank" style="color: #B91C1C; font-weight: 700; text-decoration: underline; cursor: pointer;">Solicitar liberação ao gestor</a>
+                        `;
+
+                        // Append inside tab-record content
+                        const settingsContent = document.getElementById('settings-content');
+                        if (settingsContent) {
+                            settingsContent.appendChild(warningDiv);
+                        }
+                    } else {
+                        // Re-enable start capture button
+                        btnStart.disabled = false;
+                        btnStart.style.opacity = '';
+                        btnStart.style.cursor = '';
+                        btnStart.classList.add('pulse-anim');
+                        btnStart.innerHTML = `
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                              <circle cx="12" cy="12" r="10"></circle>
+                              <circle cx="12" cy="12" r="4" fill="currentColor" stroke="none"></circle>
+                            </svg>
+                            Gravar Agora
+                        `;
+                    }
+                } catch (e) {
+                    console.error("Erro ao verificar whitelist na aba ativa:", e);
+                }
+            }
+        });
+    }
+
+    // Run the check on popup open
+    await verificarDominioAbaAtiva();
 });

@@ -1,19 +1,29 @@
 // radar_v3.js (Content Script)
 (function() {
-    const allowedHosts = [
-        "localhost",
-        "127.0.0.1"
-    ];
-    const hostname = window.location.hostname;
-    const isAllowed = allowedHosts.some(host => hostname === host || hostname.endsWith("." + host)) ||
-                      hostname.split('.').some(label => label === "sandbox" || label === "staging" || label === "homolog" || label === "homologacao");
-
-    if (!isAllowed) {
-        console.warn("Capture OS - Radar desativado para este domínio (não permitido pela whitelist de privacidade)");
+    if (typeof chrome === "undefined" || !chrome.storage || !chrome.storage.local) {
+        console.warn("Capture OS - chrome.storage não disponível neste contexto.");
         return;
     }
 
-    const currentScriptId = Math.random().toString(36).substring(2) + "_" + Date.now();
+    const hostname = window.location.hostname;
+
+    chrome.storage.local.get(['disable_whitelist', 'allowed_domains'], (res) => {
+        const disableWhitelist = res.disable_whitelist || false;
+        const allowedHosts = res.allowed_domains || ["localhost", "127.0.0.1", "senior.com.br", "senior.com"];
+
+        if (!disableWhitelist) {
+            const isAllowed = allowedHosts.some(host => hostname === host || hostname.endsWith("." + host)) ||
+                              hostname.split('.').some(label => label === "sandbox" || label === "staging" || label === "homolog" || label === "homologacao");
+            if (!isAllowed) {
+                return;
+            }
+        }
+
+        inicializarRadar();
+    });
+
+    function inicializarRadar() {
+        const currentScriptId = Math.random().toString(36).substring(2) + "_" + Date.now();
     window.__capture_os_active_script_id = currentScriptId;
 
     console.log("Capture OS v3 - Radar Injetado", currentScriptId);
@@ -26,7 +36,7 @@
     let sandboxHotspots = [];
     let sandboxStats = { errors: 0, hints: 0, skips: 0 };
 
-    chrome.storage.local.get(['sandboxMode', 'sandboxSessionId', 'sandboxTotalPassos', 'sandboxPassoAtual', 'sandboxXP', 'sandboxHotspots', 'sandboxStats'], (res) => {
+    chrome.storage.local.get(['sandboxMode', 'sandboxSessionId', 'sandboxTotalPassos', 'sandboxPassoAtual', 'sandboxXP', 'sandboxHotspots', 'sandboxStats', 'isProcessing', 'currentSessionId'], (res) => {
         if (window.__capture_os_active_script_id !== currentScriptId) {
             return;
         }
@@ -42,6 +52,19 @@
             setTimeout(() => {
                 if (typeof renderSandboxWidget === 'function') renderSandboxWidget();
             }, 500);
+        }
+
+        // Se a gravação estiver sendo processada no background, restaura o toast de feedback e retoma o polling
+        if (res.isProcessing && res.currentSessionId) {
+            setTimeout(() => {
+                if (!document.getElementById("capture-os-toast")) {
+                    showToast("processing", "Restaurando status do tutorial...");
+                }
+                chrome.runtime.sendMessage({
+                    action: 'resume_polling',
+                    session_id: res.currentSessionId
+                }).catch(() => {});
+            }, 100);
         }
     });
 
@@ -737,17 +760,26 @@
 
 
     // --- Player Modal (Vimeo Record Aesthetic) ---
-    function mountPlayerModal(videoUrl, roteiro, receivedBackendUrl, titulo = "") {
-        // Extrai session_id da URL (ex: sess_1780090948221)
-        const match = videoUrl.match(/(sess_\d+)/);
+    async function mountPlayerModal(videoUrl, roteiro, receivedBackendUrl, titulo = "") {
+        // Extrai session_id da URL (ex: sess_1780090948221 ou sess_uuid)
+        const match = videoUrl.match(/(sess_[a-zA-Z0-9\-]+)/);
         const session_id = match ? match[1] : '';
 
-        const cleanTitle = titulo ? titulo.replace(/[^a-zA-Z0-9\s]/g, '').trim().replace(/\s+/g, '_') : '';
+        const cleanTitle = titulo ? titulo.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9\s-]/g, '').trim().replace(/\s+/g, '_') : '';
         const pdfFilename = cleanTitle ? `${cleanTitle}_apostila.pdf` : `apostila_capture_os_${Date.now()}.pdf`;
         const scormFilename = cleanTitle ? `${cleanTitle}_scorm.zip` : `pacote_scorm_${session_id}.zip`;
 
         // Usa o backendUrl enviado pelo background.js
         const backendUrl = receivedBackendUrl || 'https://api.nomadelabs.com.br';
+
+        // Obtém o token de autenticação para autorizar os downloads de arquivos estáticos
+        const { authToken } = await new Promise(r => chrome.storage.local.get(['authToken'], r));
+        const tokenSuffix = authToken ? `?token=${encodeURIComponent(authToken)}` : '';
+
+        let authenticatedVideoUrl = videoUrl;
+        if (videoUrl && videoUrl.includes(backendUrl) && authToken) {
+            authenticatedVideoUrl += (videoUrl.includes('?') ? '&' : '?') + `token=${encodeURIComponent(authToken)}`;
+        }
 
         const _isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
 
@@ -1004,7 +1036,7 @@
 
             <div class="modal-container" id="modal">
                 <div class="video-section">
-                    <video src="${videoUrl}" controls autoplay></video>
+                    <video src="${authenticatedVideoUrl}" controls autoplay></video>
                 </div>
                 
                 <div class="script-section">
@@ -1026,11 +1058,11 @@
                             </button>
                         </div>
                         <div class="btn-grid">
-                            <a href="${backendUrl}/artifacts/${session_id}/apostila.pdf" target="_blank" download="${pdfFilename}" class="btn btn-secondary">
+                            <a href="${backendUrl}/artifacts/${session_id}/apostila.pdf${tokenSuffix}" target="_blank" download="${pdfFilename}" class="btn btn-secondary">
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
                                 PDF
                             </a>
-                            <a href="${backendUrl}/scorm/${session_id}.zip" target="_blank" download="${scormFilename}" class="btn btn-accent">
+                            <a href="${backendUrl}/scorm/${session_id}.zip${tokenSuffix}" target="_blank" download="${scormFilename}" class="btn btn-accent">
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2-2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
                                 SCORM
                             </a>
@@ -1187,7 +1219,7 @@
             btn.innerHTML = 'Baixando...';
             btn.disabled = true;
             try {
-                const resp = await fetch(videoUrl);
+                const resp = await fetch(authenticatedVideoUrl);
                 const blob = await resp.blob();
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
@@ -1197,7 +1229,7 @@
                 URL.revokeObjectURL(url);
             } catch(err) {
                 console.error("Erro no download blob:", err);
-                window.open(videoUrl, '_blank');
+                window.open(authenticatedVideoUrl, '_blank');
             }
             btn.innerHTML = originalHtml;
             btn.disabled = false;
@@ -1256,7 +1288,11 @@
             if (response && response.ok) {
                 const data = response.data;
                 if (data.video_url) {
-                    videoLinkUrl = data.video_url;
+                    let finalUrl = data.video_url;
+                    if (finalUrl && finalUrl.includes(backendUrl) && authToken) {
+                        finalUrl += (finalUrl.includes('?') ? '&' : '?') + `token=${encodeURIComponent(authToken)}`;
+                    }
+                    videoLinkUrl = finalUrl;
                     shareVideoBtn.innerHTML = videoOrigHtml;
                     shareVideoBtn.disabled = false;
                 } else {
@@ -1883,5 +1919,5 @@
         }, 100);
     };
 
-
+    }
 })();

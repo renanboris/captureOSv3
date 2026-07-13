@@ -151,3 +151,83 @@ def get_pipeline_runs_for_organization(
     except Exception as e:
         logger.error(f"Error fetching pipeline runs for org {organization_id}: {e}")
         return {"runs": [], "total": 0}
+
+
+def get_organization_settings(organization_id: str) -> dict:
+    default_settings = {
+        "disable_whitelist": False,
+        "allowed_domains": ["localhost", "127.0.0.1", "senior.com.br", "senior.com"]
+    }
+    
+    client = get_supabase_client()
+    if not client:
+        import os
+        import json
+        settings_file = "data/organization_settings.json"
+        if os.path.exists(settings_file):
+            try:
+                with open(settings_file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    return data.get(organization_id, default_settings)
+            except Exception as e:
+                logger.error(f"Error reading local organization settings: {e}")
+        return default_settings
+
+    try:
+        res = client.table("organizations").select("disable_whitelist", "allowed_domains").eq("id", organization_id).execute()
+        if res.data and len(res.data) > 0:
+            org_data = res.data[0]
+            disable_whitelist = org_data.get("disable_whitelist")
+            allowed_domains = org_data.get("allowed_domains")
+            return {
+                "disable_whitelist": disable_whitelist if disable_whitelist is not None else False,
+                "allowed_domains": allowed_domains if allowed_domains is not None else default_settings["allowed_domains"]
+            }
+        return default_settings
+    except Exception as e:
+        logger.error(f"Error fetching organization settings for org {organization_id}: {e}")
+        return default_settings
+
+
+def save_organization_settings(organization_id: str, settings_data: dict) -> bool:
+    disable_whitelist = settings_data.get("disable_whitelist", False)
+    allowed_domains = settings_data.get("allowed_domains", ["localhost", "127.0.0.1", "senior.com.br", "senior.com"])
+    
+    client = get_supabase_client()
+    if not client:
+        import os
+        import json
+        settings_file = "data/organization_settings.json"
+        data = {}
+        if os.path.exists(settings_file):
+            try:
+                with open(settings_file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+            except Exception as e:
+                logger.error(f"Error reading local organization settings for write: {e}")
+        
+        data[organization_id] = {
+            "disable_whitelist": disable_whitelist,
+            "allowed_domains": allowed_domains
+        }
+        
+        try:
+            os.makedirs(os.path.dirname(settings_file), exist_ok=True)
+            with open(settings_file, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2, ensure_ascii=False)
+            return True
+        except Exception as e:
+            logger.error(f"Error writing local organization settings: {e}")
+            return False
+            
+    try:
+        client.table("organizations").update({
+            "disable_whitelist": disable_whitelist,
+            "allowed_domains": allowed_domains
+        }).eq("id", organization_id).execute()
+        logger.info(f"Organization settings saved for org {organization_id}")
+        return True
+    except Exception as e:
+        logger.error(f"Error saving organization settings for org {organization_id}: {e}")
+        return False
+

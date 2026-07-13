@@ -463,6 +463,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                                 action: "show_player_modal",
                                 url: status.url,
                                 roteiro: status.roteiro || [],
+                                titulo: status.titulo || "",
                                 backendUrl: backendUrl
                             }).catch(() => {});
                         }
@@ -999,3 +1000,11 @@ async function ensureContentScriptActive(tabId) {
     }
     return false;
 }
+
+// Ao inicializar o service worker, retoma o polling se estava processando
+chrome.storage.local.get(['isProcessing', 'currentSessionId'], (res) => {
+    if (res.isProcessing && res.currentSessionId) {
+        console.log("[CaptureOS] Retomando polling após reinicialização do background:", res.currentSessionId);
+        startPolling(res.currentSessionId);
+    }
+});

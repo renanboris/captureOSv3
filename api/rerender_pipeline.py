@@ -126,13 +126,22 @@ async def rerenderizar_com_roteiro_aprovado(session_id: str, roteiro_aprovado: l
 
     overlay_path = DEFAULT_OVERLAY if usar_overlay else None
 
-    await asyncio.to_thread(
+    render_success = await asyncio.to_thread(
         compose_video_with_freeze_frames,
         raw_webm_path,
         final_mp4_path,
         timeline_events,
         overlay_path
     )
+    
+    if not render_success or not os.path.exists(final_mp4_path):
+        logger.error(f"[{session_id}] Geração de vídeo falhou. FFmpeg/FFprobe podem estar ausentes ou falharam.")
+        update_status(session_id, "failed", "Renderização do vídeo final falhou. Certifique-se de que o FFmpeg está instalado e no PATH da máquina.")
+        try:
+            FinOpsTracker.finish_job(session_id, pipeline_type="abandoned_or_error")
+        except Exception as finops_err:
+            logger.error(f"Erro ao fechar FinOps no erro de rerender: {finops_err}")
+        return
     
     # --- CAPTURA DE DURAÇÃO PARA FINOPS ANTES DO UPLOAD ---
     try:

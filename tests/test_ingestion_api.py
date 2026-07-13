@@ -59,3 +59,164 @@ def test_handoff_schema_validation():
     
     assert roteiro.metadata.session_id == "123"
     assert roteiro.passos[0].tag_alvo == "button"
+
+
+def test_ingest_whitelist_validation(client):
+    import json
+    
+    allowed_urls = [
+        "http://localhost/somepath",
+        "http://127.0.0.1:8000/page",
+        "https://senior.com.br",
+        "https://painel.senior.com.br/dashboard",
+        "https://senior.com",
+        "https://hcm.senior.com/colaboradores",
+        "https://sandbox.client.com/test",
+        "http://staging.my-site.com",
+        "https://homologacao.company.com.br",
+    ]
+    
+    disallowed_urls = [
+        "https://google.com",
+        "https://youtube.com/watch?v=123",
+        "https://anotherdomain.com",
+    ]
+    
+    for i, url in enumerate(allowed_urls):
+        data = {
+            "session_id": f"sess_allowed_{i}",
+            "events": json.dumps([
+                {
+                    "timestamp": 123456789,
+                    "type": "click",
+                    "url": url,
+                    "eventData": {
+                        "action": "click",
+                        "target_tag": "BUTTON",
+                        "target_text": "Salvar",
+                        "a11y_tree": []
+                    }
+                }
+            ]),
+            "modo_input": "A"
+        }
+        files = [("video", ("capture.webm", b"dummy-video-bytes", "video/webm"))]
+        response = client.post("/api/v1/capture/ingest", data=data, files=files)
+        assert response.status_code == 200, f"Failed for allowed url: {url}"
+        
+    for i, url in enumerate(disallowed_urls):
+        data = {
+            "session_id": f"sess_disallowed_{i}",
+            "events": json.dumps([
+                {
+                    "timestamp": 123456789,
+                    "type": "click",
+                    "url": url,
+                    "eventData": {
+                        "action": "click",
+                        "target_tag": "BUTTON",
+                        "target_text": "Salvar",
+                        "a11y_tree": []
+                    }
+                }
+            ]),
+            "modo_input": "A"
+        }
+        files = [("video", ("capture.webm", b"dummy-video-bytes", "video/webm"))]
+        response = client.post("/api/v1/capture/ingest", data=data, files=files)
+        assert response.status_code == 403, f"Allowed disallowed url: {url}"
+        assert response.json()["detail"] == "Contém eventos de domínios não permitidos na whitelist."
+
+
+def test_dynamic_whitelist_settings_and_ingestion(client):
+    import json
+    import os
+
+    settings_file = "data/organization_settings.json"
+    if os.path.exists(settings_file):
+        try:
+            os.remove(settings_file)
+        except Exception:
+            pass
+
+    try:
+        # 1. Fetch default settings
+        res = client.get("/api/v1/admin/settings")
+        assert res.status_code == 200
+        settings = res.json()
+        assert settings["disable_whitelist"] is False
+        assert "localhost" in settings["allowed_domains"]
+        assert "senior.com.br" in settings["allowed_domains"]
+
+        # 2. Save settings to disable whitelist
+        res = client.post("/api/v1/admin/settings", json={
+            "disable_whitelist": True,
+            "allowed_domains": ["localhost"]
+        })
+        assert res.status_code == 200
+
+        # Verify settings updated
+        res = client.get("/api/v1/admin/settings")
+        assert res.json()["disable_whitelist"] is True
+
+        # Ingest event with disallowed domain (e.g., google.com) while whitelist is disabled
+        data = {
+            "session_id": "sess_dynamic_disabled",
+            "events": json.dumps([
+                {
+                    "timestamp": 123456789,
+                    "type": "click",
+                    "url": "https://google.com/search",
+                    "eventData": {
+                        "action": "click",
+                        "target_tag": "BUTTON",
+                        "target_text": "Search",
+                        "a11y_tree": []
+                    }
+                }
+            ]),
+            "modo_input": "A"
+        }
+        files = [("video", ("capture.webm", b"dummy-video-bytes", "video/webm"))]
+        response = client.post("/api/v1/capture/ingest", data=data, files=files)
+        # Should succeed because whitelist is disabled!
+        assert response.status_code == 200
+
+        # 3. Enable whitelist again but only allow a custom domain
+        res = client.post("/api/v1/admin/settings", json={
+            "disable_whitelist": False,
+            "allowed_domains": ["customdomain.com"]
+        })
+        assert res.status_code == 200
+
+        # Ingest google.com (should fail now)
+        data["session_id"] = "sess_dynamic_enabled_fail"
+        response = client.post("/api/v1/capture/ingest", data=data, files=files)
+        assert response.status_code == 403
+
+        # Ingest customdomain.com (should succeed now)
+        data["session_id"] = "sess_dynamic_enabled_success"
+        data["events"] = json.dumps([
+            {
+                "timestamp": 123456789,
+                "type": "click",
+                "url": "https://customdomain.com/dashboard",
+                "eventData": {
+                    "action": "click",
+                    "target_tag": "BUTTON",
+                    "target_text": "Dashboard",
+                    "a11y_tree": []
+                }
+            }
+        ])
+        response = client.post("/api/v1/capture/ingest", data=data, files=files)
+        assert response.status_code == 200
+
+    finally:
+        if os.path.exists(settings_file):
+            try:
+                os.remove(settings_file)
+            except Exception:
+                pass
+
+

@@ -5,11 +5,18 @@ let videoElement = document.createElement('video');
 videoElement.autoplay = true;
 let canvasElement = document.createElement('canvas');
 
-chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.target === 'offscreen') {
         if (message.action === 'start_recording') {
-            await startRecording(message.useMic, message.streamId, message.systemAudio);
-            sendResponse({ status: 'started' });
+            startRecording(message.useMic, message.streamId, message.systemAudio)
+                .then(() => {
+                    sendResponse({ status: 'started' });
+                })
+                .catch((err) => {
+                    console.error("Offscreen: erro ao iniciar gravação:", err);
+                    sendResponse({ status: 'error', error: err.message });
+                });
+            return true; // Keep message channel open for async response
         } else if (message.action === 'stop_recording') {
             stopRecording();
             sendResponse({ status: 'stopped' });
@@ -35,7 +42,6 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
             }
         }
     }
-    return true; // Keep message channel open for async response
 });
 
 async function startRecording(useMic, streamId = null, systemAudio = false) {
