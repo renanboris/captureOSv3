@@ -5,15 +5,15 @@ export default function KpiCard({ title, value, status = 'neutral' }) {
     error: 'text-status-error',
     warn: 'text-status-warn',
     info: 'text-status-info',
-    neutral: 'text-slate-900 dark:text-slate-100'
+    neutral: 'text-surface-800 font-semibold'
   };
 
   return (
-    <div className="bg-white dark:bg-surface-800 p-6 rounded-xl shadow-sm border border-surface-200 dark:border-surface-700 flex flex-col justify-center">
-      <p className="text-xs uppercase tracking-widest text-zinc-500 dark:text-zinc-400 mb-2">
+    <div className="bg-surface-100 p-space-lg rounded-md shadow-sombra-200 border border-surface-150 flex flex-col justify-center hover:shadow-sombra-400 transition-base font-sans">
+      <p className="text-caption font-semibold uppercase tracking-wider text-surface-700 mb-space-xs">
         {title}
       </p>
-      <p className={`font-mono text-3xl font-bold ${valueColors[status]}`}>
+      <p className={`text-display-md tracking-tight ${valueColors[status]}`}>
         {value}
       </p>
     </div>

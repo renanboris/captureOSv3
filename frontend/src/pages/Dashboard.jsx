@@ -1,12 +1,15 @@
 import { useState, useEffect } from 'react';
-import { Activity, Settings, Video, Users, FileBarChart } from 'lucide-react';
+import { Activity, Video, Users, FileBarChart } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import StatusPill from '../components/StatusPill';
 import SkeletonRow from '../components/SkeletonRow';
 import DemoBanner from '../components/DemoBanner';
 import ErrorState from '../components/ErrorState';
+import { useThemeVariant } from '../context/ThemeVariantContext';
+import PipelineGraph from '../components/PipelineGraph';
 
 export default function Dashboard() {
+  const { variant } = useThemeVariant();
   const [runs, setRuns] = useState(window.cachedDashboardData ? window.cachedDashboardData.runs : []);
   const [metrics, setMetrics] = useState(window.cachedDashboardData ? window.cachedDashboardData.metrics : {
     total_runs: 0,
@@ -255,7 +258,7 @@ export default function Dashboard() {
       } else {
         throw new Error("Falha na API");
       }
-    } catch (err) {
+    } catch {
       setError("Não foi possível carregar as métricas do Dashboard.");
       setLoading(false);
     }
@@ -266,27 +269,27 @@ export default function Dashboard() {
   }, []);
 
   return (
-    <div className="p-8 max-w-7xl mx-auto">
+    <div className="p-space-lg sm:p-space-xl max-w-[1140px] mx-auto font-sans">
       <DemoBanner isVisible={isMock} />
 
-      <header className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-8">
+      <header className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-space-md mb-space-lg">
         <div>
-          <h1 className="text-3xl font-mono font-bold text-slate-900 dark:text-white tracking-tight">
+          <h1 className="text-display-md font-bold text-surface-800 tracking-tight">
             Capture OS
           </h1>
-          <p className="text-slate-500 dark:text-slate-400 mt-1">Bem-vindo de volta ao seu Workspace</p>
+          <p className="text-body text-surface-700 mt-1">Bem-vindo de volta ao seu Workspace</p>
         </div>
-        <div className="flex gap-4">
+        <div className="flex gap-space-sm">
           <button 
             onClick={() => fetchData(true)} 
             disabled={loading}
-            className="flex items-center gap-2 px-3 py-2 bg-white dark:bg-surface-800 hover:bg-slate-50 dark:hover:bg-surface-700 text-slate-700 dark:text-slate-200 font-medium rounded-lg transition-colors border border-surface-200 dark:border-surface-700 shadow-sm"
+            className="flex items-center gap-space-xs px-space-md py-space-sm bg-surface-100 text-surface-800 hover:bg-surface-150 font-semibold rounded-md transition-base border border-surface-150 shadow-sombra-100 hover:shadow-sombra-200 cursor-pointer text-body"
           >
-            <Activity size={20} className={loading ? "animate-spin" : ""} />
+            <Activity size={16} className={loading ? "animate-spin shrink-0" : "shrink-0"} />
             <span>Atualizar</span>
           </button>
-          <button className="flex items-center gap-2 px-4 py-2 bg-brand-600 hover:bg-brand-500 text-white font-medium rounded-lg transition-colors shadow-sm">
-            <Video size={20} />
+          <button className="flex items-center gap-space-xs px-space-md py-space-sm bg-brand-500 hover:bg-brand-600 text-white font-semibold rounded-md transition-base shadow-sombra-100 hover:shadow-sombra-200 cursor-pointer text-body">
+            <Video size={16} className="shrink-0" />
             <span>Novo Roteiro</span>
           </button>
         </div>
@@ -296,57 +299,56 @@ export default function Dashboard() {
         <ErrorState message={error} onRetry={fetchData} />
       ) : (
         <>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-            <div className="bg-white dark:bg-surface-800 p-6 rounded-xl shadow-sm border border-surface-200 dark:border-surface-700">
-              <div className="flex items-center gap-4">
-                <div className="p-3 bg-surface-100 dark:bg-surface-900/50 text-slate-600 dark:text-slate-400 rounded-lg">
-                  <FileBarChart size={24} />
-                </div>
-                <div>
-                  <p className="text-sm uppercase tracking-widest text-zinc-500 dark:text-zinc-400 mb-1">Total de Roteiros</p>
-                  {loading ? (
-                     <div className="h-8 w-16 bg-surface-200 dark:bg-surface-700 rounded animate-pulse"></div>
-                  ) : (
-                     <p className="text-3xl font-mono font-bold">{metrics.total_runs}</p>
-                  )}
-                </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-space-md mb-space-lg">
+            {/* Total de Roteiros */}
+            <div className="bg-surface-100 p-space-lg rounded-md shadow-sombra-200 border border-surface-150 flex items-center gap-space-md hover:shadow-sombra-400 transition-base">
+              <div className="p-space-sm bg-surface-50 text-surface-700 rounded-md shrink-0">
+                <FileBarChart size={20} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-caption font-semibold uppercase tracking-wider text-surface-700 mb-0.5">Total de Roteiros</p>
+                {loading ? (
+                   <div className="h-8 w-16 bg-surface-150 rounded animate-pulse"></div>
+                ) : (
+                   <p className="text-display-md font-bold tracking-tight text-surface-800">{metrics.total_runs}</p>
+                )}
               </div>
             </div>
             
-            <div className="bg-white dark:bg-surface-800 p-6 rounded-xl shadow-sm border border-surface-200 dark:border-surface-700">
-              <div className="flex items-center gap-4">
-                <div className="p-3 bg-brand-50 dark:bg-brand-900/20 text-brand-600 dark:text-brand-400 rounded-lg">
-                  <Activity size={24} />
-                </div>
-                <div>
-                  <p className="text-sm uppercase tracking-widest text-zinc-500 dark:text-zinc-400 mb-1">Taxa de Sucesso</p>
-                  {loading ? (
-                     <div className="h-8 w-16 bg-surface-200 dark:bg-surface-700 rounded animate-pulse"></div>
-                  ) : (
-                    <p className="text-3xl font-mono font-bold text-status-ok">{metrics.success_rate}%</p>
-                  )}
-                </div>
+            {/* Taxa de Sucesso */}
+            <div className="bg-surface-100 p-space-lg rounded-md shadow-sombra-200 border border-surface-150 flex items-center gap-space-md hover:shadow-sombra-400 transition-base">
+              <div className="p-space-sm bg-brand-50 text-brand-500 rounded-md shrink-0">
+                <Activity size={20} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-caption font-semibold uppercase tracking-wider text-surface-700 mb-0.5">Taxa de Sucesso</p>
+                {loading ? (
+                   <div className="h-8 w-16 bg-surface-150 rounded animate-pulse"></div>
+                ) : (
+                  <p className="text-display-md font-bold tracking-tight text-status-ok">{metrics.success_rate}%</p>
+                )}
               </div>
             </div>
             
-            <div className="bg-white dark:bg-surface-800 p-6 rounded-xl shadow-sm border border-surface-200 dark:border-surface-700">
-              <div className="flex items-center gap-4">
-                <div className="p-3 bg-surface-100 dark:bg-surface-900/50 text-slate-600 dark:text-slate-400 rounded-lg">
-                  <Users size={24} />
-                </div>
-                <div>
-                  <p className="text-sm uppercase tracking-widest text-zinc-500 dark:text-zinc-400 mb-1">Membros</p>
-                  <p className="text-3xl font-mono font-bold">4</p>
-                  <p className="text-[10px] text-zinc-400 mt-1">TODO: Dinâmico na Camada 4</p>
-                </div>
+            {/* Membros */}
+            <div className="bg-surface-100 p-space-lg rounded-md shadow-sombra-200 border border-surface-150 flex items-center gap-space-md hover:shadow-sombra-400 transition-base">
+              <div className="p-space-sm bg-surface-50 text-surface-700 rounded-md shrink-0">
+                <Users size={20} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-caption font-semibold uppercase tracking-wider text-surface-700 mb-0.5">Membros</p>
+                <p className="text-display-md font-bold tracking-tight text-surface-800">4</p>
+                <p className="text-[10px] text-surface-700 font-medium">TODO: Dinâmico na Camada 4</p>
               </div>
             </div>
           </div>
 
-          <div className="bg-white dark:bg-surface-800 rounded-xl shadow-sm border border-surface-200 dark:border-surface-700 overflow-hidden">
-            <div className="px-6 py-4 border-b border-surface-200 dark:border-surface-700 flex justify-between items-center">
-              <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Roteiros Recentes (Completos)</h2>
-              <Link to="/admin" className="text-sm font-medium text-brand-600 dark:text-brand-400 hover:underline">
+          {variant === 'purist' && <PipelineGraph />}
+
+          <div className="bg-surface-100 rounded-md shadow-sombra-200 border border-surface-150 overflow-hidden">
+            <div className="px-space-lg py-space-md border-b border-surface-150 flex justify-between items-center">
+              <h2 className="text-heading font-semibold text-surface-800">Roteiros Recentes (Completos)</h2>
+              <Link to="/admin" className="text-body font-semibold text-brand-500 hover:text-brand-600 hover:underline transition-base">
                 Ver todos
               </Link>
             </div>
@@ -354,10 +356,10 @@ export default function Dashboard() {
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
                 <thead>
-                  <tr className="bg-surface-50 dark:bg-surface-900/50">
-                    <th className="px-6 py-3 border-b border-surface-200 dark:border-surface-700 font-medium text-slate-600 dark:text-slate-300">Sessão</th>
-                    <th className="px-6 py-3 border-b border-surface-200 dark:border-surface-700 font-medium text-slate-600 dark:text-slate-300">Status</th>
-                    <th className="px-6 py-3 border-b border-surface-200 dark:border-surface-700 font-medium text-slate-600 dark:text-slate-300">Data</th>
+                  <tr className="bg-surface-50">
+                    <th className="px-space-md py-space-sm border-b border-surface-150 font-semibold text-caption text-surface-700 uppercase tracking-wider">Sessão</th>
+                    <th className="px-space-md py-space-sm border-b border-surface-150 font-semibold text-caption text-surface-700 uppercase tracking-wider">Status</th>
+                    <th className="px-space-md py-space-sm border-b border-surface-150 font-semibold text-caption text-surface-700 uppercase tracking-wider">Data</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -365,20 +367,20 @@ export default function Dashboard() {
                     Array.from({ length: 3 }).map((_, i) => <SkeletonRow key={i} columns={3} />)
                   ) : runs.length === 0 ? (
                     <tr>
-                      <td colSpan="3" className="px-6 py-12 text-center text-slate-500">
+                      <td colSpan="3" className="px-space-md py-12 text-center text-surface-750 text-body">
                         Nenhum roteiro encontrado neste workspace.
                       </td>
                     </tr>
                   ) : (
                     runs.map((run) => (
-                      <tr key={run.id} className="hover:bg-surface-50 dark:hover:bg-surface-900/50 transition-colors">
-                        <td className="px-6 py-4 border-b border-surface-200 dark:border-surface-700 font-mono text-sm border-l-4 border-l-status-ok">
+                      <tr key={run.id} className="hover:bg-surface-50/50 transition-base">
+                        <td className="px-space-md py-space-sm border-b border-surface-150 font-mono text-body text-surface-800">
                           {run.session_id}
                         </td>
-                        <td className="px-6 py-4 border-b border-surface-200 dark:border-surface-700">
+                        <td className="px-space-md py-space-sm border-b border-surface-150">
                           <StatusPill status={run.status} />
                         </td>
-                        <td className="px-6 py-4 border-b border-surface-200 dark:border-surface-700 text-slate-500 text-sm">
+                        <td className="px-space-md py-space-sm border-b border-surface-150 text-surface-700 text-body">
                           {new Date(run.created_at).toLocaleString()}
                         </td>
                       </tr>

@@ -1,32 +1,160 @@
+@import url('https://fonts.googleapis.com/css2?family=Public+Sans:wght@300;400;500;600;700&display=swap');
 @import "tailwindcss";
 
 @theme {
-  /* Primária — Slate profundo com acento verde operacional */
-  --color-brand-50:  #f0fdf4;
-  --color-brand-100: #dcfce7;
-  --color-brand-400: #4ade80;
-  --color-brand-500: #22c55e;
-  --color-brand-600: #16a34a;
-  --color-brand-900: #14532d;
+  /* Cores Principais - Senior Sistemas */
+  --color-brand-50:  #f2faf9;
+  --color-brand-100: #e0f5f3;
+  --color-brand-400: #2ac4aa;
+  --color-brand-500: #00968c; /* Verde Institucional */
+  --color-brand-600: #00af9b; /* Verde Médio */
+  --color-brand-900: #086b6b; /* Verde Escuro */
 
-  /* Superfícies — escuro neutro */
-  --color-surface-50:  #fafafa;
-  --color-surface-100: #f4f4f5;
-  --color-surface-200: #e4e4e7;
-  --color-surface-700: #3f3f46;
-  --color-surface-800: #27272a;
+  /* Cores de Apoio / Texto */
+  --color-azul-escuro: #33466c;
+  --color-azul-claro:  #bdc6e3;
+  --color-azul-medio:  #8ea0c5;
+  --color-verde-escuro: #086b6b;
+
+  /* Superfícies / Fundo (Modo Classic / Senior) */
+  --color-surface-50:  #f6f9fe; /* Cinza Azulado (Fundo da Página) */
+  --color-surface-100: #ffffff; /* Branco (Fundo de Cards) */
+  --color-surface-150: #f2f2f2; /* Cinza 100 (Bordas e Dividores) */
+  --color-surface-200: #d4d4d4; /* Cinza 300 (Grades de Gráfico) */
+  --color-surface-300: #9c9c9c; /* Cinza 400 */
+  --color-surface-700: #77736e; /* Cinza 600 (Subtítulos) */
+  --color-surface-800: #3b3d3d; /* Cinza 900 (Texto Principal) */
   --color-surface-900: #18181b;
 
   /* Semântica de estado */
-  --color-status-ok:      #22c55e;
-  --color-status-warn:    #f59e0b;
-  --color-status-error:   #ef4444;
-  --color-status-info:    #3b82f6;
-  --color-status-pending: #a855f7;
+  --color-status-ok:      #10b981; /* Verde Sucesso */
+  --color-status-warn:    #ef8833; /* Laranja da marca */
+  --color-status-error:   #ef4444; /* Vermelho Erro */
+  --color-status-info:    #33466c; /* Azul Escuro */
+  --color-status-pending: #844ec3; /* Roxo */
+
+  /* Tipografia */
+  --font-sans: "Public Sans", system-ui, sans-serif;
+  --font-display: "Public Sans", system-ui, sans-serif;
+
+  --text-display-lg: 4.0625rem;   /* 65px */
+  --text-display-lg--line-height: 4.75rem;
+
+  --text-display-md: 2.25rem;  /* 36px */
+  --text-display-md--line-height: 2.625rem;
+
+  --text-heading: 1.375rem;    /* 22px */
+  --text-heading--line-height: 1.75rem;
+
+  --text-body: 0.875rem;       /* 14px */
+  --text-body--line-height: 1.25rem;
+
+  --text-caption: 0.75rem;     /* 12px */
+  --text-caption--line-height: 1rem;
+
+  --tracking-tight: -0.02em;
+
+  /* Espaçamento em grid rítmico */
+  --spacing-space-gutter: 25px; /* Gutter oficial */
+  --spacing-space-xs: 0.25rem;
+  --spacing-space-sm: 0.5rem;
+  --spacing-space-md: 1rem;
+  --spacing-space-lg: 1.5rem;
+  --spacing-space-xl: 2.5rem;
+  --spacing-space-2xl: 4rem;
+
+  /* Sistema de Sombras Oficiais */
+  --shadow-sombra-100: 0px 1px 2px rgba(0,0,0,0.3);
+  --shadow-sombra-200: 0px 2px 6px 2px rgba(0,0,0,0.15);
+  --shadow-sombra-400: 0px 4px 8px 3px rgba(0,0,0,0.15);
+  --shadow-sombra-600: 0px 6px 10px 4px rgba(0,0,0,0.15);
+  --shadow-sombra-800: 0px 8px 12px 6px rgba(0,0,0,0.15);
+  --shadow-sombra-1000: 10px 10px 60px 6px rgba(0,0,0,0.25);
+  --shadow-sombra-elevation-8: 10px 10px 20px 0px rgba(51, 70, 108, 0.25);
+
+  /* Variáveis de movimento */
+  --transition-duration-base: 180ms;
+  --transition-timing-function-base: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@utility transition-base {
+  transition-property: color, background-color, border-color, text-decoration-color, fill, stroke, opacity, box-shadow, transform, filter, backdrop-filter;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 180ms;
 }
 
 @layer base {
   body {
-    @apply bg-surface-50 text-slate-900 dark:bg-surface-900 dark:text-slate-100 antialiased;
+    @apply bg-surface-50 text-surface-800 antialiased font-sans transition-colors duration-300;
   }
+}
+
+.theme-purist {
+  /* Purist Mode color overrides */
+  --color-surface-50:  #08080a; /* Fundo */
+  --color-surface-100: #121216; /* Cards */
+  --color-surface-150: #1d1d22; /* Linhas/Bordas */
+  --color-surface-200: #292930; /* Linhas Gráfico */
+  --color-surface-300: #3f3f46;
+  --color-surface-700: #a1a1aa; /* Text secundário */
+  --color-surface-800: #f4f4f5; /* Texto principal */
+  --color-surface-850: #16161c;
+  --color-surface-900: #08080a;
+
+  --color-brand-50:    #18181b;
+  --color-brand-100:   #27272a;
+  --color-brand-400:   #a1a1aa;
+  --color-brand-500:   #ffffff; /* Active primary text/accent in dark theme */
+  --color-brand-600:   #e4e4e7;
+  --color-brand-900:   #f4f4f5;
+
+  --color-azul-escuro: #ffffff;
+  --color-azul-claro:  #3f3f46;
+  --color-azul-medio:  #71717a;
+
+  /* Neon Status Colors Overrides for Purist Mode */
+  --color-status-ok:      #12f7d1; /* Verde Neon */
+  --color-status-warn:    #ef8833; /* Laranja */
+  --color-status-error:   #ff0069; /* Pink */
+  --color-status-pending: #844ec3; /* Roxo */
+
+  /* Custom shadows overrides for glowing, dark borders */
+  --shadow-sombra-100: 0 1px 2px rgba(0,0,0,0.8);
+  --shadow-sombra-200: 0 0 0 1px rgba(255, 255, 255, 0.04), 0 2px 8px rgba(0, 0, 0, 0.6);
+  --shadow-sombra-400: 0 0 0 1px rgba(255, 255, 255, 0.08), 0 8px 24px rgba(0, 0, 0, 0.7);
+  --shadow-sombra-elevation-8: 0 0 0 1px rgba(255, 255, 255, 0.08), 0 8px 30px rgba(0, 0, 0, 0.8), 0 0 15px rgba(255, 255, 255, 0.02);
+}
+
+.theme-purist .custom-chart-tooltip .recharts-default-tooltip {
+  background-color: rgba(18, 18, 22, 0.8) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+  color: #f4f4f5 !important;
+  backdrop-filter: blur(8px);
+}
+
+/* Keyframes de Animação de Flutuação Orgânica para o Grafo */
+@keyframes float-sway-1 {
+  0% { transform: translate(0px, 0px); }
+  50% { transform: translate(1px, -2px); }
+  100% { transform: translate(0px, 0px); }
+}
+@keyframes float-sway-2 {
+  0% { transform: translate(0px, 0px); }
+  50% { transform: translate(-2px, -1.5px); }
+  100% { transform: translate(0px, 0px); }
+}
+@keyframes float-sway-3 {
+  0% { transform: translate(0px, 0px); }
+  50% { transform: translate(1.5px, 2px); }
+  100% { transform: translate(0px, 0px); }
+}
+
+.animate-float-node-1 {
+  animation: float-sway-1 7s ease-in-out infinite;
+}
+.animate-float-node-2 {
+  animation: float-sway-2 8s ease-in-out infinite;
+}
+.animate-float-node-3 {
+  animation: float-sway-3 9s ease-in-out infinite;
 }

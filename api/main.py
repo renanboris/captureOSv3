@@ -1345,7 +1345,7 @@ def get_dev_token(request: Request):
         "role": "authenticated",
         "aal": "aal1",
         "amr": [{"method": "otp", "timestamp": now}],
-        "session_id": "dev_session_active",
+        "session_id": "7b91d293-6c0b-449e-b9b2-38600d8b4e7e",
         "is_anonymous": False
     }
     

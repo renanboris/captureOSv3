@@ -1,16 +1,16 @@
 export default function EditRateGauge({ rate }) {
   // Define the semantic message and color based on the rate (0 to 100)
   let statusColor = "text-status-ok";
-  let strokeColor = "#22c55e"; // brand-500
+  let strokeColor = "var(--color-status-ok)";
   let message = "A IA está acertando na primeira tentativa.";
 
   if (rate > 50) {
     statusColor = "text-status-error";
-    strokeColor = "#ef4444";
+    strokeColor = "var(--color-status-error)";
     message = "Alto volume de reescrita — revisar prompts.";
   } else if (rate > 20) {
     statusColor = "text-status-warn";
-    strokeColor = "#f59e0b";
+    strokeColor = "var(--color-status-warn)";
     message = "Os instrutores fazem ajustes pontuais.";
   }
 
@@ -20,8 +20,8 @@ export default function EditRateGauge({ rate }) {
   const strokeDashoffset = circumference - (rate / 100) * circumference;
 
   return (
-    <div className="flex flex-col h-full bg-white dark:bg-surface-800 p-6 rounded-xl shadow-sm border border-surface-200 dark:border-surface-700">
-      <h3 className="text-xs uppercase tracking-widest text-zinc-500 dark:text-zinc-400 mb-4">
+    <div className="flex flex-col h-full bg-surface-100 p-space-lg rounded-md shadow-sombra-200 border border-surface-150 hover:shadow-sombra-400 transition-base font-sans">
+      <h3 className="text-caption uppercase tracking-widest text-surface-700 mb-space-md font-semibold">
         Qualidade da IA
       </h3>
       
@@ -33,7 +33,7 @@ export default function EditRateGauge({ rate }) {
               d="M 10 50 A 40 40 0 0 1 90 50"
               fill="none"
               stroke="currentColor"
-              strokeWidth="10"
+              strokeWidth="5"
               className="text-surface-200 dark:text-surface-700"
               strokeLinecap="round"
             />
@@ -44,7 +44,7 @@ export default function EditRateGauge({ rate }) {
               d="M 10 50 A 40 40 0 0 1 90 50"
               fill="none"
               stroke={strokeColor}
-              strokeWidth="10"
+              strokeWidth="5"
               strokeLinecap="round"
               strokeDasharray={circumference}
               strokeDashoffset={strokeDashoffset}
@@ -52,13 +52,13 @@ export default function EditRateGauge({ rate }) {
             />
           </svg>
           <div className="absolute bottom-0 text-center w-full transform translate-y-2">
-            <span className={`font-mono text-xl font-bold ${statusColor}`}>
+            <span className={`text-display-md font-bold tracking-tight ${statusColor}`}>
               {rate}%
             </span>
           </div>
         </div>
         
-        <p className="text-center text-xs text-slate-500 dark:text-slate-400 mt-6 leading-relaxed max-w-[150px]">
+        <p className="text-center text-caption text-surface-700 mt-space-md leading-relaxed max-w-[160px]">
           {message}
         </p>
       </div>
