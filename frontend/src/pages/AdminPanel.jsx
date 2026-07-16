@@ -44,6 +44,63 @@ export default function AdminPanel() {
   const [page, setPage] = useState(1);
   const itemsPerPage = 10;
 
+  // Whitelist settings states
+  const [disableWhitelist, setDisableWhitelist] = useState(false);
+  const [allowedDomains, setAllowedDomains] = useState([]);
+  const [newDomain, setNewDomain] = useState('');
+  const [savingSettings, setSavingSettings] = useState(false);
+  const [settingsSuccess, setSettingsSuccess] = useState(false);
+
+  const handleAddDomain = (e) => {
+    e.preventDefault();
+    const domain = newDomain.trim().toLowerCase();
+    if (!domain) return;
+    if (allowedDomains.includes(domain)) {
+      setNewDomain('');
+      return;
+    }
+    setAllowedDomains([...allowedDomains, domain]);
+    setNewDomain('');
+  };
+
+  const handleRemoveDomain = (domainToRemove) => {
+    setAllowedDomains(allowedDomains.filter(d => d !== domainToRemove));
+  };
+
+  const handleSaveSettings = async () => {
+    setSavingSettings(true);
+    setSettingsSuccess(false);
+    try {
+      const token = localStorage.getItem('dev_token');
+      const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+      const headers = {
+        'Content-Type': 'application/json',
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+      };
+
+      const res = await fetch(`${API_URL}/api/v1/admin/settings`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          disable_whitelist: disableWhitelist,
+          allowed_domains: allowedDomains
+        })
+      });
+
+      if (res.ok) {
+        setSettingsSuccess(true);
+        setTimeout(() => setSettingsSuccess(false), 3000);
+      } else {
+        alert("Erro ao salvar configurações.");
+      }
+    } catch (e) {
+      console.error(e);
+      alert("Erro de rede ao salvar configurações.");
+    } finally {
+      setSavingSettings(false);
+    }
+  };
+
   const getQueryParam = (name) => {
     const searchParams = new URLSearchParams(window.location.search);
     if (searchParams.has(name)) return searchParams.get(name);
@@ -149,11 +206,12 @@ export default function AdminPanel() {
       const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
       fetchSettings(token);
 
-      const [runsRes, metricsRes, pubsRes, costsRes] = await Promise.all([
+      const [runsRes, metricsRes, pubsRes, costsRes, settingsRes] = await Promise.all([
         fetch(`${API_URL}/api/v1/admin/pipeline-runs`, { headers }),
         fetch(`${API_URL}/api/v1/admin/metrics`, { headers }),
         fetch(`${API_URL}/api/v1/admin/publications`, { headers }),
-        fetch(`${API_URL}/api/v1/admin/costs`, { headers })
+        fetch(`${API_URL}/api/v1/admin/costs`, { headers }),
+        fetch(`${API_URL}/api/v1/admin/settings`, { headers }).catch(() => null)
       ]);
 
       if (runsRes.ok && metricsRes.ok && pubsRes.ok && costsRes.ok) {
@@ -162,6 +220,12 @@ export default function AdminPanel() {
         const pubsData = await pubsRes.json();
         const costsData = await costsRes.json();
         
+        if (settingsRes && settingsRes.ok) {
+          const settingsData = await settingsRes.json();
+          setDisableWhitelist(settingsData.disable_whitelist || false);
+          setAllowedDomains(settingsData.allowed_domains || []);
+        }
+
         setIsMock(false);
         const runsList = runsData.runs || [];
         const pubsList = pubsData.publications || [];
@@ -193,11 +257,12 @@ export default function AdminPanel() {
               localStorage.setItem('dev_token', authData.token);
               fetchSettings(authData.token);
               const retryHeaders = { 'Authorization': `Bearer ${authData.token}` };
-              const [rRes, mRes, pRes, cRes] = await Promise.all([
+              const [rRes, mRes, pRes, cRes, sRes] = await Promise.all([
                 fetch(`${API_URL}/api/v1/admin/pipeline-runs`, { headers: retryHeaders }),
                 fetch(`${API_URL}/api/v1/admin/metrics`, { headers: retryHeaders }),
                 fetch(`${API_URL}/api/v1/admin/publications`, { headers: retryHeaders }),
-                fetch(`${API_URL}/api/v1/admin/costs`, { headers: retryHeaders })
+                fetch(`${API_URL}/api/v1/admin/costs`, { headers: retryHeaders }),
+                fetch(`${API_URL}/api/v1/admin/settings`, { headers: retryHeaders }).catch(() => null)
               ]);
               if (rRes.ok && mRes.ok && pRes.ok && cRes.ok) {
                 const runsData = await rRes.json();
@@ -205,6 +270,12 @@ export default function AdminPanel() {
                 const pubsData = await pRes.json();
                 const costsData = await cRes.json();
                 
+                if (sRes && sRes.ok) {
+                  const settingsData = await sRes.json();
+                  setDisableWhitelist(settingsData.disable_whitelist || false);
+                  setAllowedDomains(settingsData.allowed_domains || []);
+                }
+
                 setIsMock(false);
                 const runsList = runsData.runs || [];
                 const pubsList = pubsData.publications || [];
@@ -278,6 +349,8 @@ export default function AdminPanel() {
         setPublications(mockPubs);
         setMetrics(mockMetrics);
         setCosts(mockCosts);
+        setDisableWhitelist(false);
+        setAllowedDomains(["localhost", "127.0.0.1", "senior.com.br", "senior.com"]);
         setLoading(false);
       } else {
         throw new Error("Falha na API");
@@ -607,7 +680,85 @@ export default function AdminPanel() {
         )}
       </div>
 
-      {/* 4. Trilha de Publicação */}
+      {/* 4. Configurações de Privacidade & Whitelist */}
+      <div className="bg-white dark:bg-surface-800 rounded-xl shadow-sm border border-surface-200 dark:border-surface-700 p-6 mb-8">
+        <h2 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">Configurações de Privacidade & Whitelist</h2>
+        
+        <div className="mb-6 flex items-center justify-between p-4 bg-surface-50 dark:bg-surface-900/50 rounded-lg">
+          <div>
+            <h4 className="font-semibold text-sm text-slate-900 dark:text-white">Liberar gravação em qualquer domínio (Desativar Whitelist)</h4>
+            <p className="text-xs text-slate-500 dark:text-zinc-400 mt-1">
+              Se ativado, os instrutores poderão usar a extensão em qualquer domínio ou URL sem restrições de privacidade corporativa.
+            </p>
+          </div>
+          <label className="relative inline-flex items-center cursor-pointer">
+            <input 
+              type="checkbox" 
+              className="sr-only peer" 
+              checked={disableWhitelist} 
+              onChange={(e) => setDisableWhitelist(e.target.checked)} 
+            />
+            <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-zinc-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-zinc-600 peer-checked:bg-emerald-500"></div>
+          </label>
+        </div>
+
+        {!disableWhitelist && (
+          <div className="mb-6 animate-fadeIn">
+            <h4 className="font-semibold text-sm text-slate-900 dark:text-white mb-3">Domínios Permitidos</h4>
+            <div className="flex flex-wrap gap-2 mb-4">
+              {allowedDomains.length === 0 ? (
+                <span className="text-sm text-slate-500 italic">Nenhum domínio configurado. Todos os domínios exceto localhost serão restritos.</span>
+              ) : (
+                allowedDomains.map(domain => (
+                  <span key={domain} className="inline-flex items-center gap-1.5 px-3 py-1 bg-zinc-100 dark:bg-zinc-800 text-slate-800 dark:text-slate-200 text-sm font-medium rounded-full border border-zinc-200 dark:border-zinc-700">
+                    {domain}
+                    <button 
+                      type="button" 
+                      onClick={() => handleRemoveDomain(domain)}
+                      className="text-slate-400 hover:text-red-500 transition-colors focus:outline-none ml-1 text-xs"
+                    >
+                      &times;
+                    </button>
+                  </span>
+                ))
+              )}
+            </div>
+
+            <form onSubmit={handleAddDomain} className="flex gap-2 max-w-md">
+              <input 
+                type="text" 
+                placeholder="Ex: minhaempresa.com.br" 
+                value={newDomain}
+                onChange={(e) => setNewDomain(e.target.value)}
+                className="flex-1 px-3 py-2 border border-zinc-200 dark:border-zinc-700 rounded-lg text-sm bg-white dark:bg-surface-850 text-slate-900 dark:text-white outline-none focus:border-brand-500"
+              />
+              <button 
+                type="submit"
+                className="px-4 py-2 bg-emerald-500 text-white rounded-lg text-sm font-semibold hover:bg-emerald-600 transition-colors"
+              >
+                Adicionar
+              </button>
+            </form>
+          </div>
+        )}
+
+        <div className="flex items-center gap-4 border-t border-surface-200 dark:border-surface-700 pt-4">
+          <button 
+            type="button"
+            onClick={handleSaveSettings}
+            disabled={savingSettings}
+            className="px-4 py-2 bg-slate-900 dark:bg-white text-white dark:text-slate-900 rounded-lg text-sm font-semibold hover:bg-slate-800 dark:hover:bg-slate-100 disabled:opacity-50 transition-colors"
+          >
+            {savingSettings ? 'Salvando...' : 'Salvar Configurações'}
+          </button>
+          
+          {settingsSuccess && (
+            <span className="text-sm font-semibold text-emerald-500 animate-pulse">Configurações salvas com sucesso!</span>
+          )}
+        </div>
+      </div>
+
+      {/* 5. Trilha de Publicação */}
       <div className="bg-white dark:bg-surface-800 rounded-xl shadow-sm border border-surface-200 dark:border-surface-700 overflow-hidden">
         <details className="group">
           <summary className="px-6 py-4 cursor-pointer flex justify-between items-center bg-surface-50 dark:bg-surface-800 hover:bg-surface-100 dark:hover:bg-surface-700/50 transition-colors">

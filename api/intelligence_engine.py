@@ -438,7 +438,7 @@ Ações: {acoes}
 
 Regras:
 1. Comece com um verbo de ação se possível (ex: Cadastrar, Configurar).
-2. Não use acentos nem pontuação. Use espaços normais entre as palavras. PROIBIDO usar underscore (_).
+2. Use acentos e cedilhas normalmente se a palavra exigir (ex: Configuração, Relatório). Não use pontuação. Use espaços normais entre as palavras. PROIBIDO usar underscore (_).
 3. Máximo de 4 ou 5 palavras (ex: Cadastrar Novo Colaborador).
 4. Retorne APENAS o título gerado, sem mais nada.
 """
@@ -457,9 +457,9 @@ Regras:
                 response.usage_metadata.candidates_token_count
             )
             
-        # Limpar caracteres não permitidos, mantendo espaços
+        # Limpar caracteres não permitidos, mantendo acentos, cedilhas, hifens e espaços
         import re
-        title = re.sub(r'[^A-Za-z0-9 ]', '', title).strip()
+        title = re.sub(r'[^\w\s-]', '', title).replace('_', '').strip()
         
         if namespace and namespace != "auto":
             title = f"[{namespace.upper()}] {title}"
