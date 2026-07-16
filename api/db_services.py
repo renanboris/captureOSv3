@@ -37,7 +37,10 @@ def get_or_create_organization_for_user(user_id: str, user_email: str) -> Option
             
         # If not, create a personal workspace (B2C behavior)
         org_name = f"Workspace de {user_email.split('@')[0]}" if user_email else "Personal Workspace"
-        org_res = client.table("organizations").insert({"name": org_name}).execute()
+        org_res = client.table("organizations").insert({
+            "name": org_name,
+            "disable_whitelist": True
+        }).execute()
         
         if not org_res.data:
             return None
@@ -144,8 +147,38 @@ def get_pipeline_runs_for_organization(
             query = query.eq("status", status_filter)
             
         res = query.order("created_at", desc=True).range(offset, offset + limit - 1).execute()
+        runs = res.data if res.data else []
+        
+        # Enriquecer os runs com os títulos dos arquivos json se disponíveis
+        import os
+        import json
+        for run in runs:
+            session_id = run.get("session_id")
+            titulo = None
+            if session_id:
+                roteiro_path = f"data/roteiros/{session_id}.json"
+                if os.path.exists(roteiro_path):
+                    try:
+                        with open(roteiro_path, "r", encoding="utf-8") as f:
+                            data = json.load(f)
+                            titulo = data.get("titulo")
+                    except Exception:
+                        pass
+                
+                if not titulo:
+                    simlink_path = f"data/simlink/{session_id}.json"
+                    if os.path.exists(simlink_path):
+                        try:
+                            with open(simlink_path, "r", encoding="utf-8") as f:
+                                data = json.load(f)
+                                titulo = data.get("titulo")
+                        except Exception:
+                            pass
+            
+            run["titulo"] = titulo or (f"Sessão {session_id[-8:]}" if session_id else "Sem título")
+
         return {
-            "runs": res.data if res.data else [],
+            "runs": runs,
             "total": res.count if res.count is not None else 0
         }
     except Exception as e:

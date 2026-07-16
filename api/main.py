@@ -419,7 +419,6 @@ async def ingest_capture(
 
     # Validate modo_input (belt-and-suspenders; middleware also checks)
     if modo_input == "C":
-        from fastapi import HTTPException
         raise HTTPException(
             status_code=422,
             detail="modo_input='C' (Modo C) is disabled."
@@ -433,24 +432,40 @@ async def ingest_capture(
 
     # Validação da whitelist no backend para evitar uploads de domínios restritos
     from urllib.parse import urlparse
-    allowed_hosts = ["localhost", "127.0.0.1"]
-    for ev in events_list:
-        url = ev.get("eventData", {}).get("url") or ev.get("url")
-        if url:
-            try:
-                hostname = urlparse(url).hostname
-                if hostname:
-                    is_allowed = (
-                        any(host == hostname or hostname.endswith("." + host) for host in allowed_hosts) or
-                        any(label in ("sandbox", "staging", "homolog", "homologacao") for label in hostname.split('.'))
-                    )
-                    if not is_allowed:
-                        logger.error(f"[INGEST SECURITY] Bloqueado upload contendo evento de domínio não permitido: {hostname}")
-                        raise HTTPException(status_code=403, detail="Contém eventos de domínios não permitidos na whitelist.")
-            except HTTPException:
-                raise
-            except Exception as e:
-                logger.warning(f"Erro ao processar URL do evento: {e}")
+    from api.db_services import get_supabase_client
+    
+    disable_whitelist = True  # Padrão: desativado (conforme pedido pelo usuário)
+    allowed_hosts = ["localhost", "127.0.0.1", "senior.com.br", "senior.com"]
+    
+    client = get_supabase_client()
+    if client and org_id:
+        try:
+            org_res = client.table("organizations").select("disable_whitelist, allowed_domains").eq("id", org_id).execute()
+            if org_res.data:
+                org_data = org_res.data[0]
+                disable_whitelist = org_data.get("disable_whitelist", True)
+                allowed_hosts = org_data.get("allowed_domains") or allowed_hosts
+        except Exception as e:
+            logger.warning(f"Erro ao buscar configurações da org no banco: {e}")
+            
+    if not disable_whitelist:
+        for ev in events_list:
+            url = ev.get("eventData", {}).get("url") or ev.get("url")
+            if url:
+                try:
+                    hostname = urlparse(url).hostname
+                    if hostname:
+                        is_allowed = (
+                            any(host == hostname or hostname.endswith("." + host) or "senior.com" in hostname for host in allowed_hosts) or
+                            any(label in ("sandbox", "staging", "homolog", "homologacao") or "homolog" in label or "sandbox" in label or "staging" in label for label in hostname.split('.'))
+                        )
+                        if not is_allowed:
+                            logger.error(f"[INGEST SECURITY] Bloqueado upload contendo evento de domínio não permitido: {hostname}")
+                            raise HTTPException(status_code=403, detail="Contém eventos de domínios não permitidos na whitelist.")
+                except HTTPException:
+                    raise
+                except Exception as e:
+                    logger.warning(f"Erro ao processar URL do evento: {e}")
 
     try:
         roteiro_manual_list = json.loads(roteiro_manual)
@@ -822,7 +837,7 @@ async def regerar_passo(session_id: str, passo_num: int, user: dict = Depends(re
     return {"passo": passo_atualizado}
 
 @app.post("/api/v1/tts/preview", dependencies=_auth_deps)
-async def tts_preview(payload: TTSPreviewPayload):
+async def tts_preview(payload: TTSPreviewPayload, request: Request):
     from video_eng.tts_generator import gerar_audio
     import uuid
     os.makedirs("data/artifacts/previews", exist_ok=True)
@@ -833,6 +848,10 @@ async def tts_preview(payload: TTSPreviewPayload):
         raise HTTPException(status_code=500, detail="Falha ao gerar TTS")
     
     base = settings.backend_url
+    req_host = request.headers.get("host", "")
+    if "api.nomadelabs.com.br" in base and ("localhost" in req_host or "127.0.0.1" in req_host):
+        base = f"http://{req_host}"
+        
     url = f"{base}/artifacts/previews/{filename}"
     return {"audio_url": url}
 
@@ -891,6 +910,55 @@ async def get_artifacts(session_id: str, request: Request):
         "scorm_player_url": (f"{base}/scorm-player?modulo={mod.get('modulo_id', '')}" if simlink_url else None) if is_completed else None,
         "status":          status_data.get("status", "unknown")
     }
+
+@app.get("/api/v1/organization/settings", dependencies=_auth_deps)
+async def get_org_settings(user_dict: dict = Depends(require_auth)):
+    from api.db_services import get_supabase_client, get_or_create_organization_for_user
+    client = get_supabase_client()
+    if not client:
+        raise HTTPException(status_code=500, detail="Supabase client not available")
+    
+    org_id = get_or_create_organization_for_user(user_dict.get("id"), user_dict.get("email", ""))
+    if not org_id:
+        raise HTTPException(status_code=404, detail="Organization not found")
+        
+    res = client.table("organizations").select("disable_whitelist, allowed_domains").eq("id", org_id).execute()
+    if not res.data:
+        return {"disable_whitelist": True, "allowed_domains": ["localhost", "127.0.0.1", "senior.com.br", "senior.com"]}
+        
+    org_data = res.data[0]
+    return {
+        "disable_whitelist": org_data.get("disable_whitelist", True),
+        "allowed_domains": org_data.get("allowed_domains") or ["localhost", "127.0.0.1", "senior.com.br", "senior.com"]
+    }
+
+from pydantic import BaseModel
+from typing import List
+
+class OrgSettingsUpdate(BaseModel):
+    disable_whitelist: bool
+    allowed_domains: List[str]
+
+@app.put("/api/v1/organization/settings", dependencies=_auth_deps)
+async def update_org_settings(settings: OrgSettingsUpdate, user_dict: dict = Depends(require_auth)):
+    from api.db_services import get_supabase_client, get_or_create_organization_for_user
+    client = get_supabase_client()
+    if not client:
+        raise HTTPException(status_code=500, detail="Supabase client not available")
+        
+    org_id = get_or_create_organization_for_user(user_dict.get("id"), user_dict.get("email", ""))
+    if not org_id:
+        raise HTTPException(status_code=404, detail="Organization not found")
+        
+    res = client.table("organizations").update({
+        "disable_whitelist": settings.disable_whitelist,
+        "allowed_domains": settings.allowed_domains
+    }).eq("id", org_id).execute()
+    
+    if not res.data:
+        raise HTTPException(status_code=500, detail="Failed to update settings")
+        
+    return {"status": "success", "settings": res.data[0]}
 
 @app.get("/api/v1/simlink/{modulo_id}", dependencies=_auth_deps)
 async def get_simlink_modulo(modulo_id: str):
@@ -1428,6 +1496,27 @@ def get_admin_costs(user: dict = Depends(require_auth)):
     most_expensive_runs = runs[:5]
     for r in most_expensive_runs:
         r["cost_usd"] = round(r["cost_usd"], 4)
+        session_id = r.get("session_id")
+        titulo = None
+        if session_id:
+            roteiro_path = f"data/roteiros/{session_id}.json"
+            if os.path.exists(roteiro_path):
+                try:
+                    with open(roteiro_path, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                        titulo = data.get("titulo")
+                except Exception:
+                    pass
+            if not titulo:
+                simlink_path = f"data/simlink/{session_id}.json"
+                if os.path.exists(simlink_path):
+                    try:
+                        with open(simlink_path, "r", encoding="utf-8") as f:
+                            data = json.load(f)
+                            titulo = data.get("titulo")
+                    except Exception:
+                        pass
+        r["titulo"] = titulo or (f"Sessão {session_id[-8:]}" if session_id else "Sem título")
 
     return {
         "total_cost_usd": round(total_cost_usd, 4),

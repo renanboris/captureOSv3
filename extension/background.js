@@ -564,6 +564,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             }).catch(() => {});
         }
     }
+
+    if (message.action === "HINT_ELEMENT_FOUND") {
+        if (sender.tab) {
+            chrome.tabs.sendMessage(sender.tab.id, {
+                action: "HINT_ELEMENT_FOUND_LOCAL"
+            }).catch(() => {});
+        }
+    }
     
     if (message.action === 'evaluate_sandbox') {
         authedFetch(`/api/v1/sandbox/evaluate`, {

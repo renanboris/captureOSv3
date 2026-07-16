@@ -1,20 +1,44 @@
 // radar_v3.js (Content Script)
 (function() {
-    const allowedHosts = [
-        "localhost",
-        "127.0.0.1"
-    ];
-    const hostname = window.location.hostname;
-    const isAllowed = allowedHosts.some(host => hostname === host || hostname.endsWith("." + host)) ||
-                      hostname.split('.').some(label => label === "sandbox" || label === "staging" || label === "homolog" || label === "homologacao");
+    const hostname = window.location.hostname || "";
 
-    if (!isAllowed) {
-        console.warn("Capture OS - Radar desativado para este domínio (não permitido pela whitelist de privacidade)");
-        return;
-    }
+    chrome.storage.local.get(['disable_whitelist'], (res) => {
+        // Whitelist is disabled by default (disable_whitelist = true).
+        // It must be explicitly set to false to be enabled.
+        const disableWhitelist = res.disable_whitelist !== false;
 
-    const currentScriptId = Math.random().toString(36).substring(2) + "_" + Date.now();
-    window.__capture_os_active_script_id = currentScriptId;
+        if (!disableWhitelist) {
+            const allowedHosts = [
+                "localhost",
+                "127.0.0.1",
+                "senior.com.br",
+                "senior.com"
+            ];
+            const isAllowed = allowedHosts.some(host => hostname === host || hostname.endsWith("." + host) || hostname.includes("senior.com")) ||
+                              hostname.split('.').some(label => 
+                                  label === "sandbox" || label === "staging" || label === "homolog" || label === "homologacao" ||
+                                  label.includes("homolog") || label.includes("sandbox") || label.includes("staging")
+                              );
+
+            if (!isAllowed) {
+                if (window === window.top && hostname && hostname !== "newtab" && !hostname.includes("newtab")) {
+                    console.warn("Capture OS - Radar desativado para este domínio (não permitido pela whitelist de privacidade): " + hostname);
+                    setTimeout(() => {
+                        try {
+                            showToast("warning", "Radar desativado: este domínio não está na whitelist de privacidade.");
+                        } catch(e) {}
+                    }, 100);
+                }
+                return;
+            }
+        }
+
+        inicializarRadar();
+    });
+
+    function inicializarRadar() {
+        const currentScriptId = Math.random().toString(36).substring(2) + "_" + Date.now();
+        window.__capture_os_active_script_id = currentScriptId;
 
     console.log("Capture OS v3 - Radar Injetado", currentScriptId);
 
@@ -25,6 +49,7 @@
     let sandboxXP = 0;
     let sandboxHotspots = [];
     let sandboxStats = { errors: 0, hints: 0, skips: 0 };
+    let sandboxShowSkipPrompt = false;
 
     chrome.storage.local.get(['sandboxMode', 'sandboxSessionId', 'sandboxTotalPassos', 'sandboxPassoAtual', 'sandboxXP', 'sandboxHotspots', 'sandboxStats'], (res) => {
         if (window.__capture_os_active_script_id !== currentScriptId) {
@@ -52,7 +77,10 @@
         if (changes.sandboxMode) isSandboxMode = changes.sandboxMode.newValue;
         if (changes.sandboxSessionId) sandboxSessionId = changes.sandboxSessionId.newValue;
         if (changes.sandboxTotalPassos) sandboxTotalPassos = changes.sandboxTotalPassos.newValue;
-        if (changes.sandboxPassoAtual) sandboxPassoAtual = changes.sandboxPassoAtual.newValue;
+        if (changes.sandboxPassoAtual) {
+            sandboxPassoAtual = changes.sandboxPassoAtual.newValue;
+            sandboxShowSkipPrompt = false;
+        }
         if (changes.sandboxXP) sandboxXP = changes.sandboxXP.newValue;
         if (changes.sandboxHotspots) sandboxHotspots = changes.sandboxHotspots.newValue;
         if (changes.sandboxStats) sandboxStats = changes.sandboxStats.newValue;
@@ -1507,7 +1535,15 @@
                 targetEl.style.borderRadius = "4px";
                 targetEl.style.transition = "all 0.3s ease";
                 targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+                // Avisa que encontramos o elemento
+                if (chrome.runtime && chrome.runtime.sendMessage) {
+                    chrome.runtime.sendMessage({ action: "HINT_ELEMENT_FOUND" }).catch(() => {});
+                }
             }
+        }
+        if (request.action === "HINT_ELEMENT_FOUND_LOCAL") {
+            window.__hint_element_found = true;
         }
     });
 
@@ -1650,11 +1686,11 @@
             footer.innerHTML = `
                 <button id="btn-encerrar-pratica" style="background: transparent; color: #DC2626; border: 1px solid #FECACA; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 500; transition: all 0.2s;">Sair</button>
                 <div style="display: flex; gap: 8px;">
-                    <button id="btn-dica-pratica" style="background: #FFFFFF; color: #374151; border: 1px solid #D1D5DB; padding: 6px 16px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 500; transition: all 0.2s; display: flex; align-items: center; gap: 5px;">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 16v-4"></path><path d="M12 8h.01"></path></svg> Dica
+                    <button id="btn-voltar-pratica" style="background: #FFFFFF; color: #374151; border: 1px solid #D1D5DB; padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 500; transition: all 0.2s; display: none; align-items: center; gap: 5px;">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"></path><path d="M12 19l-7-7 7-7"></path></svg> Voltar
                     </button>
-                    <button id="btn-pular-pratica" style="background: #00998F; color: #FFFFFF; border: none; padding: 6px 16px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 500; transition: all 0.2s; display: flex; align-items: center; gap: 5px;">
-                        Pular <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="M12 5l7 7-7 7"></path></svg>
+                    <button id="btn-dica-pratica" style="background: #00998F; color: #FFFFFF; border: none; padding: 6px 16px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 500; transition: all 0.2s; display: flex; align-items: center; gap: 5px;">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 16v-4"></path><path d="M12 8h.01"></path></svg> Dica
                     </button>
                 </div>
             `;
@@ -1667,7 +1703,7 @@
             // Bind events
             document.getElementById("btn-encerrar-pratica").onclick = window.endSandboxPractice;
             document.getElementById("btn-dica-pratica").onclick = window.showSandboxHint;
-            document.getElementById("btn-pular-pratica").onclick = window.skipSandboxStep;
+            document.getElementById("btn-voltar-pratica").onclick = window.backSandboxStep;
             
             // Hover effects
             const addHover = (id, hoverBg, normalBg) => {
@@ -1678,8 +1714,8 @@
                 }
             };
             addHover("btn-encerrar-pratica", "#FEF2F2", "transparent");
-            addHover("btn-dica-pratica", "#F3F4F6", "#FFFFFF");
-            addHover("btn-pular-pratica", "#00AF9B", "#00998F");
+            addHover("btn-voltar-pratica", "#F3F4F6", "#FFFFFF");
+            addHover("btn-dica-pratica", "#00AF9B", "#00998F");
         }
 
         // Update progress bar
@@ -1692,13 +1728,53 @@
         const step = sandboxHotspots[sandboxPassoAtual];
         if (step) {
             document.getElementById("sandbox-xp").innerText = `${sandboxXP} XP`;
+            
+            // Exibir/ocultar botão Voltar dinamicamente
+            const btnVoltar = document.getElementById("btn-voltar-pratica");
+            if (btnVoltar) {
+                if (sandboxPassoAtual > 0) {
+                    btnVoltar.style.display = "flex";
+                    btnVoltar.disabled = false;
+                    btnVoltar.style.opacity = "1";
+                    btnVoltar.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"></path><path d="M12 19l-7-7 7-7"></path></svg> Voltar`;
+                } else {
+                    btnVoltar.style.display = "none";
+                }
+            }
+
+            let warningHtml = "";
+            if (sandboxShowSkipPrompt) {
+                warningHtml = `
+                    <div id="sandbox-missing-element-warning" style="margin-top: 10px; padding: 10px 12px; background: #FFFBEB; border: 1px solid #FCD34D; border-radius: 8px; font-size: 12px; color: #92400E; display: flex; flex-direction: column; gap: 8px; animation: _capture_progress_pulse 2s infinite ease-in-out;">
+                        <span style="display: flex; align-items: center; gap: 6px; font-weight: 600;">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+                            Elemento não localizado
+                        </span>
+                        <span>Se a página mudou ou está com problemas, você pode ignorar este passo.</span>
+                        <button id="btn-pular-pratica-warning" style="background: #F59E0B; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 11px; font-weight: 600; align-self: flex-start; transition: all 0.2s; display: flex; align-items: center; gap: 4px;">
+                            Pular Passo <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14"></path><path d="M12 5l7 7-7 7"></path></svg>
+                        </button>
+                    </div>
+                `;
+            }
+
             document.getElementById("sandbox-widget-content").innerHTML = `
                 <div style="font-size: 11px; color: #6B7280; text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px;">Passo ${sandboxPassoAtual + 1} de ${sandboxTotalPassos}</div>
                 <div style="font-size: 14px; line-height: 1.5; color: #111827; margin-top: 4px;">${step.micro_narracao || step.ancora || "Interaja com a tela para avançar."}</div>
+                ${warningHtml}
             `;
+
+            // Vincular evento do botão de pular aviso, se houver
+            const btnPularWarning = document.getElementById("btn-pular-pratica-warning");
+            if (btnPularWarning) {
+                btnPularWarning.onclick = window.skipSandboxStep;
+                btnPularWarning.onmouseenter = () => btnPularWarning.style.background = "#D97706";
+                btnPularWarning.onmouseleave = () => btnPularWarning.style.background = "#F59E0B";
+            }
+
             if (step.action === "navigation") {
+                if (btnVoltar) btnVoltar.style.display = "none";
                 document.getElementById("btn-dica-pratica").style.display = "none";
-                document.getElementById("btn-pular-pratica").style.display = "none";
                 document.getElementById("sandbox-widget-content").innerHTML = `
                     <div style="font-size: 11px; color: #a1a1aa; text-transform: uppercase; font-weight: 700; letter-spacing: 0.8px;">Passo ${sandboxPassoAtual + 1} de ${sandboxTotalPassos}</div>
                     <div style="font-size: 14px; line-height: 1.5; color: #f4f4f5;">Aguarde, carregando...</div>
@@ -1726,7 +1802,6 @@
                 }, 1500);
             } else {
                 document.getElementById("btn-dica-pratica").style.display = "flex";
-                document.getElementById("btn-pular-pratica").style.display = "flex";
             }
         }
     };
@@ -1744,9 +1819,15 @@
     };
 
     window.advanceSandboxStep = function() {
+        const step = sandboxHotspots[sandboxPassoAtual];
+        if (step) {
+            step.actualUrl = window.location.href;
+            step.resolved = "success";
+        }
+        
         sandboxXP += 10;
         sandboxPassoAtual += 1;
-        chrome.storage.local.set({ sandboxXP, sandboxPassoAtual });
+        chrome.storage.local.set({ sandboxXP, sandboxPassoAtual, sandboxHotspots });
         showToast("success_arbitro");
         
         // Limpa dicas antigas
@@ -1765,23 +1846,23 @@
             xp: sandboxXP,
             concluido: concluido
         }).catch(() => {});
-
-        if (!concluido) {
-            // O chrome.storage.onChanged lidará com a renderização.
-            // Apenas para garantir que o iframe não renderize, deixamos limpo.
-        }
     };
 
     window.skipSandboxStep = function() {
         const step = sandboxHotspots[sandboxPassoAtual];
         if (!step) return;
         
+        step.actualUrl = window.location.href;
         if (step.action !== "navigation") {
             sandboxXP -= 10;
             sandboxStats.skips += 1;
+            step.resolved = "skip";
+        } else {
+            step.resolved = "navigation";
         }
+        
         sandboxPassoAtual += 1;
-        chrome.storage.local.set({ sandboxXP, sandboxPassoAtual, sandboxStats });
+        chrome.storage.local.set({ sandboxXP, sandboxPassoAtual, sandboxStats, sandboxHotspots });
         
         document.querySelectorAll(".capture-os-hint-highlight").forEach(el => {
             el.classList.remove("capture-os-hint-highlight");
@@ -1806,6 +1887,66 @@
         }
     };
 
+    window.backSandboxStep = function() {
+        if (sandboxPassoAtual <= 0) return;
+        
+        const prevStep = sandboxHotspots[sandboxPassoAtual - 1];
+        if (!prevStep) return;
+        
+        // Reverter XP e estatísticas
+        if (prevStep.resolved === "success") {
+            sandboxXP = Math.max(0, sandboxXP - 10);
+        } else if (prevStep.resolved === "skip") {
+            if (prevStep.action !== "navigation") {
+                sandboxXP += 10;
+                sandboxStats.skips = Math.max(0, sandboxStats.skips - 1);
+            }
+        }
+        
+        // Limpar status de resolução
+        prevStep.resolved = null;
+        const targetUrl = prevStep.actualUrl || prevStep.url;
+        prevStep.actualUrl = null;
+        
+        sandboxPassoAtual -= 1;
+        
+        // Resetar exibição do aviso de pular
+        sandboxShowSkipPrompt = false;
+        
+        // Salvar tudo de volta
+        chrome.storage.local.set({ sandboxXP, sandboxPassoAtual, sandboxStats, sandboxHotspots });
+        
+        // Limpar dicas antigas
+        document.querySelectorAll(".capture-os-hint-highlight").forEach(el => {
+            el.classList.remove("capture-os-hint-highlight");
+            el.style.boxShadow = "";
+            el.style.outline = "";
+        });
+
+        // Atualizar badge no background
+        chrome.runtime.sendMessage({
+            type: 'ARBITRO_PASSO_OK',
+            session_id: sandboxSessionId,
+            passo: sandboxPassoAtual,
+            total: sandboxTotalPassos,
+            xp: sandboxXP,
+            concluido: false
+        }).catch(() => {});
+
+        // Tratar redirecionamento de URL
+        if (targetUrl && window.location.href !== targetUrl) {
+            const btnVoltar = document.getElementById("btn-voltar-pratica");
+            if (btnVoltar) {
+                btnVoltar.disabled = true;
+                btnVoltar.style.opacity = "0.5";
+                btnVoltar.innerText = "Voltando...";
+            }
+            window.location.href = targetUrl;
+        } else {
+            if (window === window.top) renderSandboxWidget();
+        }
+    };
+
     window.showSandboxHint = function() {
         sandboxXP -= 5;
         sandboxStats.hints += 1;
@@ -1815,19 +1956,23 @@
         const step = sandboxHotspots[sandboxPassoAtual];
         if (!step) return;
 
+        window.__hint_element_found = false;
+
         // Avisa TODAS as janelas (iframes inclusos) para tentar mostrar o hint
         chrome.runtime.sendMessage({
             action: "SHOW_HINT_BROADCAST",
             step: step
         }).catch(() => {});
         
-        // Em 200ms a gente confere se alguém pintou o highlight. Se não, exibe aviso (no top window).
+        // Em 500ms a gente confere se alguém pintou o highlight. Se não, exibe aviso (no top window).
         if (window === window.top) {
+            const stepIndexAtClick = sandboxPassoAtual;
             setTimeout(() => {
-                // we assume if it worked, some frame scrolled to it.
-                // It's hard to synchronously know if an iframe succeeded without direct messaging.
-                // We'll trust it worked if they clicked the button.
-            }, 300);
+                if (sandboxPassoAtual === stepIndexAtClick && !window.__hint_element_found) {
+                    sandboxShowSkipPrompt = true;
+                    renderSandboxWidget();
+                }
+            }, 500);
         }
     };
 
@@ -1883,5 +2028,5 @@
         }, 100);
     };
 
-
+    }
 })();

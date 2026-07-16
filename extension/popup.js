@@ -10,6 +10,28 @@ document.addEventListener('DOMContentLoaded', async () => {
     const btnVerifyOtp = document.getElementById('btn-verify-otp');
     const loginError = document.getElementById('login-error');
 
+    async function syncOrgSettings(token) {
+        if (!token) return;
+        chrome.storage.local.get(['backendUrl'], async (res) => {
+            const backendUrl = res.backendUrl || "https://api.nomadelabs.com.br";
+            try {
+                const response = await fetch(`${backendUrl}/api/v1/organization/settings`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (response.ok) {
+                    const settings = await response.json();
+                    await chrome.storage.local.set({
+                        disable_whitelist: settings.disable_whitelist,
+                        allowed_domains: settings.allowed_domains
+                    });
+                    console.log("[CaptureOS] Whitelist settings synced from backend:", settings);
+                }
+            } catch (err) {
+                console.warn("[CaptureOS] Failed to sync org settings from backend:", err);
+            }
+        });
+    }
+
     async function checkSession() {
         const { data: { session }, error } = await supabaseClient.auth.getSession();
         if (session) {
@@ -17,6 +39,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             await chrome.storage.local.set({ authToken: session.access_token });
             await chrome.storage.local.remove('awaitingOtpEmail');
             loginOverlay.style.display = 'none';
+            syncOrgSettings(session.access_token);
         } else {
             loginOverlay.style.display = 'flex';
             const res = await chrome.storage.local.get(['awaitingOtpEmail']);
@@ -679,6 +702,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         // localhost:8000 fallback (same pattern as carregarModulosPratica and
         // carregarRoteiros) so no hard guard on backendUrl is needed.
         if (res.authToken) {
+            syncOrgSettings(res.authToken);
             const backendUrl = res.backendUrl || "https://api.nomadelabs.com.br";
             fetch(`${backendUrl}/api/v1/rag/namespaces`, {
                 headers: { 'Authorization': `Bearer ${res.authToken}` }
@@ -828,7 +852,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (res.devMode) {
             cardDevServer.classList.remove('hidden');
         }
-        if (res.backendUrl === 'http://localhost:8000') {
+        if (res.backendUrl === 'http://127.0.0.1:8000' || res.backendUrl === 'http://localhost:8000') {
             toggleDevServer.checked = true;
         }
     });
@@ -849,7 +873,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     toggleDevServer.addEventListener('change', (e) => {
         if (e.target.checked) {
-            chrome.storage.local.set({ backendUrl: 'http://localhost:8000' });
+            chrome.storage.local.set({ backendUrl: 'http://127.0.0.1:8000' });
         } else {
             chrome.storage.local.remove('backendUrl');
         }
@@ -861,7 +885,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         btnOpenDashboard.addEventListener('click', async () => {
             const { backendUrl, authToken } = await chrome.storage.local.get(['backendUrl', 'authToken']);
             
-            const isLocal = backendUrl === 'http://localhost:8000';
+            const isLocal = backendUrl === 'http://127.0.0.1:8000' || backendUrl === 'http://localhost:8000';
             const dashboardBaseUrl = isLocal ? 'http://localhost:5173' : 'https://capture-o-sv3.vercel.app';
             
             if (authToken) {

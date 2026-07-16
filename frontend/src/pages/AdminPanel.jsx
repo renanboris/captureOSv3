@@ -33,6 +33,12 @@ export default function AdminPanel() {
   const [error, setError] = useState(null);
   const [isMock, setIsMock] = useState(false);
 
+  // Settings states
+  const [orgSettings, setOrgSettings] = useState({ disable_whitelist: true, allowed_domains: [] });
+  const [settingsLoading, setSettingsLoading] = useState(true);
+  const [saveLoading, setSaveLoading] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+
   // Table states
   const [filter, setFilter] = useState('all');
   const [page, setPage] = useState(1);
@@ -141,6 +147,7 @@ export default function AdminPanel() {
       }
 
       const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+      fetchSettings(token);
 
       const [runsRes, metricsRes, pubsRes, costsRes] = await Promise.all([
         fetch(`${API_URL}/api/v1/admin/pipeline-runs`, { headers }),
@@ -184,6 +191,7 @@ export default function AdminPanel() {
             const authData = await authRes.json();
             if (authData.token) {
               localStorage.setItem('dev_token', authData.token);
+              fetchSettings(authData.token);
               const retryHeaders = { 'Authorization': `Bearer ${authData.token}` };
               const [rRes, mRes, pRes, cRes] = await Promise.all([
                 fetch(`${API_URL}/api/v1/admin/pipeline-runs`, { headers: retryHeaders }),
@@ -277,6 +285,55 @@ export default function AdminPanel() {
     } catch (err) {
       setError("Não foi possível carregar as execuções. Verifique se o servidor está ativo ou atualize a página.");
       setLoading(false);
+    }
+  };
+
+  const fetchSettings = async (token) => {
+    setSettingsLoading(true);
+    const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+    const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+    try {
+      const res = await fetch(`${API_URL}/api/v1/organization/settings`, { headers });
+      if (res.ok) {
+        const data = await res.json();
+        setOrgSettings({
+          disable_whitelist: data.disable_whitelist,
+          allowed_domains: data.allowed_domains || []
+        });
+      }
+    } catch (e) {
+      console.error("Erro ao carregar configurações da org:", e);
+    } finally {
+      setSettingsLoading(false);
+    }
+  };
+
+  const handleSaveSettings = async () => {
+    setSaveLoading(true);
+    setSaveSuccess(false);
+    const token = localStorage.getItem('dev_token');
+    const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+    const headers = {
+      'Content-Type': 'application/json',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+    };
+    try {
+      const res = await fetch(`${API_URL}/api/v1/organization/settings`, {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify(orgSettings)
+      });
+      if (res.ok) {
+        setSaveSuccess(true);
+        setTimeout(() => setSaveSuccess(false), 3000);
+      } else {
+        alert("Erro ao salvar configurações");
+      }
+    } catch (e) {
+      console.error(e);
+      alert("Erro de conexão ao salvar configurações");
+    } finally {
+      setSaveLoading(false);
     }
   };
 
@@ -376,7 +433,7 @@ export default function AdminPanel() {
                 .filter(run => run.gemini_call_count > 5)
                 .map(run => (
                   <div key={run.session_id} className="text-xs font-mono bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-700 px-3 py-2 rounded flex items-center justify-between gap-4 max-w-lg">
-                    <span>Sessão: {run.session_id}</span>
+                    <span>{run.titulo || `Sessão: ${run.session_id.substring(0, 8)}`}</span>
                     <span className="font-semibold text-status-error">{run.gemini_call_count} chamadas</span>
                     <span className="font-semibold text-slate-700 dark:text-slate-300">${run.cost_usd.toFixed(4)} USD</span>
                   </div>
@@ -500,7 +557,7 @@ export default function AdminPanel() {
                 currentRuns.map((run) => (
                   <tr key={run.id} className="hover:bg-surface-50 dark:hover:bg-surface-900/50 transition-colors group">
                     <td className={`px-6 py-4 border-b border-surface-200 dark:border-surface-700 border-l-4 ${getStatusBorderColor(run.status)} font-mono text-sm`}>
-                      {run.session_id.substring(0, 8)}...
+                      {run.titulo || `${run.session_id.substring(0, 8)}...`}
                     </td>
                     <td className="px-6 py-4 border-b border-surface-200 dark:border-surface-700">
                       <StatusPill status={run.status} type="pipeline" />
@@ -593,6 +650,71 @@ export default function AdminPanel() {
             </table>
           </div>
         </details>
+      </div>
+
+      {/* 5. Configurações da Organização */}
+      <div className="bg-white dark:bg-surface-800 rounded-xl shadow-sm border border-surface-200 dark:border-surface-700 p-6 mt-8">
+        <h2 className="text-lg font-semibold text-slate-900 dark:text-white mb-2">Configurações de Privacidade</h2>
+        <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">
+          Controle as políticas de governança e segurança da sua organização.
+        </p>
+
+        {settingsLoading ? (
+          <div className="h-20 bg-surface-200 dark:bg-surface-700 animate-pulse rounded-lg"></div>
+        ) : (
+          <div className="space-y-6">
+            <div className="flex items-start gap-3">
+              <input
+                id="disable-whitelist-checkbox"
+                type="checkbox"
+                checked={!orgSettings.disable_whitelist}
+                onChange={(e) => setOrgSettings(prev => ({ ...prev, disable_whitelist: !e.target.checked }))}
+                className="w-4 h-4 text-emerald-600 border-slate-300 rounded focus:ring-emerald-500 mt-1 cursor-pointer"
+              />
+              <div className="flex-1">
+                <label htmlFor="disable-whitelist-checkbox" className="font-semibold text-slate-900 dark:text-white text-sm cursor-pointer select-none">
+                  Ativar Whitelist de Privacidade
+                </label>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  Recomendado para ambientes corporativos. Quando ativo, o radar de gravação e a ingestão de dados só funcionarão nos domínios permitidos.
+                </p>
+              </div>
+            </div>
+
+            {!orgSettings.disable_whitelist && (
+              <div className="ml-7 border-l-2 border-slate-200 dark:border-slate-700 pl-4 space-y-4">
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">
+                    Domínios Permitidos
+                  </label>
+                  <input
+                    type="text"
+                    value={orgSettings.allowed_domains.join(', ')}
+                    onChange={(e) => setOrgSettings(prev => ({ ...prev, allowed_domains: e.target.value.split(',').map(d => d.trim()).filter(Boolean) }))}
+                    className="w-full max-w-lg px-3 py-2 bg-white dark:bg-surface-900 border border-slate-300 dark:border-slate-700 rounded-lg text-sm text-slate-950 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    placeholder="Ex: senior.com.br, localhost, senior.com"
+                  />
+                  <p className="text-xs text-slate-400 mt-1">
+                    Insira os domínios separados por vírgula (subdomínios são permitidos automaticamente).
+                  </p>
+                </div>
+              </div>
+            )}
+
+            <div className="flex items-center gap-4 pt-4 border-t border-slate-100 dark:border-slate-700">
+              <button
+                onClick={handleSaveSettings}
+                disabled={saveLoading}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-medium rounded-lg text-sm transition-colors shadow-sm"
+              >
+                {saveLoading ? 'Salvando...' : 'Salvar Alterações'}
+              </button>
+              {saveSuccess && (
+                <span className="text-emerald-600 text-sm font-medium">✓ Configurações salvas com sucesso!</span>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
     </div>
