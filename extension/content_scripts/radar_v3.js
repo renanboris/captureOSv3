@@ -7,7 +7,7 @@
     const hostname = window.location.hostname || "";
 
     chrome.storage.local.get(['disable_whitelist', 'allowed_domains'], (res) => {
-        const disableWhitelist = res.disable_whitelist || false;
+        const disableWhitelist = res.disable_whitelist !== undefined ? res.disable_whitelist : true;
         const allowedHosts = res.allowed_domains || ["localhost", "127.0.0.1", "senior.com.br", "senior.com"];
 
         if (!disableWhitelist) {
@@ -69,7 +69,7 @@
         // Se a gravação estiver sendo processada no background, restaura o toast de feedback e retoma o polling
         if (res.isProcessing && res.currentSessionId) {
             setTimeout(() => {
-                if (!document.getElementById("capture-os-toast")) {
+                if (!document.getElementById("capture-os-toast") && !document.getElementById("capture-os-editor-host")) {
                     showToast("processing", "Restaurando status do tutorial...");
                 }
                 chrome.runtime.sendMessage({
@@ -252,18 +252,116 @@
         return false;
     }
 
-    function getElementContext(target) {
-        let text = (target.innerText || target.value || target.getAttribute('aria-label') || '').substring(0, 100).trim();
+    function findInteractiveAncestor(el) {
+        if (!el || el === document.body || el === document.documentElement) return el;
+        let curr = el;
+        let depth = 0;
+        while (curr && curr.tagName !== 'BODY' && depth < 5) {
+            const tag = curr.tagName.toUpperCase();
+            const role = (curr.getAttribute('role') || '').toLowerCase();
+            const hasTabindex = curr.hasAttribute('tabindex');
+            const hasA11yName = !!(curr.getAttribute('aria-label') || curr.getAttribute('title'));
+            const cName = typeof curr.className === 'string' ? curr.className : '';
+            
+            const isNativeInteractive = ['BUTTON', 'A', 'INPUT', 'SELECT', 'TEXTAREA'].includes(tag);
+            const isCustomButton = role === 'button' || role === 'link' || role === 'tab' || role === 'menuitem' || hasTabindex;
+            const isKnownComponent = cName.includes('p-button') || cName.includes('btn') || cName.includes('ui-dropdown');
+
+            if (isNativeInteractive || isCustomButton || isKnownComponent || (hasA11yName && tag !== 'SVG' && tag !== 'PATH')) {
+                return curr;
+            }
+            curr = curr.parentElement;
+            depth++;
+        }
+        return el;
+    }
+
+    function ehSeletorFragilJS(sel) {
+        if (!sel) return false;
+        return sel.includes(':nth-child') || sel.includes(':nth-of-type') || sel.includes('/tr[') || sel.includes('/div[');
+    }
+
+    function getSelectorsAndConfidence(el, text) {
+        let confidence = 'alta';
+        let candidates = [];
+        let primarySelector = '';
+        let primaryXpath = '';
+
+        const ariaLabel = el.getAttribute('aria-label') || el.getAttribute('title');
+        const dataTestId = el.getAttribute('data-testid') || el.getAttribute('data-automation-id');
+
+        if (el.id) {
+            primarySelector = `#${el.id}`;
+            candidates.push(primarySelector);
+        } else if (dataTestId) {
+            primarySelector = `[data-testid="${dataTestId}"]`;
+            candidates.push(primarySelector);
+        } else if (ariaLabel) {
+            const tagLower = el.tagName.toLowerCase();
+            primarySelector = `${tagLower}[aria-label="${ariaLabel}"]`;
+            candidates.push(primarySelector);
+            candidates.push(`[aria-label="${ariaLabel}"]`);
+            candidates.push(`[title="${ariaLabel}"]`);
+        } else if (el.name) {
+            const tagLower = el.tagName.toLowerCase();
+            primarySelector = `${tagLower}[name="${el.name}"]`;
+            candidates.push(primarySelector);
+        }
+
+        let textXpath = '';
+        if (text && text.length > 2 && text.length < 50 && !text.includes('"') && !text.includes("'")) {
+            const tagLower = el.tagName.toLowerCase();
+            textXpath = `//${tagLower}[contains(text(), "${text}")]`;
+            candidates.push(textXpath);
+        }
+
+        const cssFallback = getCssSelector(el);
+        if (!primarySelector) {
+            primarySelector = cssFallback;
+        }
+        if (cssFallback && !candidates.includes(cssFallback)) {
+            candidates.push(cssFallback);
+        }
+
+        const structXpath = getXPath(el);
+        if (structXpath && !candidates.includes(structXpath)) {
+            candidates.push(structXpath);
+        }
+        primaryXpath = textXpath || structXpath;
+
+        const hasSemanticAttribute = !!(el.id || dataTestId || ariaLabel || el.name || (text && text.length > 2));
+        if (ehSeletorFragilJS(primarySelector) && !hasSemanticAttribute) {
+            confidence = 'baixa';
+        } else {
+            confidence = 'alta';
+        }
+
+        return {
+            confidence: confidence,
+            primarySelector: primarySelector,
+            primaryXpath: primaryXpath,
+            candidates: candidates
+        };
+    }
+
+    function getElementContext(rawTarget) {
+        const target = findInteractiveAncestor(rawTarget);
+        let text = (target.innerText || target.value || target.getAttribute('aria-label') || target.getAttribute('title') || '').substring(0, 100).trim();
         
         if (isSensitive(target)) {
             text = '*** [DADO SENSÍVEL OCULTO] ***';
         }
 
+        const selectorsInfo = getSelectorsAndConfidence(target, text);
+
         return {
+            target_element: target,
             target_tag: target.tagName,
             target_text: text,
-            xpath: getXPath(target),
-            css_selector: getCssSelector(target),
+            xpath: selectorsInfo.primaryXpath,
+            css_selector: selectorsInfo.primarySelector,
+            confianca_captura: selectorsInfo.confidence,
+            seletor_candidatos: selectorsInfo.candidates,
             attributes: {
                 id: target.id || null,
                 class: target.className || null,
@@ -280,16 +378,15 @@
         if (window.__capture_os_active_script_id !== currentScriptId) {
             return;
         }
-        // Encontra a árvore atual
         const tree = getSemanticSnapshot();
         
-        // Pega elemento clicado
-        const target = e.target;
-        
-        // Impede que a IA narre cliques nos nossos próprios componentes do Capture OS
-        if (target.closest && (target.closest('#capture-os-widget') || target.closest('#capture-os-sandbox-widget') || target.closest('#capture-os-toast'))) {
+        const rawTarget = e.target;
+        if (rawTarget.closest && (rawTarget.closest('#capture-os-widget') || rawTarget.closest('#capture-os-sandbox-widget') || rawTarget.closest('#capture-os-toast'))) {
             return;
         }
+
+        const context = getElementContext(rawTarget);
+        const target = context.target_element;
 
         const dpr = window.devicePixelRatio || 1;
         const clickPos = {
@@ -297,7 +394,6 @@
             y: Math.round(e.clientY * dpr)
         };
 
-        // NOVO: captura a geometria do elemento clicado (não do ponto de clique)
         const targetRect = target.getBoundingClientRect();
         const target_geometry = {
             x: Math.round(targetRect.x * dpr),
@@ -305,8 +401,6 @@
             w: Math.round(targetRect.width * dpr),
             h: Math.round(targetRect.height * dpr)
         };
-
-        const context = getElementContext(target);
 
         const payload = {
             action: type,
@@ -317,6 +411,8 @@
             target_text: context.target_text,
             xpath: context.xpath,
             css_selector: context.css_selector,
+            confianca_captura: context.confianca_captura,
+            seletor_candidatos: context.seletor_candidatos,
             target_attributes: context.attributes,
             a11y_tree: tree
         };
@@ -324,6 +420,19 @@
         if (isSandboxMode && type === 'click') {
             const step = sandboxHotspots[sandboxPassoAtual];
             if (!step) return;
+
+            // Trava de URL na prática
+            if (step.url && window.location.href !== step.url) {
+                try {
+                    const stepObj = new URL(step.url, window.location.origin);
+                    if (stepObj.hostname !== window.location.hostname || (stepObj.pathname !== window.location.pathname && stepObj.pathname !== '/')) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        showToast("warning", `Navegue para a página do passo: ${stepObj.pathname}`);
+                        return;
+                    }
+                } catch(err) {}
+            }
 
             // Se for navigation, não avalia click, apenas ignora
             if (step.action === 'navigation') {
@@ -620,6 +729,11 @@
     }, 15000);
 
     function showToast(type, msg) {
+        if (document.getElementById('capture-os-editor-host')) {
+            const existingToast = document.getElementById("capture-os-toast");
+            if (existingToast) existingToast.remove();
+            return;
+        }
         const _isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
         let toast = document.getElementById("capture-os-toast");
         if (!toast) {
@@ -1327,8 +1441,15 @@
 
     // --- Editor Modal Injetado ---
     async function mountEditorModal(backendUrl, sessionId) {
+        const toastEl = document.getElementById("capture-os-toast");
+        if (toastEl) toastEl.remove();
+        chrome.storage.local.set({ isProcessing: false });
+
         let existing = document.getElementById('capture-os-editor-host');
-        if (existing) existing.remove();
+        if (existing) {
+            existing.style.opacity = '1';
+            return;
+        }
 
         const _isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
 
@@ -1510,6 +1631,8 @@
                     window.removeEventListener("message", messageHandler);
                 }, 400);
 
+                chrome.storage.local.set({ isProcessing: false });
+
                 if (e.data.action === "close_editor_modal_and_resume") {
                     showToast("processing", "Renderizando vídeo final...");
                     
@@ -1521,7 +1644,9 @@
                         }).catch(() => {});
                     }
                     
-                } else if (e.data.action === "cancel_editor_modal") {
+                } else if (e.data.action === "cancel_editor_modal" || e.data.action === "close_editor_modal") {
+                    const existingToast = document.getElementById("capture-os-toast");
+                    if (existingToast) existingToast.remove();
                     if (chrome.runtime && chrome.runtime.sendMessage) {
                         chrome.runtime.sendMessage({ action: "abort_processing" }).catch(() => {});
                     }

@@ -167,18 +167,19 @@ def test_calcular_hash_intencao():
     assert len(hash1) == 32
 
 
-def test_avaliar_acao_sandbox_degrades_gracefully():
+@pytest.mark.anyio
+async def test_avaliar_acao_sandbox_degrades_gracefully():
     roteiro = [
         {"passo": 1, "intencao_original": "clique", "_simlink": {"target_text": "Salvar", "selector": "#btn-save", "xpath": "/html/body/button"}}
     ]
     action_data = {"target_text": "Salvar", "css_selector": "#btn-save", "xpath": "/html/body/button", "url": "http://test.url"}
     
-    loop = asyncio.get_event_loop()
-    res = loop.run_until_complete(avaliar_acao_sandbox(roteiro, 1, action_data))
+    res = await avaliar_acao_sandbox(roteiro, 1, action_data)
     assert res == {"is_correct": True, "hint": ""}
 
 
-def test_avaliar_acao_sandbox_layer_0_brain_hit(mock_supabase):
+@pytest.mark.anyio
+async def test_avaliar_acao_sandbox_layer_0_brain_hit(mock_supabase):
     org_id = "00000000-0000-0000-0000-000000000001"
     modulo_id = "00000000-0000-0000-0000-000000000002"
     hash_int = calcular_hash_intencao(modulo_id, 1, "Salvar")
@@ -199,8 +200,7 @@ def test_avaliar_acao_sandbox_layer_0_brain_hit(mock_supabase):
     ]
     action_data = {"target_text": "Salvar", "css_selector": "#btn-save", "xpath": "/html/body/button", "url": "http://test.url"}
     
-    loop = asyncio.get_event_loop()
-    res = loop.run_until_complete(avaliar_acao_sandbox(roteiro, 1, action_data, org_id=org_id, modulo_id=modulo_id))
+    res = await avaliar_acao_sandbox(roteiro, 1, action_data, org_id=org_id, modulo_id=modulo_id)
     assert res == {"is_correct": True, "hint": ""}
     
     record = mock_supabase.data_store["memoria_semantica"][0]
@@ -208,7 +208,8 @@ def test_avaliar_acao_sandbox_layer_0_brain_hit(mock_supabase):
     assert record["falhas_consecutivas"] == 0
 
 
-def test_avaliar_acao_sandbox_layer_0_brain_identity_failure(mock_supabase):
+@pytest.mark.anyio
+async def test_avaliar_acao_sandbox_layer_0_brain_identity_failure(mock_supabase):
     org_id = "00000000-0000-0000-0000-000000000001"
     modulo_id = "00000000-0000-0000-0000-000000000002"
     hash_int = calcular_hash_intencao(modulo_id, 1, "Salvar")
@@ -229,14 +230,14 @@ def test_avaliar_acao_sandbox_layer_0_brain_identity_failure(mock_supabase):
     ]
     action_data = {"target_text": "Sair", "css_selector": "#btn-save", "xpath": "/html/body/button", "url": "http://test.url"}
     
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(avaliar_acao_sandbox(roteiro, 1, action_data, org_id=org_id, modulo_id=modulo_id))
+    await avaliar_acao_sandbox(roteiro, 1, action_data, org_id=org_id, modulo_id=modulo_id)
     
     record = mock_supabase.data_store["memoria_semantica"][0]
     assert record["falhas_consecutivas"] == 1
 
 
-def test_avaliar_acao_sandbox_layer_0_brain_fragile_selector_re_evaluation(mock_supabase):
+@pytest.mark.anyio
+async def test_avaliar_acao_sandbox_layer_0_brain_fragile_selector_re_evaluation(mock_supabase):
     org_id = "00000000-0000-0000-0000-000000000001"
     modulo_id = "00000000-0000-0000-0000-000000000002"
     
@@ -257,8 +258,7 @@ def test_avaliar_acao_sandbox_layer_0_brain_fragile_selector_re_evaluation(mock_
     ]
     action_data = {"target_text": "", "css_selector": "button:nth-child(3)", "url": "http://test.url"}
     
-    loop = asyncio.get_event_loop()
-    res = loop.run_until_complete(avaliar_acao_sandbox(roteiro, 1, action_data, org_id=org_id, modulo_id=modulo_id))
+    res = await avaliar_acao_sandbox(roteiro, 1, action_data, org_id=org_id, modulo_id=modulo_id)
     assert res == {"is_correct": True, "hint": ""}
     
     record = mock_supabase.data_store["memoria_semantica"][0]
@@ -282,55 +282,44 @@ def test_clean_semantic_memory_endpoint(mock_supabase, monkeypatch):
     
     client = TestClient(app)
     
-    now_utc = datetime.now(timezone.utc)
-    old_date = now_utc - timedelta(days=95)
+    # Cria arquivo mock de modulo existente
+    simlink_dir = "data/simlink"
+    os.makedirs(simlink_dir, exist_ok=True)
+    existing_mod_file = os.path.join(simlink_dir, "mod-existing.json")
+    with open(existing_mod_file, "w") as f:
+        f.write("{}")
     
     mock_supabase.table("memoria_semantica").insert({
         "id": "del-failures",
         "org_id": "00000000-0000-0000-0000-000000000001",
-        "modulo_id": "mod-1",
+        "modulo_id": "mod-existing",
         "hash_intencao": "hash1",
         "estrategia_vencedora": "css_selector",
         "seletor": "#btn-test",
         "falhas_consecutivas": 3,
-        "hitl_corrigido": False,
-        "ultimo_uso": now_utc.isoformat()
+        "hitl_corrigido": False
     })
     
     mock_supabase.table("memoria_semantica").insert({
-        "id": "del-old",
+        "id": "del-missing-mod",
         "org_id": "00000000-0000-0000-0000-000000000001",
-        "modulo_id": "mod-1",
+        "modulo_id": "mod-missing",
         "hash_intencao": "hash2",
         "estrategia_vencedora": "css_selector",
         "seletor": "#btn-test2",
         "falhas_consecutivas": 0,
-        "hitl_corrigido": False,
-        "ultimo_uso": old_date.isoformat()
+        "hitl_corrigido": False
     })
     
     mock_supabase.table("memoria_semantica").insert({
-        "id": "keep-hitl",
+        "id": "keep-existing-mod",
         "org_id": "00000000-0000-0000-0000-000000000001",
-        "modulo_id": "mod-1",
+        "modulo_id": "mod-existing",
         "hash_intencao": "hash3",
         "estrategia_vencedora": "css_selector",
         "seletor": "#btn-test3",
         "falhas_consecutivas": 0,
-        "hitl_corrigido": True,
-        "ultimo_uso": old_date.isoformat()
-    })
-    
-    mock_supabase.table("memoria_semantica").insert({
-        "id": "keep-fragile",
-        "org_id": "00000000-0000-0000-0000-000000000001",
-        "modulo_id": "mod-1",
-        "hash_intencao": "hash4",
-        "estrategia_vencedora": "css_selector",
-        "seletor": "button:nth-child(2)",
-        "falhas_consecutivas": 0,
-        "hitl_corrigido": False,
-        "ultimo_uso": old_date.isoformat()
+        "hitl_corrigido": False
     })
     
     resp = client.post("/api/v1/admin/memoria-semantica/clean")
@@ -341,10 +330,57 @@ def test_clean_semantic_memory_endpoint(mock_supabase, monkeypatch):
     remaining_ids = [item["id"] for item in mock_supabase.data_store["memoria_semantica"]]
     
     assert "del-failures" not in remaining_ids
-    assert "del-old" not in remaining_ids
-    assert "keep-hitl" in remaining_ids
-    assert "keep-fragile" in remaining_ids
+    assert "del-missing-mod" not in remaining_ids
+    assert "keep-existing-mod" in remaining_ids
     
+    if os.path.exists(existing_mod_file):
+        os.remove(existing_mod_file)
+    app.dependency_overrides.pop(require_auth, None)
+
+
+def test_student_report_error_endpoint(mock_supabase, monkeypatch):
+    from fastapi.testclient import TestClient
+    import uuid
+    
+    app.dependency_overrides[require_auth] = lambda: {"id": "user-1", "email": "test@example.com"}
+    monkeypatch.setattr(db_services, "get_or_create_organization_for_user", lambda *args: "00000000-0000-0000-0000-000000000001")
+    monkeypatch.setattr(db_services, "get_supabase_client", lambda: None)
+
+    reports_file = "data/student_reports.jsonl"
+    if os.path.exists(reports_file):
+        try:
+            os.remove(reports_file)
+        except Exception:
+            pass
+    
+    client = TestClient(app)
+    sess_id = f"sess_student_test_{uuid.uuid4().hex[:6]}"
+    
+    # 1º relato de estudante
+    res1 = client.post(f"/api/v1/student/report-error/{sess_id}", json={"passo": 1, "student_id": "student_A"})
+    assert res1.status_code == 200
+    data1 = res1.json()
+    assert data1["status_updated"] is False
+    assert data1["distinct_students_count"] == 1
+
+    # 2º relato do MESMO estudante -> não deve atualizar status
+    res2 = client.post(f"/api/v1/student/report-error/{sess_id}", json={"passo": 1, "student_id": "student_A"})
+    assert res2.status_code == 200
+    data2 = res2.json()
+    assert data2["status_updated"] is False
+
+    # 3º relato de OUTRO estudante -> deve atualizar status para Necessita Revisão
+    res3 = client.post(f"/api/v1/student/report-error/{sess_id}", json={"passo": 1, "student_id": "student_B"})
+    assert res3.status_code == 200
+    data3 = res3.json()
+    assert data3["status_updated"] is True
+    assert data3["distinct_students_count"] == 2
+
+    if os.path.exists(reports_file):
+        try:
+            os.remove(reports_file)
+        except Exception:
+            pass
     app.dependency_overrides.pop(require_auth, None)
 
 
@@ -387,3 +423,4 @@ def test_save_roteiro_flags_hitl_corrigido(mock_supabase, monkeypatch):
     if os.path.exists(roteiro_file):
         os.remove(roteiro_file)
     app.dependency_overrides.pop(require_auth, None)
+

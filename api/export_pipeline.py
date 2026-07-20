@@ -250,6 +250,8 @@ async def _renderizar_exportacao_impl(payload: dict, session_id: str):
                     "_simlink": {
                         "xpath": event_data.get("xpath", ""),
                         "selector": event_data.get("css_selector", ""),
+                        "confianca_captura": event_data.get("confianca_captura", "alta"),
+                        "seletor_candidatos": event_data.get("seletor_candidatos", []),
                         "coordinates": event_data.get("target_geometry", {}),
                         "target_text": event_data.get("target_text", ""),
                         "action": event_data.get("action", "click"),

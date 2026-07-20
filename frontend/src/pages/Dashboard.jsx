@@ -15,6 +15,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(!window.cachedDashboardData);
   const [error, setError] = useState(null);
   const [isMock, setIsMock] = useState(false);
+  const [isNewScriptModalOpen, setIsNewScriptModalOpen] = useState(false);
 
   const getQueryParam = (name) => {
     const searchParams = new URLSearchParams(window.location.search);
@@ -85,11 +86,9 @@ export default function Dashboard() {
     }
     setError(null);
     try {
-      // 1. Tentar obter o token dos parâmetros da URL (?token=...)
       const urlToken = getQueryParam('token');
       if (urlToken) {
         localStorage.setItem('dev_token', urlToken);
-        // Limpar o token da barra de endereços para segurança e estética (evita vazamento no histórico/compartilhamento)
         try {
           if (window.location.search.includes('token=')) {
             const url = new URL(window.location.href);
@@ -112,7 +111,6 @@ export default function Dashboard() {
       let token = urlToken || localStorage.getItem('dev_token');
       const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
 
-      // Se não houver token localmente nem na URL, tenta obter um de dev (apenas local)
       if (!token) {
         try {
           const authRes = await fetch(`${API_URL}/api/v1/auth/dev-token`);
@@ -142,14 +140,12 @@ export default function Dashboard() {
         setIsMock(false);
         const recentRuns = (runsData.runs || []).filter(r => r.status === 'completed').slice(0, 5);
         
-        // Atualiza o cache global com timestamp
         window.cachedDashboardData = { runs: recentRuns, metrics: metricsData, timestamp: Date.now() };
         
         setRuns(recentRuns);
         setMetrics(metricsData);
         setLoading(false);
 
-        // Dispara prefetch em background após 1 segundo
         setTimeout(() => {
           prefetchAdminData(token, API_URL);
         }, 1000);
@@ -157,7 +153,6 @@ export default function Dashboard() {
       }
       
       if (runsRes.status === 401) {
-        // Token expirou ou é inválido, tenta renovar uma vez via endpoint de dev
         try {
           const authRes = await fetch(`${API_URL}/api/v1/auth/dev-token`);
           if (authRes.ok) {
@@ -175,14 +170,12 @@ export default function Dashboard() {
                 setIsMock(false);
                 const recentRuns = (runsData.runs || []).filter(r => r.status === 'completed').slice(0, 5);
                 
-                // Atualiza o cache global com timestamp
                 window.cachedDashboardData = { runs: recentRuns, metrics: metricsData, timestamp: Date.now() };
                 
                 setRuns(recentRuns);
                 setMetrics(metricsData);
                 setLoading(false);
 
-                // Dispara prefetch com o novo token
                 setTimeout(() => {
                   prefetchAdminData(authData.token, API_URL);
                 }, 1000);
@@ -194,7 +187,6 @@ export default function Dashboard() {
           console.warn("Falha ao renovar token de dev:", e);
         }
 
-        // Se mesmo assim não autenticou, cai no mock
         setIsMock(true);
         const mockRuns = [
           { id: '1', session_id: 's_abc123', status: 'completed', created_at: new Date().toISOString() },
@@ -204,50 +196,11 @@ export default function Dashboard() {
           total_runs: 45, success_rate: 94.5
         };
 
-        // Salvar no cache para navegação instantânea em modo mock
         window.cachedDashboardData = {
           runs: mockRuns,
           metrics: mockMetrics,
           timestamp: Date.now()
         };
-
-        // Pré-popular também o mock do AdminPanel para transição imediata no modo mock
-        if (!window.cachedAdminData) {
-          window.cachedAdminData = {
-            runs: [
-              { id: '1', session_id: 's_abc123', status: 'completed', failure_stage: null, detected_interface_type: 'sap_fiori', recording_duration_seconds: 420, created_at: new Date().toISOString() },
-              { id: '2', session_id: 's_xyz789', status: 'tech_error', failure_stage: 'ai_generation', detected_interface_type: 'unknown', recording_duration_seconds: 180, created_at: new Date(Date.now() - 3600000).toISOString() },
-              { id: '3', session_id: 's_def456', status: 'user_reported_error', failure_stage: 'capture', detected_interface_type: 'salesforce_lightning', recording_duration_seconds: 300, created_at: new Date(Date.now() - 7200000).toISOString() },
-              { id: '4', session_id: 's_ghj789', status: 'completed', failure_stage: null, detected_interface_type: 'sap_fiori', recording_duration_seconds: 500, created_at: new Date(Date.now() - 8640000).toISOString() }
-            ],
-            publications: [
-              { id: '1', session_id: 's_abc123', destination: 'SCORM_DOWNLOAD', published_by: 'João Silva', published_at: new Date().toISOString() }
-            ],
-            metrics: {
-              total_runs: 45, success_rate: 94.5, avg_edit_rate: 12.5, time_saved_hours: 168.5,
-              runs_by_instructor: [
-                { instructor_id: 'João S.', total_runs: 20, completed_runs: 19 },
-                { instructor_id: 'Maria P.', total_runs: 15, completed_runs: 14 },
-                { instructor_id: 'Carlos R.', total_runs: 10, completed_runs: 9 }
-              ]
-            },
-            costs: {
-              total_cost_usd: 12.4530,
-              total_cost_brl: 69.7368,
-              avg_cost_per_run_usd: 0.2767,
-              cost_by_instructor: [
-                { user_id: 'João S.', total_cost_usd: 5.10, run_count: 20 },
-                { user_id: 'Maria P.', total_cost_usd: 4.85, run_count: 15 }
-              ],
-              most_expensive_runs: [
-                { session_id: 'sess_1780690407909', cost_usd: 1.85, gemini_call_count: 12 },
-                { session_id: 'sess_9981234567890', cost_usd: 0.95, gemini_call_count: 6 }
-              ],
-              unverified_cost_warning: true
-            },
-            timestamp: Date.now()
-          };
-        }
 
         setRuns(mockRuns);
         setMetrics(mockMetrics);
@@ -285,7 +238,10 @@ export default function Dashboard() {
             <Activity size={20} className={loading ? "animate-spin" : ""} />
             <span>Atualizar</span>
           </button>
-          <button className="flex items-center gap-2 px-4 py-2 bg-brand-600 hover:bg-brand-500 text-white font-medium rounded-lg transition-colors shadow-sm">
+          <button 
+            onClick={() => setIsNewScriptModalOpen(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-brand-600 hover:bg-brand-500 text-white font-medium rounded-lg transition-colors shadow-sm cursor-pointer"
+          >
             <Video size={20} />
             <span>Novo Roteiro</span>
           </button>
@@ -355,7 +311,7 @@ export default function Dashboard() {
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="bg-surface-50 dark:bg-surface-900/50">
-                    <th className="px-6 py-3 border-b border-surface-200 dark:border-surface-700 font-medium text-slate-600 dark:text-slate-300">Sessão</th>
+                    <th className="px-6 py-3 border-b border-surface-200 dark:border-surface-700 font-medium text-slate-600 dark:text-slate-300">Sessão / Título</th>
                     <th className="px-6 py-3 border-b border-surface-200 dark:border-surface-700 font-medium text-slate-600 dark:text-slate-300">Status</th>
                     <th className="px-6 py-3 border-b border-surface-200 dark:border-surface-700 font-medium text-slate-600 dark:text-slate-300">Data</th>
                   </tr>
@@ -372,8 +328,11 @@ export default function Dashboard() {
                   ) : (
                     runs.map((run) => (
                       <tr key={run.id} className="hover:bg-surface-50 dark:hover:bg-surface-900/50 transition-colors">
-                        <td className="px-6 py-4 border-b border-surface-200 dark:border-surface-700 font-mono text-sm border-l-4 border-l-status-ok">
-                          {run.session_id}
+                        <td className="px-6 py-4 border-b border-surface-200 dark:border-surface-700 text-sm border-l-4 border-l-status-ok">
+                          <div className="font-semibold text-slate-900 dark:text-white" title={run.session_id}>
+                            {run.titulo || `Sessão ${run.session_id.substring(0, 8)}`}
+                          </div>
+                          <div className="text-[11px] font-mono text-slate-400 mt-0.5">{run.session_id}</div>
                         </td>
                         <td className="px-6 py-4 border-b border-surface-200 dark:border-surface-700">
                           <StatusPill status={run.status} />
@@ -389,6 +348,69 @@ export default function Dashboard() {
             </div>
           </div>
         </>
+      )}
+
+      {/* Modal para Gravar Novo Roteiro */}
+      {isNewScriptModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white dark:bg-surface-850 rounded-2xl max-w-md w-full p-6 shadow-2xl border border-surface-200 dark:border-surface-700 relative">
+            <button 
+              onClick={() => setIsNewScriptModalOpen(false)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 dark:hover:text-white text-lg font-bold p-1 cursor-pointer"
+            >
+              ✕
+            </button>
+            
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-3 bg-brand-500/10 text-brand-600 dark:text-brand-400 rounded-xl">
+                <Video size={24} />
+              </div>
+              <div>
+                <h3 className="text-xl font-bold text-slate-900 dark:text-white">Gravar Novo Roteiro</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">Instruções de Captura via Extensão</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-600 dark:text-slate-300 mb-5 leading-relaxed">
+              Os roteiros são capturados diretamente através da <strong>Extensão Capture OS V3</strong> instalada no seu navegador Google Chrome.
+            </p>
+
+            <div className="space-y-3 mb-6">
+              <div className="flex items-start gap-3 p-3 bg-surface-50 dark:bg-surface-900/50 rounded-xl border border-surface-200 dark:border-surface-700">
+                <span className="w-6 h-6 rounded-full bg-brand-500 text-white flex items-center justify-center font-bold text-xs flex-shrink-0">1</span>
+                <div>
+                  <p className="text-xs font-semibold text-slate-900 dark:text-white">Abra a extensão</p>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">Clique no ícone do Capture OS no topo do Chrome.</p>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3 p-3 bg-surface-50 dark:bg-surface-900/50 rounded-xl border border-surface-200 dark:border-surface-700">
+                <span className="w-6 h-6 rounded-full bg-brand-500 text-white flex items-center justify-center font-bold text-xs flex-shrink-0">2</span>
+                <div>
+                  <p className="text-xs font-semibold text-slate-900 dark:text-white">Acesse o sistema alvo</p>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">Vá para o ERP/Sistema (ex: SAP, Senior HCM, Salesforce).</p>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3 p-3 bg-surface-50 dark:bg-surface-900/50 rounded-xl border border-surface-200 dark:border-surface-700">
+                <span className="w-6 h-6 rounded-full bg-brand-500 text-white flex items-center justify-center font-bold text-xs flex-shrink-0">3</span>
+                <div>
+                  <p className="text-xs font-semibold text-slate-900 dark:text-white">Clique em Iniciar Gravação</p>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">Grave o tutorial narrado. Ao concluir, o roteiro será processado automaticamente!</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-3 border-t border-surface-200 dark:border-surface-700">
+              <button
+                onClick={() => setIsNewScriptModalOpen(false)}
+                className="px-4 py-2 bg-brand-600 hover:bg-brand-500 text-white font-semibold text-xs rounded-xl transition-colors shadow-sm cursor-pointer"
+              >
+                Entendi
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

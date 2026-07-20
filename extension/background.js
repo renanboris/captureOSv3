@@ -656,6 +656,7 @@ function startPolling(sessionId) {
                     if (activePollInterval !== null) {
                         clearInterval(activePollInterval);
                         activePollInterval = null;
+                        chrome.storage.local.set({ isProcessing: false });
                         const backendUrl = await getBackendUrl();
                         chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
                             if (tabs[0]) {

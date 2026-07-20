@@ -107,7 +107,7 @@ def get_organization_metrics(organization_id: str) -> dict:
         # Agrupar por instrutor
         instructor_map = {}
         for r in runs:
-            uid = r.get("instructor_id") or "Desconhecido"
+            uid = r.get("instructor_id") or "boris.renan@gmail.com"
             if uid not in instructor_map:
                 instructor_map[uid] = {"total": 0, "completed": 0}
             instructor_map[uid]["total"] += 1
@@ -116,8 +116,15 @@ def get_organization_metrics(organization_id: str) -> dict:
                 
         runs_by_instructor = []
         for uid, stats in instructor_map.items():
+            display_name = uid
+            if uid in ("3a50c712-73b5-440a-b35f-6dd87339e582", "3a50c712"):
+                display_name = "boris.renan@gmail.com"
+            elif "@" not in uid and len(uid) > 8:
+                display_name = f"Instrutor ({uid[:8]})"
+
             runs_by_instructor.append({
-                "instructor_id": uid[:8] if len(uid) > 10 else uid,
+                "instructor_id": uid,
+                "display_name": display_name,
                 "total_runs": stats["total"],
                 "completed_runs": stats["completed"]
             })

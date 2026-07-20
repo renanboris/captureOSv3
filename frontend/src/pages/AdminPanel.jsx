@@ -33,19 +33,13 @@ export default function AdminPanel() {
   const [error, setError] = useState(null);
   const [isMock, setIsMock] = useState(false);
 
-  // Settings states
-  const [orgSettings, setOrgSettings] = useState({ disable_whitelist: true, allowed_domains: [] });
-  const [settingsLoading, setSettingsLoading] = useState(true);
-  const [saveLoading, setSaveLoading] = useState(false);
-  const [saveSuccess, setSaveSuccess] = useState(false);
-
   // Table states
   const [filter, setFilter] = useState('all');
   const [page, setPage] = useState(1);
   const itemsPerPage = 10;
 
   // Whitelist settings states
-  const [disableWhitelist, setDisableWhitelist] = useState(false);
+  const [disableWhitelist, setDisableWhitelist] = useState(true);
   const [allowedDomains, setAllowedDomains] = useState([]);
   const [newDomain, setNewDomain] = useState('');
   const [savingSettings, setSavingSettings] = useState(false);
@@ -67,7 +61,7 @@ export default function AdminPanel() {
     setAllowedDomains(allowedDomains.filter(d => d !== domainToRemove));
   };
 
-  const handleSaveSettings = async () => {
+  const handleSaveAdminSettings = async () => {
     setSavingSettings(true);
     setSettingsSuccess(false);
     try {
@@ -316,9 +310,9 @@ export default function AdminPanel() {
         const mockMetrics = {
           total_runs: 45, success_rate: 94.5, avg_edit_rate: 12.5, time_saved_hours: 168.5,
           runs_by_instructor: [
-            { instructor_id: 'João S.', total_runs: 20, completed_runs: 19 },
-            { instructor_id: 'Maria P.', total_runs: 15, completed_runs: 14 },
-            { instructor_id: 'Carlos R.', total_runs: 10, completed_runs: 9 }
+            { instructor_id: 'boris.renan@gmail.com', display_name: 'boris.renan@gmail.com', total_runs: 20, completed_runs: 19 },
+            { instructor_id: 'maria.p@empresa.com', display_name: 'maria.p@empresa.com', total_runs: 15, completed_runs: 14 },
+            { instructor_id: 'carlos.r@empresa.com', display_name: 'carlos.r@empresa.com', total_runs: 10, completed_runs: 9 }
           ]
         };
         const mockCosts = {
@@ -349,7 +343,7 @@ export default function AdminPanel() {
         setPublications(mockPubs);
         setMetrics(mockMetrics);
         setCosts(mockCosts);
-        setDisableWhitelist(false);
+        setDisableWhitelist(true);
         setAllowedDomains(["localhost", "127.0.0.1", "senior.com.br", "senior.com"]);
         setLoading(false);
       } else {
@@ -358,55 +352,6 @@ export default function AdminPanel() {
     } catch (err) {
       setError("Não foi possível carregar as execuções. Verifique se o servidor está ativo ou atualize a página.");
       setLoading(false);
-    }
-  };
-
-  const fetchSettings = async (token) => {
-    setSettingsLoading(true);
-    const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
-    const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
-    try {
-      const res = await fetch(`${API_URL}/api/v1/organization/settings`, { headers });
-      if (res.ok) {
-        const data = await res.json();
-        setOrgSettings({
-          disable_whitelist: data.disable_whitelist,
-          allowed_domains: data.allowed_domains || []
-        });
-      }
-    } catch (e) {
-      console.error("Erro ao carregar configurações da org:", e);
-    } finally {
-      setSettingsLoading(false);
-    }
-  };
-
-  const handleSaveSettings = async () => {
-    setSaveLoading(true);
-    setSaveSuccess(false);
-    const token = localStorage.getItem('dev_token');
-    const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
-    const headers = {
-      'Content-Type': 'application/json',
-      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-    };
-    try {
-      const res = await fetch(`${API_URL}/api/v1/organization/settings`, {
-        method: 'PUT',
-        headers,
-        body: JSON.stringify(orgSettings)
-      });
-      if (res.ok) {
-        setSaveSuccess(true);
-        setTimeout(() => setSaveSuccess(false), 3000);
-      } else {
-        alert("Erro ao salvar configurações");
-      }
-    } catch (e) {
-      console.error(e);
-      alert("Erro de conexão ao salvar configurações");
-    } finally {
-      setSaveLoading(false);
     }
   };
 
@@ -488,29 +433,56 @@ export default function AdminPanel() {
         </div>
       </header>
 
-      {/* Alerta de Execuções Extras / Caras */}
-      {!loading && costs.most_expensive_runs?.some(run => run.gemini_call_count > 5) && (
-        <div className="bg-status-warn/10 border border-status-warn/30 rounded-xl p-4 mb-8 flex items-start gap-3">
-          <div className="p-2 bg-status-warn/20 text-status-warn rounded-lg">
-            <AlertTriangle size={20} />
-          </div>
-          <div>
-            <h4 className="font-semibold text-slate-900 dark:text-white text-sm">
-              Alerta de Custo Elevado (Execuções Extras)
-            </h4>
-            <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
-              As seguintes sessões ultrapassaram o limite sugerido de chamadas da API Gemini (&gt; 5 chamadas):
-            </p>
-            <div className="mt-3 flex flex-col gap-2">
-              {costs.most_expensive_runs
-                .filter(run => run.gemini_call_count > 5)
-                .map(run => (
-                  <div key={run.session_id} className="text-xs font-mono bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-700 px-3 py-2 rounded flex items-center justify-between gap-4 max-w-lg">
-                    <span>{run.titulo || `Sessão: ${run.session_id.substring(0, 8)}`}</span>
-                    <span className="font-semibold text-status-error">{run.gemini_call_count} chamadas</span>
-                    <span className="font-semibold text-slate-700 dark:text-slate-300">${run.cost_usd.toFixed(4)} USD</span>
-                  </div>
-                ))}
+      {/* Alerta de Execuções Extras / Caras - Redesigned */}
+      {!loading && costs.most_expensive_runs?.some(run => run.gemini_call_count > 5 && run.cost_usd >= 0.10) && (
+        <div className="bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-500/20 dark:border-amber-500/30 rounded-2xl p-5 mb-8 shadow-sm backdrop-blur-sm relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/10 rounded-full blur-2xl pointer-events-none"></div>
+          
+          <div className="flex items-start gap-4">
+            <div className="p-3 bg-gradient-to-br from-amber-500 to-orange-600 text-white rounded-xl shadow-md flex-shrink-0">
+              <AlertTriangle size={22} />
+            </div>
+            
+            <div className="flex-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h4 className="font-semibold text-slate-900 dark:text-white text-base">
+                  Alerta de Custo Operacional (Execuções Atípicas)
+                </h4>
+                <span className="px-2.5 py-0.5 text-xs font-semibold rounded-full bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30">
+                  &gt; 5 chamadas Gemini (&ge; R$ 0,55)
+                </span>
+              </div>
+              
+              <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
+                As sessões abaixo exigiram re-análise avançada pela IA e geraram custo relevante. Considere revisar a captura original ou otimizar as instruções do roteiro:
+              </p>
+              
+              <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3 max-w-4xl">
+                {costs.most_expensive_runs
+                  .filter(run => run.gemini_call_count > 5 && run.cost_usd >= 0.10)
+                  .map(run => (
+                    <div 
+                      key={run.session_id} 
+                      className="bg-white/80 dark:bg-surface-850/90 border border-amber-200/60 dark:border-amber-900/40 rounded-xl p-3 flex items-center justify-between gap-3 shadow-xs hover:border-amber-400 transition-all"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-semibold text-slate-900 dark:text-slate-100 truncate" title={run.titulo || run.session_id}>
+                          {run.titulo || `Sessão ${run.session_id.substring(0, 8)}`}
+                        </p>
+                        <p className="text-[10px] font-mono text-slate-400 truncate">{run.session_id}</p>
+                      </div>
+                      
+                      <div className="flex items-center gap-2 text-right">
+                        <span className="px-2 py-0.5 text-[11px] font-semibold font-mono rounded-md bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20">
+                          {run.gemini_call_count} reqs
+                        </span>
+                        <span className="text-xs font-bold font-mono text-slate-700 dark:text-slate-200">
+                          R$ {(run.cost_usd * 5.60).toFixed(2)} <span className="text-[10px] text-slate-400 font-normal">(${(run.cost_usd).toFixed(4)})</span>
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+              </div>
             </div>
           </div>
         </div>
@@ -534,67 +506,75 @@ export default function AdminPanel() {
             
             {/* Custo da Operação KPI Card */}
             <div className="bg-white dark:bg-surface-800 p-6 rounded-xl shadow-sm border border-surface-200 dark:border-surface-700 flex flex-col justify-center relative">
-              <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center justify-between mb-1">
                 <p className="text-xs uppercase tracking-widest text-zinc-500 dark:text-zinc-400">
                   Custo Operacional
                 </p>
-                {costs.unverified_cost_warning && (
-                  <div 
-                    className="w-2.5 h-2.5 rounded-full bg-status-warn cursor-help relative group"
-                    title="Inclui estimativa de custo não confirmada para um dos provedores de IA"
-                  >
-                    <span className="absolute -top-1 -left-1 w-4.5 h-4.5 rounded-full border border-status-warn animate-ping opacity-75"></span>
-                  </div>
-                )}
               </div>
-              <p className="font-mono text-3xl font-bold text-slate-900 dark:text-slate-100">
-                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(costs.total_cost_brl)}
-              </p>
-              <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1 font-mono">
-                Média/run: ${costs.avg_cost_per_run_usd.toFixed(4)} USD
-              </p>
+              <div className="flex items-baseline gap-1.5 flex-wrap">
+                <p className="text-2xl font-mono font-bold text-slate-900 dark:text-white">
+                  R$ {(costs.total_cost_brl || (costs.total_cost_usd ? costs.total_cost_usd * 5.60 : 0)).toFixed(2)}
+                </p>
+                <span className="text-[11px] text-slate-400 font-mono">
+                  (${costs.total_cost_usd ? costs.total_cost_usd.toFixed(2) : '0.00'} USD)
+                </span>
+              </div>
             </div>
           </>
         )}
       </div>
 
-      {/* 2. Charts & IA Quality */}
+      {/* 2. Secondary Analytics Section */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-        {/* Gráfico */}
-        <div className="lg:col-span-2 bg-white dark:bg-surface-800 p-6 rounded-xl shadow-sm border border-surface-200 dark:border-surface-700 flex flex-col min-h-[300px]">
-          <h3 className="text-xs uppercase tracking-widest text-zinc-500 dark:text-zinc-400 mb-6">
-            Desempenho por Instrutor
+        <div className="bg-white dark:bg-surface-800 p-6 rounded-xl shadow-sm border border-surface-200 dark:border-surface-700 lg:col-span-2">
+          <h3 className="text-base font-semibold text-slate-900 dark:text-white mb-4">
+            Uso por Instrutor
           </h3>
-          <div className="flex-1">
-            {loading ? (
-               <div className="h-full flex items-center justify-center text-slate-500"><div className="h-48 w-full bg-surface-200 dark:bg-surface-700 animate-pulse rounded"></div></div>
-            ) : metrics.runs_by_instructor?.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={metrics.runs_by_instructor} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e4e4e7" />
-                  <XAxis dataKey="instructor_id" tick={{ fill: '#71717a', fontSize: 12 }} axisLine={false} tickLine={false} />
-                  <YAxis tick={{ fill: '#71717a', fontSize: 12 }} axisLine={false} tickLine={false} />
-                  <Tooltip 
-                    cursor={{ fill: '#f4f4f5' }} 
-                    contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} 
-                  />
-                  <Bar dataKey="total_runs" name="Tentativas Incompletas" fill="#e4e4e7" stackId="a" radius={[0, 0, 0, 0]} />
-                  <Bar dataKey="completed_runs" name="Sucesso (SCORM)" fill="#22c55e" stackId="a" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="h-full flex items-center justify-center text-slate-400">Nenhum dado disponível</div>
-            )}
+          <div className="space-y-4">
+            {metrics.runs_by_instructor?.map((inst, idx) => {
+              const name = inst.display_name || inst.name || (inst.instructor_id.includes('@') ? inst.instructor_id : `Instrutor (${inst.instructor_id.substring(0, 8)})`);
+              const initial = name.charAt(0).toUpperCase();
+              return (
+                <div key={idx} className="flex items-center justify-between p-3 bg-surface-50 dark:bg-surface-900/50 rounded-lg">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full bg-brand-500/10 text-brand-600 dark:text-brand-400 flex items-center justify-center font-semibold text-xs">
+                      {initial}
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-slate-900 dark:text-white" title={name}>{name}</p>
+                      <p className="text-xs text-slate-500">{inst.total_runs} execuções criadas</p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-xs font-semibold px-2.5 py-1 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 rounded-full">
+                      {inst.completed_runs} completadas
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
 
-        {/* IA Quality Gauge */}
-        <div className="lg:col-span-1">
-          {loading ? (
-            <div className="h-full bg-white dark:bg-surface-800 p-6 rounded-xl border border-surface-200 dark:border-surface-700 animate-pulse"></div>
-          ) : (
-             <EditRateGauge rate={metrics.avg_edit_rate} />
-          )}
+        <div className="bg-white dark:bg-surface-800 p-6 rounded-xl shadow-sm border border-surface-200 dark:border-surface-700">
+          <h3 className="text-base font-semibold text-slate-900 dark:text-white mb-4">
+            Últimas Publicações
+          </h3>
+          <div className="space-y-3">
+            {publications.length === 0 ? (
+              <p className="text-xs text-slate-500 py-4 text-center">Nenhuma publicação recente.</p>
+            ) : (
+              publications.map((pub) => (
+                <div key={pub.id} className="p-3 bg-surface-50 dark:bg-surface-900/50 rounded-lg text-xs">
+                  <div className="flex justify-between items-center mb-1">
+                    <span className="font-semibold text-slate-900 dark:text-white">{pub.destination}</span>
+                    <span className="text-slate-400">{new Date(pub.published_at).toLocaleDateString()}</span>
+                  </div>
+                  <p className="text-slate-500">Por: {pub.published_by}</p>
+                </div>
+              ))
+            )}
+          </div>
         </div>
       </div>
 
@@ -609,7 +589,7 @@ export default function AdminPanel() {
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-surface-50 dark:bg-surface-900/50">
-                <th className="px-6 py-3 border-b border-surface-200 dark:border-surface-700 font-medium text-slate-600 dark:text-slate-300">Sessão</th>
+                <th className="px-6 py-3 border-b border-surface-200 dark:border-surface-700 font-medium text-slate-600 dark:text-slate-300">Sessão / Título</th>
                 <th className="px-6 py-3 border-b border-surface-200 dark:border-surface-700 font-medium text-slate-600 dark:text-slate-300">Status</th>
                 <th className="px-6 py-3 border-b border-surface-200 dark:border-surface-700 font-medium text-slate-600 dark:text-slate-300">Duração</th>
                 <th className="px-6 py-3 border-b border-surface-200 dark:border-surface-700 font-medium text-slate-600 dark:text-slate-300">Interface</th>
@@ -629,8 +609,11 @@ export default function AdminPanel() {
               ) : (
                 currentRuns.map((run) => (
                   <tr key={run.id} className="hover:bg-surface-50 dark:hover:bg-surface-900/50 transition-colors group">
-                    <td className={`px-6 py-4 border-b border-surface-200 dark:border-surface-700 border-l-4 ${getStatusBorderColor(run.status)} font-mono text-sm`}>
-                      {run.titulo || `${run.session_id.substring(0, 8)}...`}
+                    <td className={`px-6 py-4 border-b border-surface-200 dark:border-surface-700 border-l-4 ${getStatusBorderColor(run.status)} text-sm`}>
+                      <div className="font-semibold text-slate-900 dark:text-white" title={run.session_id}>
+                        {run.titulo || `Sessão ${run.session_id.substring(0, 8)}`}
+                      </div>
+                      <div className="text-[11px] font-mono text-slate-400 mt-0.5">{run.session_id}</div>
                     </td>
                     <td className="px-6 py-4 border-b border-surface-200 dark:border-surface-700">
                       <StatusPill status={run.status} type="pipeline" />
@@ -745,7 +728,7 @@ export default function AdminPanel() {
         <div className="flex items-center gap-4 border-t border-surface-200 dark:border-surface-700 pt-4">
           <button 
             type="button"
-            onClick={handleSaveSettings}
+            onClick={handleSaveAdminSettings}
             disabled={savingSettings}
             className="px-4 py-2 bg-slate-900 dark:bg-white text-white dark:text-slate-900 rounded-lg text-sm font-semibold hover:bg-slate-800 dark:hover:bg-slate-100 disabled:opacity-50 transition-colors"
           >
@@ -801,71 +784,6 @@ export default function AdminPanel() {
             </table>
           </div>
         </details>
-      </div>
-
-      {/* 5. Configurações da Organização */}
-      <div className="bg-white dark:bg-surface-800 rounded-xl shadow-sm border border-surface-200 dark:border-surface-700 p-6 mt-8">
-        <h2 className="text-lg font-semibold text-slate-900 dark:text-white mb-2">Configurações de Privacidade</h2>
-        <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">
-          Controle as políticas de governança e segurança da sua organização.
-        </p>
-
-        {settingsLoading ? (
-          <div className="h-20 bg-surface-200 dark:bg-surface-700 animate-pulse rounded-lg"></div>
-        ) : (
-          <div className="space-y-6">
-            <div className="flex items-start gap-3">
-              <input
-                id="disable-whitelist-checkbox"
-                type="checkbox"
-                checked={!orgSettings.disable_whitelist}
-                onChange={(e) => setOrgSettings(prev => ({ ...prev, disable_whitelist: !e.target.checked }))}
-                className="w-4 h-4 text-emerald-600 border-slate-300 rounded focus:ring-emerald-500 mt-1 cursor-pointer"
-              />
-              <div className="flex-1">
-                <label htmlFor="disable-whitelist-checkbox" className="font-semibold text-slate-900 dark:text-white text-sm cursor-pointer select-none">
-                  Ativar Whitelist de Privacidade
-                </label>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                  Recomendado para ambientes corporativos. Quando ativo, o radar de gravação e a ingestão de dados só funcionarão nos domínios permitidos.
-                </p>
-              </div>
-            </div>
-
-            {!orgSettings.disable_whitelist && (
-              <div className="ml-7 border-l-2 border-slate-200 dark:border-slate-700 pl-4 space-y-4">
-                <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">
-                    Domínios Permitidos
-                  </label>
-                  <input
-                    type="text"
-                    value={orgSettings.allowed_domains.join(', ')}
-                    onChange={(e) => setOrgSettings(prev => ({ ...prev, allowed_domains: e.target.value.split(',').map(d => d.trim()).filter(Boolean) }))}
-                    className="w-full max-w-lg px-3 py-2 bg-white dark:bg-surface-900 border border-slate-300 dark:border-slate-700 rounded-lg text-sm text-slate-950 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                    placeholder="Ex: senior.com.br, localhost, senior.com"
-                  />
-                  <p className="text-xs text-slate-400 mt-1">
-                    Insira os domínios separados por vírgula (subdomínios são permitidos automaticamente).
-                  </p>
-                </div>
-              </div>
-            )}
-
-            <div className="flex items-center gap-4 pt-4 border-t border-slate-100 dark:border-slate-700">
-              <button
-                onClick={handleSaveSettings}
-                disabled={saveLoading}
-                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-medium rounded-lg text-sm transition-colors shadow-sm"
-              >
-                {saveLoading ? 'Salvando...' : 'Salvar Alterações'}
-              </button>
-              {saveSuccess && (
-                <span className="text-emerald-600 text-sm font-medium">✓ Configurações salvas com sucesso!</span>
-              )}
-            </div>
-          </div>
-        )}
       </div>
 
     </div>

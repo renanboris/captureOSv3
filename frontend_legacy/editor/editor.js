@@ -82,21 +82,38 @@ function renderizarPassos() {
     
     roteiroAtual.forEach((passo, index) => {
         const item = document.createElement('div');
-        item.className = 'transcript-item';
-        
-        const tempoFicticio = `00:0${index+1}`;
+        item.className = 'transcript-item';        
+        let relativeSec = 0;
+        const firstTs = roteiroAtual[0] && (roteiroAtual[0].timestamp || roteiroAtual[0]._timestamp);
+        const thisTs = passo.timestamp || passo._timestamp;
+        if (firstTs && thisTs && thisTs >= firstTs) {
+            relativeSec = Math.floor((thisTs - firstTs) / 1000);
+        } else {
+            relativeSec = index * 5;
+        }
+        const mm = String(Math.floor(relativeSec / 60)).padStart(2, '0');
+        const ss = String(relativeSec % 60).padStart(2, '0');
+        const tempoReal = `${mm}:${ss}`;
+
         const textoCompletoReal = `${passo.ancora || ''} ${passo.micro_narracao || ''}`.trim();
         const textoView = textoCompletoReal || '(vazio)';
 
+        const isLowConfidence = (passo._simlink && passo._simlink.confianca_captura === 'baixa') || false;
+        const lowConfidenceBadge = isLowConfidence 
+            ? `<span class="badge-warning" style="background:#FFFBEB; color:#B45309; border:1px solid #FCD34D; font-size:11px; padding:2px 8px; border-radius:12px; font-weight:600; margin-left:8px;">⚠️ Seletor Frágil</span>`
+            : '';
+        const recapturarBtn = `<button class="btn-recapturar" onclick="recapturarPasso(${index})" style="background:#00998F; color:white; border:none; padding:4px 8px; border-radius:6px; font-size:11px; cursor:pointer; font-weight:500; display:inline-flex; align-items:center; gap:4px; margin-left:8px;" title="Recapturar seletor deste passo na tela">🎯 Recapturar este passo</button>`;
+
         item.innerHTML = `
-            <div class="transcript-time">${tempoFicticio}</div>
+            <div class="transcript-time" title="Tempo da gravação">${tempoReal}</div>
             <div class="transcript-content">
                 <div class="editable-text-container" onclick="iniciarEdicao(this, 'texto-${index}')">
-                    <p class="editable-text" id="texto-view-${index}">${textoView}</p>
+                    <p class="editable-text" id="texto-view-${index}">${textoView} ${lowConfidenceBadge}</p>
                     <textarea id="texto-${index}" style="display:none;" placeholder="Digite o texto deste passo..." onblur="finalizarEdicao(this, 'texto-view-${index}')">${textoCompletoReal}</textarea>
                 </div>
-                <div class="actions">
-                    <button class="btn-icon" onclick="previewTTS(${index}, this)" title="Ouvir com a voz real (Francisca)">
+                <div class="actions" style="display:flex; align-items:center; gap:8px;">
+                    ${recapturarBtn}
+                    <button class="btn-icon" onclick="previewTTS(${index}, this)" title="Ouvir com a voz real">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5L6 9H2v6h4l5 4V5z"></path><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>
                     </button>
                     <button class="btn-icon" id="btn-regerar-${index}" onclick="regerarPassoIA(${index}, ${passo.passo})" title="Regerar frase com IA">
@@ -108,6 +125,34 @@ function renderizarPassos() {
         container.appendChild(item);
     });
 }
+
+window.recapturarPasso = function(index) {
+    if (window.parent) {
+        window.parent.postMessage({
+            action: "recapturar_passo",
+            session_id: sessionId,
+            passo_index: index,
+            passo_num: roteiroAtual[index].passo
+        }, "*");
+    }
+};
+
+window.addEventListener("message", (e) => {
+    if (e.data && e.data.type === "passo_recapturado") {
+        const idx = e.data.passo_index;
+        const newData = e.data.new_data;
+        if (roteiroAtual[idx] && newData) {
+            if (!roteiroAtual[idx]._simlink) roteiroAtual[idx]._simlink = {};
+            roteiroAtual[idx]._simlink.selector = newData.css_selector || roteiroAtual[idx]._simlink.selector;
+            roteiroAtual[idx]._simlink.xpath = newData.xpath || roteiroAtual[idx]._simlink.xpath;
+            roteiroAtual[idx]._simlink.target_text = newData.target_text || roteiroAtual[idx]._simlink.target_text;
+            roteiroAtual[idx]._simlink.confianca_captura = "alta";
+            roteiroAtual[idx]._simlink.hitl_corrigido = true;
+            renderizarPassos();
+            alert(`Passo ${idx + 1} recapturado com sucesso!`);
+        }
+    }
+});
 
 function iniciarEdicao(container, textareaId) {
     const textEl = container.querySelector('.editable-text');
@@ -168,7 +213,13 @@ async function previewTTS(index, btnElement) {
         if (!response.ok) throw new Error("Erro no TTS");
         const data = await response.json();
         
-        currentAudio = new Audio(data.audio_url);
+        const token = await getAuthToken();
+        let audioUrl = data.audio_url;
+        if (token && !audioUrl.includes('token=')) {
+            audioUrl += (audioUrl.includes('?') ? '&' : '?') + `token=${encodeURIComponent(token)}`;
+        }
+
+        currentAudio = new Audio(audioUrl);
         currentAudio._originalHtml = originalHtml;
         currentAudio._btnRef = btnElement;
         

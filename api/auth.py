@@ -86,6 +86,21 @@ def require_auth(
                 return user_dict
 
         settings = get_settings()
+        # Tentar validação local via JWT Secret (para dev-tokens e tokens JWT válidos)
+        try:
+            import jwt
+            payload = jwt.decode(token, settings.jwt_secret, algorithms=["HS256"], options={"verify_aud": False})
+            user_dict = {
+                "id": payload.get("sub"),
+                "email": payload.get("email") or payload.get("user_metadata", {}).get("email", ""),
+                "role": payload.get("role", "authenticated")
+            }
+            _log.debug(f"[AUTH DEBUG] Token JWT VÁLIDO (decodificado via secret local). user_id={user_dict['id']}")
+            _TOKEN_CACHE[token] = (now, user_dict)
+            return user_dict
+        except Exception as jwt_err:
+            _log.debug(f"[AUTH DEBUG] Validação local JWT falhou: {jwt_err}, tentando Supabase...")
+
         if not settings.supabase_url or not settings.supabase_key:
             _log.error("[AUTH DEBUG] Supabase URL/KEY ausentes no .env.")
             raise _unauthorized()

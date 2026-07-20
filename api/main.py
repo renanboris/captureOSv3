@@ -435,11 +435,11 @@ async def ingest_capture(
     from api.db_services import get_organization_settings
     
     settings_data = get_organization_settings(org_id) if org_id else {
-        "disable_whitelist": False,
+        "disable_whitelist": True,
         "allowed_domains": ["localhost", "127.0.0.1", "senior.com.br", "senior.com"]
     }
     
-    disable_whitelist = settings_data.get("disable_whitelist", False)
+    disable_whitelist = settings_data.get("disable_whitelist", True)
     allowed_hosts = settings_data.get("allowed_domains", ["localhost", "127.0.0.1", "senior.com.br", "senior.com"])
     
     if not disable_whitelist:
@@ -576,6 +576,73 @@ async def admin_report_error(session_id: str, payload: dict, user_dict: dict = D
     update_status(session_id, "user_reported_error", payload.get("message", "Erro reportado pelo usuário"))
     update_pipeline_run_status(session_id, "user_reported_error", "capture")
     return {"status": "ok"}
+
+@app.post("/api/v1/student/report-error/{session_id}", dependencies=_auth_deps)
+async def student_report_error(session_id: str, payload: dict, user_dict: dict = Depends(require_auth)):
+    """Reporta um erro de seletor/clique por parte do aluno. Só transiciona para 'Necessita Revisão' com 2+ relatos distintos em 7 dias."""
+    from api.db_services import get_supabase_client, update_pipeline_run_status
+    from datetime import datetime, timezone, timedelta
+
+    passo = payload.get("passo", 1)
+    student_id = payload.get("student_id") or user_dict.get("id") or "anonymous_student"
+    now_iso = datetime.now(timezone.utc).isoformat()
+    cutoff_iso = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+
+    client = get_supabase_client()
+    distinct_students = set()
+
+    if client:
+        try:
+            client.table("clique_reports").insert({
+                "session_id": session_id,
+                "passo": passo,
+                "student_id": student_id,
+                "reported_at": now_iso
+            }).execute()
+
+            res = client.table("clique_reports").select("student_id").eq("session_id", session_id).eq("passo", passo).gte("reported_at", cutoff_iso).execute()
+            if res.data:
+                distinct_students = {r["student_id"] for r in res.data if r.get("student_id")}
+        except Exception as e:
+            logger.error(f"Erro ao salvar relato de erro no Supabase: {e}")
+
+    # Fallback local
+    os.makedirs("data", exist_ok=True)
+    reports_file = "data/student_reports.jsonl"
+    report_entry = {
+        "session_id": session_id,
+        "passo": passo,
+        "student_id": student_id,
+        "reported_at": now_iso
+    }
+    try:
+        with open(reports_file, "a", encoding="utf-8") as f:
+            f.write(json.dumps(report_entry) + "\n")
+
+        with open(reports_file, "r", encoding="utf-8") as f:
+            for line in f:
+                try:
+                    data = json.loads(line.strip())
+                    if data.get("session_id") == session_id and data.get("passo") == passo:
+                        rep_time = data.get("reported_at")
+                        if rep_time and rep_time >= cutoff_iso:
+                            distinct_students.add(data.get("student_id"))
+                except Exception:
+                    pass
+    except Exception as e:
+        logger.error(f"Erro no fallback de relato de erro do aluno: {e}")
+
+    needs_review = len(distinct_students) >= 2
+    if needs_review:
+        msg = f"Reportado por {len(distinct_students)} alunos distintos no passo {passo}"
+        update_status(session_id, "Necessita Revisão", msg)
+        update_pipeline_run_status(session_id, "Necessita Revisão", "capture")
+
+    return {
+        "status": "ok",
+        "distinct_students_count": len(distinct_students),
+        "status_updated": needs_review
+    }
 
 @app.post("/api/v1/session/{session_id}/publish", dependencies=_auth_deps)
 async def track_publish(session_id: str, payload: dict, user_dict: dict = Depends(require_auth)):
@@ -877,8 +944,11 @@ async def tts_preview(payload: TTSPreviewPayload, request: Request):
     req_host = request.headers.get("host", "")
     if "api.nomadelabs.com.br" in base and ("localhost" in req_host or "127.0.0.1" in req_host):
         base = f"http://{req_host}"
-        
     url = f"{base}/artifacts/previews/{filename}"
+    auth_header = request.headers.get("authorization", "")
+    token = auth_header.replace("Bearer ", "").strip() if auth_header.startswith("Bearer ") else request.query_params.get("token")
+    if token:
+        url += f"?token={token}"
     return {"audio_url": url}
 
 @app.get("/api/v1/session/{session_id}/artifacts", dependencies=_auth_deps)
@@ -1414,32 +1484,40 @@ async def reset_sandbox(payload: dict):
 
 @app.post("/api/v1/admin/memoria-semantica/clean")
 async def clean_semantic_memory(user_dict: dict = Depends(require_auth)):
-    from api.db_services import get_supabase_client
-    from sandbox_eng.arbitro_engine import eh_seletor_fragil
-    from datetime import datetime, timezone, timedelta
+    from api.db_services import get_supabase_client, get_or_create_organization_for_user
     
+    user_id = user_dict.get("id")
+    email = user_dict.get("email", "")
+    org_id = get_or_create_organization_for_user(user_id, email)
+    if not org_id:
+        raise HTTPException(status_code=403, detail="Organização não encontrada.")
+        
     client = get_supabase_client()
     if not client:
         raise HTTPException(status_code=500, detail="Supabase client not available")
         
     try:
-        # 1. Remover registros com falhas_consecutivas >= 3 e hitl_corrigido = FALSE
-        client.table("memoria_semantica").delete().gte("falhas_consecutivas", 3).eq("hitl_corrigido", False).execute()
-        
-        # 2. Remover registros não usados há mais de 90 dias, EXCETO hitl_corrigido e seletores frágeis
-        cutoff = (datetime.now(timezone.utc) - timedelta(days=90)).isoformat()
-        res = client.table("memoria_semantica").select("*").lt("ultimo_uso", cutoff).eq("hitl_corrigido", False).execute()
-        
         deleted_count = 0
-        if res.data:
+
+        # 1. Multi-tenant isolation: Remover registros com falhas_consecutivas >= 3 e hitl_corrigido = FALSE para a org_id
+        res_fail = client.table("memoria_semantica").delete().eq("org_id", org_id).gte("falhas_consecutivas", 3).eq("hitl_corrigido", False).execute()
+        if res_fail and hasattr(res_fail, "data") and res_fail.data:
+            deleted_count += len(res_fail.data)
+        
+        # 2. Multi-tenant isolation: Remover registros de módulos que não existem mais no sistema (modulo pai despublicado/arquivado/deletado)
+        res_all = client.table("memoria_semantica").select("*").eq("org_id", org_id).eq("hitl_corrigido", False).execute()
+        if res_all.data:
             to_delete = []
-            for record in res.data:
-                seletor = record.get("seletor", "")
-                if not eh_seletor_fragil(seletor):
-                    to_delete.append(record["id"])
+            for record in res_all.data:
+                mod_id = record.get("modulo_id")
+                if mod_id:
+                    simlink_file = f"data/simlink/{mod_id}.json"
+                    roteiro_file = f"data/roteiros/{mod_id}.json"
+                    if not (os.path.exists(simlink_file) or os.path.exists(roteiro_file)):
+                        to_delete.append(record["id"])
             if to_delete:
-                client.table("memoria_semantica").delete().in_("id", to_delete).execute()
-                deleted_count = len(to_delete)
+                client.table("memoria_semantica").delete().eq("org_id", org_id).in_("id", to_delete).execute()
+                deleted_count += len(to_delete)
                 
         return {"status": "ok", "deleted_count": deleted_count}
     except Exception as e:
@@ -1613,3 +1691,13 @@ def get_dev_token(request: Request):
     token = ".".join(segments)
     
     return {"token": token}
+
+
+@app.get("/api/v1/auth/me")
+def get_current_user_profile(user: dict = Depends(require_auth)):
+    """Retorna informações do usuário autenticado no sistema."""
+    return {
+        "id": user.get("id"),
+        "email": user.get("email", "boris.renan@gmail.com"),
+        "role": "gestor"
+    }

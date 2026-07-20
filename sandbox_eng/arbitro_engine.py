@@ -43,7 +43,30 @@ def calcular_hash_intencao(modulo_id: str, passo: int, label_esperado: str) -> s
     return hashlib.md5(raw.encode("utf-8")).hexdigest()
 
 
-def buscar_memoria_semantica(org_id: str, modulo_id: str, hash_intencao: str):
+def buscar_memoria_semantica_global(org_id: str, label_esperado: str):
+    """
+    Busca na memória semântica da organização se já existe um seletor aprovado
+    para um elemento/rótulo recorrente em QUALQUER módulo anterior da mesma org.
+    """
+    if not org_id or not label_esperado or len(label_esperado.strip()) < 2:
+        return None
+    client = get_supabase_client()
+    if not client:
+        return None
+    try:
+        norm_label = label_esperado.strip().lower()
+        res = client.table("memoria_semantica").select("*").eq("org_id", org_id).eq("falhas_consecutivas", 0).order("hits", desc=True).limit(50).execute()
+        if res.data:
+            for rec in res.data:
+                seletor = rec.get("seletor", "")
+                if norm_label in seletor.lower() or norm_label in rec.get("hash_intencao", "").lower():
+                    return rec
+    except Exception as e:
+        logger.error(f"Erro ao buscar memoria semantica global para org {org_id}: {e}")
+    return None
+
+
+def buscar_memoria_semantica(org_id: str, modulo_id: str, hash_intencao: str, label_esperado: str = None):
     client = get_supabase_client()
     if not client:
         return None
@@ -51,6 +74,10 @@ def buscar_memoria_semantica(org_id: str, modulo_id: str, hash_intencao: str):
         res = client.table("memoria_semantica").select("*").eq("org_id", org_id).eq("modulo_id", modulo_id).eq("hash_intencao", hash_intencao).execute()
         if res.data and len(res.data) > 0:
             return res.data[0]
+            
+        # Fallback para busca global por organização (cross-modulo) se o rótulo for fornecido
+        if label_esperado:
+            return buscar_memoria_semantica_global(org_id, label_esperado)
     except Exception as e:
         logger.error(f"Erro ao buscar memoria semantica: {e}")
     return None
@@ -145,7 +172,7 @@ async def avaliar_acao_sandbox(roteiro: list, passo_esperado: int, action_data: 
 
     if org_id and modulo_id:
         hash_intencao = calcular_hash_intencao(modulo_id, passo_esperado, expected_text)
-        memoria_record = buscar_memoria_semantica(org_id, modulo_id, hash_intencao)
+        memoria_record = buscar_memoria_semantica(org_id, modulo_id, hash_intencao, expected_text)
 
     # Camada 0: Brain Cache Lookup
     if memoria_record:
@@ -179,6 +206,20 @@ async def avaliar_acao_sandbox(roteiro: list, passo_esperado: int, action_data: 
                     logger.warning(
                         f"[Brain] Identidade do elemento não confirmada: "
                         f"esperado '{expected_text}', obtido '{actual_text}' para XPath '{seletor_memorizado}'"
+                    )
+                    registrar_falha_memoria(org_id, modulo_id, hash_intencao, memoria_record)
+                    registrar_telemetria_arbitro(org_id, modulo_id, passo_esperado, "0_brain", False)
+            elif estrategia in ("texto", "gemini_vision"):
+                seletor_match = (actual_selector == seletor_memorizado or actual_xpath == seletor_memorizado)
+                identidade_ok = verificar_identidade(expected_text, actual_text)
+                if seletor_match and identidade_ok:
+                    salvar_memoria_semantica(org_id, modulo_id, hash_intencao, estrategia, seletor_memorizado)
+                    registrar_telemetria_arbitro(org_id, modulo_id, passo_esperado, "0_brain", True)
+                    return {"is_correct": True, "hint": ""}
+                elif seletor_match and not identidade_ok:
+                    logger.warning(
+                        f"[Brain] Identidade do elemento não confirmada: "
+                        f"esperado '{expected_text}', obtido '{actual_text}' para {estrategia} '{seletor_memorizado}'"
                     )
                     registrar_falha_memoria(org_id, modulo_id, hash_intencao, memoria_record)
                     registrar_telemetria_arbitro(org_id, modulo_id, passo_esperado, "0_brain", False)
@@ -243,8 +284,8 @@ Seletor clicado: {action_data.get('css_selector')}
         registrar_telemetria_arbitro(org_id, modulo_id, passo_esperado, "4_gemini_vision", is_correct)
         
         if is_correct and org_id and modulo_id and hash_intencao:
-            # Salvar o seletor real clicado pelo aluno na memória como vencedor
-            salvar_memoria_semantica(org_id, modulo_id, hash_intencao, 'css_selector', actual_selector or expected_selector)
+            # Salvar o seletor real clicado pelo aluno na memória com rótulo gemini_vision
+            salvar_memoria_semantica(org_id, modulo_id, hash_intencao, 'gemini_vision', actual_selector or expected_selector)
             
         return result
     except Exception as e:

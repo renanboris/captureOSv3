@@ -61,9 +61,18 @@ def test_handoff_schema_validation():
     assert roteiro.passos[0].tag_alvo == "button"
 
 
-def test_ingest_whitelist_validation(client):
+def test_ingest_whitelist_validation(client, monkeypatch):
     import json
-    
+    import os
+    import api.db_services
+
+    test_org_id = "00000000-0000-0000-0000-000000000001"
+    monkeypatch.setattr(api.db_services, "get_or_create_organization_for_user", lambda *args, **kwargs: test_org_id)
+    api.db_services.save_organization_settings(test_org_id, {
+        "disable_whitelist": False,
+        "allowed_domains": ["localhost", "127.0.0.1", "senior.com.br", "senior.com"]
+    })
+
     allowed_urls = [
         "http://localhost/somepath",
         "http://127.0.0.1:8000/page",
@@ -82,9 +91,11 @@ def test_ingest_whitelist_validation(client):
         "https://anotherdomain.com",
     ]
     
+    import uuid
+    run_uid = uuid.uuid4().hex[:6]
     for i, url in enumerate(allowed_urls):
         data = {
-            "session_id": f"sess_allowed_{i}",
+            "session_id": f"sess_allowed_{run_uid}_{i}",
             "events": json.dumps([
                 {
                     "timestamp": 123456789,
@@ -106,7 +117,7 @@ def test_ingest_whitelist_validation(client):
         
     for i, url in enumerate(disallowed_urls):
         data = {
-            "session_id": f"sess_disallowed_{i}",
+            "session_id": f"sess_disallowed_{run_uid}_{i}",
             "events": json.dumps([
                 {
                     "timestamp": 123456789,
@@ -128,9 +139,12 @@ def test_ingest_whitelist_validation(client):
         assert response.json()["detail"] == "Contém eventos de domínios não permitidos na whitelist."
 
 
-def test_dynamic_whitelist_settings_and_ingestion(client):
+def test_dynamic_whitelist_settings_and_ingestion(client, monkeypatch):
     import json
     import os
+    import api.db_services
+
+    monkeypatch.setattr(api.db_services, "get_or_create_organization_for_user", lambda *args, **kwargs: "00000000-0000-0000-0000-000000000099")
 
     settings_file = "data/organization_settings.json"
     if os.path.exists(settings_file):
@@ -140,11 +154,11 @@ def test_dynamic_whitelist_settings_and_ingestion(client):
             pass
 
     try:
-        # 1. Fetch default settings
+        # 1. Fetch default settings (disable_whitelist default is True)
         res = client.get("/api/v1/admin/settings")
         assert res.status_code == 200
         settings = res.json()
-        assert settings["disable_whitelist"] is False
+        assert settings["disable_whitelist"] is True
         assert "localhost" in settings["allowed_domains"]
         assert "senior.com.br" in settings["allowed_domains"]
 
