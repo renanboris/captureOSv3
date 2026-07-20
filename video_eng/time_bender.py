@@ -391,7 +391,7 @@ def compose_video_with_freeze_frames(input_webm: str, output_mp4: str, timeline_
 
         cmd.extend([
             "-c:v", "libx264",
-            "-preset", "fast",
+            "-preset", "ultrafast",
             "-crf", "18",
             "-c:a", "aac",
             "-b:a", "128k",

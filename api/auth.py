@@ -23,7 +23,7 @@ import time
 import threading
 from typing import Any, Dict, Optional
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from config.settings import get_settings
@@ -51,6 +51,7 @@ def _unauthorized() -> HTTPException:
 
 
 def require_auth(
+    request: Request,
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer_scheme),
 ) -> Dict[str, Any]:
     """FastAPI dependency enforcing a valid bearer JWT on data routes.
@@ -61,14 +62,15 @@ def require_auth(
     import logging
     _log = logging.getLogger("uvicorn.error")
 
-    if credentials is None:
-        _log.error("[AUTH DEBUG] Nenhuma credencial recebida (header Authorization ausente).")
-        raise _unauthorized()
-    if (credentials.scheme or "").lower() != "bearer":
-        _log.error(f"[AUTH DEBUG] Scheme inesperado: {credentials.scheme!r}")
-        raise _unauthorized()
+    token = None
+    if credentials and (credentials.scheme or "").lower() == "bearer":
+        token = credentials.credentials
+    elif request and request.query_params.get("token"):
+        token = request.query_params.get("token")
 
-    token = credentials.credentials
+    if not token:
+        _log.error("[AUTH DEBUG] Nenhuma credencial recebida (header Authorization ou token query param ausente).")
+        raise _unauthorized()
     now = time.time()
 
     # 1. Primeiro check sem lock para alta performance (Fast Path)

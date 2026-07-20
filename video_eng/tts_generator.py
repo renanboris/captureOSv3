@@ -84,7 +84,7 @@ async def gerar_audio(texto: str, output_path: str, voz: str = "pt-BR-FranciscaN
                 }
             }
             
-            # Chama a API de forma assíncrona usando threads
+            # Chama a API de forma assíncrona usando threads com timeout padrão de 30s
             response = await asyncio.to_thread(req.post, url, headers=headers, json=payload, timeout=30)
             
             if response.status_code == 200:

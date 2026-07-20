@@ -2,22 +2,52 @@ import time
 import json
 import logging
 import os
+import urllib.request
 from typing import Dict
 
 logger = logging.getLogger("finops")
 logger.setLevel(logging.INFO)
 
 # Preços de referência por 1M tokens (USD). Atualizar manualmente quando o
-# provedor mudar tabela — não há verificação automática.
-# Fonte: página de pricing oficial de cada provedor.
-# Última verificação: 2026-07-07
+# provedor mudar tabela.
+# Fonte: página de pricing oficial de cada provedor (Google AI Studio & OpenAI).
 GEMINI_FLASH_INPUT_PER_1M_USD = 0.30
 GEMINI_FLASH_OUTPUT_PER_1M_USD = 2.50
 OPENAI_GPT4O_MINI_INPUT_PER_1M_USD = 0.15
 OPENAI_GPT4O_MINI_OUTPUT_PER_1M_USD = 0.60
-# MINIMAX_*: valor não verificado com o provedor
 MINIMAX_INPUT_PER_1M_USD = 0.10
 MINIMAX_OUTPUT_PER_1M_USD = 0.10
+
+# Cache simples em memória da cotação USD->BRL
+_usd_rate_cache = {
+    "rate": 5.60,
+    "last_updated": 0
+}
+
+def get_usd_to_brl_rate() -> float:
+    """Busca a cotação em tempo real da AwesomeAPI com cache de 1 hora e fallback."""
+    now = time.time()
+    # Cache válido por 1 hora (3600 segundos)
+    if now - _usd_rate_cache["last_updated"] < 3600 and _usd_rate_cache["rate"] > 0:
+        return _usd_rate_cache["rate"]
+
+    try:
+        req = urllib.request.Request("https://economia.awesomeapi.com.br/last/USD-BRL", headers={'User-Agent': 'CaptureOS/3.0'})
+        with urllib.request.urlopen(req, timeout=4) as response:
+            if response.status == 200:
+                data = json.loads(response.read().decode('utf-8'))
+                if "USDBRL" in data and "bid" in data["USDBRL"]:
+                    rate = float(data["USDBRL"]["bid"])
+                    _usd_rate_cache["rate"] = rate
+                    _usd_rate_cache["last_updated"] = now
+                    logger.info(f"Cotação USD->BRL atualizada em tempo real via AwesomeAPI: R$ {rate:.4f}")
+                    return rate
+    except Exception as e:
+        logger.warning(f"Erro ao buscar cotação USD->BRL online (usando fallback): {e}")
+
+    env_fallback = float(os.getenv("USD_TO_BRL", "5.60"))
+    _usd_rate_cache["rate"] = env_fallback
+    return env_fallback
 
 
 class FinOpsTracker:
@@ -81,7 +111,7 @@ class FinOpsTracker:
         # Cálculo estimado de custos
         cost = 0.0
         
-        # Gemini 1.5 Flash
+        # Gemini 1.5/2.5 Flash
         g_in = job["tokens"]["gemini"]["input"]
         g_out = job["tokens"]["gemini"]["output"]
         cost += (g_in / 1_000_000) * GEMINI_FLASH_INPUT_PER_1M_USD + (g_out / 1_000_000) * GEMINI_FLASH_OUTPUT_PER_1M_USD
@@ -96,13 +126,14 @@ class FinOpsTracker:
         m_out = job["tokens"]["minimax"]["output"]
         cost += (m_in / 1_000_000) * MINIMAX_INPUT_PER_1M_USD + (m_out / 1_000_000) * MINIMAX_OUTPUT_PER_1M_USD
 
-        # Confiabilidade do preço do MiniMax
+        # Confiabilidade do preço
         if m_in > 0 or m_out > 0:
             job["cost_confidence"] = "estimated_unverified"
         else:
             job["cost_confidence"] = "confirmed"
 
-        usd_to_brl = float(os.getenv("USD_TO_BRL", "5.60"))
+        usd_to_brl = get_usd_to_brl_rate()
+        job["usd_to_brl_rate"] = usd_to_brl
         job["estimated_api_cost_usd"] = cost
         job["estimated_api_cost_brl"] = round(cost * usd_to_brl, 4)
         job["total_tokens"] = g_in + g_out + o_in + o_out + m_in + m_out
