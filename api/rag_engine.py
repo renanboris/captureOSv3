@@ -283,6 +283,16 @@ def extrair_texto_documento(file_data_b64: str, filename: str) -> str:
         logger.error(f"Falha ao extrair texto: {e}")
         return ""
 
+def gerar_embeddings_batch(textos: List[str]) -> List[List[float]]:
+    if not client_openai:
+        raise Exception("OpenAI Client não inicializado")
+    if not textos:
+        return []
+    response = client_openai.embeddings.create(
+        input=textos, model=OPENAI_EMBED_MODEL, dimensions=TARGET_DIM
+    )
+    return [item.embedding for item in response.data]
+
 def ingerir_documento_para_namespace(file_data_b64: str, filename: str, namespace: str) -> dict:
     """Extrai texto, gera embeddings e salva no Pinecone sob o namespace.
     
@@ -314,25 +324,27 @@ def ingerir_documento_para_namespace(file_data_b64: str, filename: str, namespac
     doc_id = hashlib.md5(filename.encode()).hexdigest()[:10]
     skipped = 0
     
-    for i, chunk in enumerate(chunks):
+    # Processar embeddings em lotes (batching) de 32 chunks por requisição HTTP
+    BATCH_EMBED_SIZE = 32
+    for b_idx in range(0, len(chunks), BATCH_EMBED_SIZE):
+        batch_chunks = chunks[b_idx : b_idx + BATCH_EMBED_SIZE]
         try:
-            embedding = gerar_embedding(chunk)
+            batch_embeddings = gerar_embeddings_batch(batch_chunks)
+            for j, (chunk_text, embedding) in enumerate(zip(batch_chunks, batch_embeddings)):
+                c_global_idx = b_idx + j
+                chunk_id = f"doc_{doc_id}_chunk_{c_global_idx}"
+                vectors_to_upsert.append({
+                    "id": chunk_id,
+                    "values": embedding,
+                    "metadata": {
+                        "text": chunk_text,
+                        "titulo": filename,
+                        "fonte": "Upload Local Release Notes"
+                    }
+                })
         except Exception as e:
-            logger.warning(f"Falha ao gerar embedding para chunk {i} de '{filename}': {e}")
-            skipped += 1
-            continue
-            
-        chunk_id = f"doc_{doc_id}_chunk_{i}"
-        
-        vectors_to_upsert.append({
-            "id": chunk_id,
-            "values": embedding,
-            "metadata": {
-                "text": chunk,
-                "titulo": filename,
-                "fonte": "Upload Local Release Notes"
-            }
-        })
+            logger.warning(f"Falha ao gerar embeddings no lote {b_idx}: {e}")
+            skipped += len(batch_chunks)
     
     if not vectors_to_upsert:
         logger.error(f"Nenhum embedding gerado para '{filename}' (todos os {len(chunks)} chunks falharam)")
