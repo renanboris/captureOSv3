@@ -761,6 +761,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     const ragUploadStatus = document.getElementById('rag-upload-status');
     const btnClearRag = document.getElementById('btn-clear-rag');
     const ragSublabel = document.getElementById('rag-sublabel');
+    const ragContextMenu = document.getElementById('rag-context-menu');
+    const menuOptFile = document.getElementById('menu-opt-file');
+    const menuOptUrl = document.getElementById('menu-opt-url');
 
     let currentAttachedFile = null;
 
@@ -769,19 +772,52 @@ document.addEventListener('DOMContentLoaded', async () => {
         chrome.storage.local.get(['ragNamespace', 'ragContext'], (res) => {
             if (res.ragNamespace && !ragInput.value) {
                 ragInput.value = res.ragNamespace;
+                if (ragSublabel) ragSublabel.textContent = `Módulo: ${res.ragNamespace}`;
             }
-            if (res.ragContext && res.ragContext.filename) {
-                ragInput.value = res.ragContext.filename;
+            if (res.ragContext && (res.ragContext.filename || res.ragContext.url)) {
+                ragInput.value = res.ragContext.filename || res.ragContext.url;
                 if (btnUploadRag) btnUploadRag.style.display = 'none';
                 if (btnClearRag) btnClearRag.style.display = 'flex';
-                if (ragSublabel) ragSublabel.textContent = 'Arquivo anexado';
+                if (ragSublabel) ragSublabel.textContent = res.ragContext.url ? 'URL Ativa' : 'Arquivo Anexado';
             }
         });
 
-        // Click on Paperclip icon opens file picker
-        btnUploadRag.addEventListener('click', () => {
-            inputRagFile.click();
+        // Click on Paperclip icon toggles context menu
+        btnUploadRag.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (ragContextMenu) {
+                const isVisible = ragContextMenu.style.display === 'block';
+                ragContextMenu.style.display = isVisible ? 'none' : 'block';
+            }
         });
+
+        // Close menu when clicking outside
+        document.addEventListener('click', () => {
+            if (ragContextMenu) ragContextMenu.style.display = 'none';
+        });
+
+        // Option 1: File Upload
+        if (menuOptFile) {
+            menuOptFile.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (ragContextMenu) ragContextMenu.style.display = 'none';
+                inputRagFile.click();
+            });
+        }
+
+        // Option 2: Web URL Injection
+        if (menuOptUrl) {
+            menuOptUrl.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                if (ragContextMenu) ragContextMenu.style.display = 'none';
+                const url = window.prompt("Cole a URL da documentação web (ex: https://...):");
+                if (url && (url.startsWith('http://') || url.startsWith('https://'))) {
+                    await processUrlUpload(url);
+                } else if (url) {
+                    alert("Por favor, informe uma URL válida iniciando com http:// ou https://");
+                }
+            });
+        }
 
         // File Selection Event
         inputRagFile.addEventListener('change', async (e) => {
@@ -792,7 +828,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             ragInput.value = file.name;
             btnUploadRag.style.display = 'none';
             if (btnClearRag) btnClearRag.style.display = 'flex';
-            if (ragSublabel) ragSublabel.textContent = 'Arquivo anexado';
+            if (ragSublabel) ragSublabel.textContent = 'Arquivo Anexado';
             
             ragUploadStatus.style.display = 'block';
             ragUploadStatus.textContent = 'Vetorizando arquivo...';
@@ -844,64 +880,70 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         });
 
-        // URL or Namespace text input change
-        ragInput.addEventListener('change', async () => {
+        // Process Web URL Upload
+        async function processUrlUpload(url) {
+            ragInput.value = url;
+            if (btnUploadRag) btnUploadRag.style.display = 'none';
+            if (btnClearRag) btnClearRag.style.display = 'flex';
+
+            ragUploadStatus.style.display = 'block';
+            ragUploadStatus.textContent = 'Extraindo e vetorizando URL...';
+            ragUploadStatus.style.color = '#00998F';
+            btnStart.disabled = true;
+            btnStart.style.opacity = '0.5';
+
+            try {
+                const { backendUrl: storedBackendUrl, authToken } = await chrome.storage.local.get(['backendUrl', 'authToken']);
+                const backendUrl = storedBackendUrl || "https://api.nomadelabs.com.br";
+
+                const res = await fetch(`${backendUrl}/api/v1/rag/upload_context`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${authToken}`
+                    },
+                    body: JSON.stringify({
+                        url: url,
+                        namespace: 'auto'
+                    })
+                });
+
+                if (!res.ok) throw new Error("Falha ao vetorizar URL");
+
+                ragUploadStatus.textContent = 'URL vetorizada!';
+                ragUploadStatus.style.color = '#34C759';
+                if (ragSublabel) ragSublabel.textContent = 'URL Ativa';
+
+                chrome.storage.local.set({ 
+                    ragContext: { namespace: 'auto', url: url }
+                });
+
+            } catch (err) {
+                ragUploadStatus.textContent = 'Erro na URL.';
+                ragUploadStatus.style.color = '#FF3B30';
+                console.error("RAG URL Error:", err);
+            } finally {
+                btnStart.disabled = false;
+                btnStart.style.opacity = '1';
+            }
+        }
+
+        // Module text input change
+        ragInput.addEventListener('change', () => {
             const val = ragInput.value.trim();
             if (!val) {
                 chrome.storage.local.remove(['ragNamespace', 'ragContext']);
+                if (ragSublabel) ragSublabel.textContent = 'Contexto da IA';
                 return;
             }
 
-            // Check if user pasted a Web URL
-            if (val.startsWith('http://') || val.startsWith('https://')) {
-                ragUploadStatus.style.display = 'block';
-                ragUploadStatus.textContent = 'Extraindo e vetorizando URL...';
-                ragUploadStatus.style.color = '#00998F';
-                btnStart.disabled = true;
-                btnStart.style.opacity = '0.5';
-
-                try {
-                    const { backendUrl: storedBackendUrl, authToken } = await chrome.storage.local.get(['backendUrl', 'authToken']);
-                    const backendUrl = storedBackendUrl || "https://api.nomadelabs.com.br";
-
-                    const res = await fetch(`${backendUrl}/api/v1/rag/upload_context`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${authToken}`
-                        },
-                        body: JSON.stringify({
-                            url: val,
-                            namespace: 'auto'
-                        })
-                    });
-
-                    if (!res.ok) throw new Error("Falha ao vetorizar URL");
-
-                    ragUploadStatus.textContent = 'URL vetorizada!';
-                    ragUploadStatus.style.color = '#34C759';
-                    if (ragSublabel) ragSublabel.textContent = 'URL RAG Ativa';
-
-                    chrome.storage.local.set({ 
-                        ragContext: { namespace: 'auto', url: val }
-                    });
-
-                } catch (err) {
-                    ragUploadStatus.textContent = 'Erro na URL.';
-                    ragUploadStatus.style.color = '#FF3B30';
-                    console.error("RAG URL Error:", err);
-                } finally {
-                    btnStart.disabled = false;
-                    btnStart.style.opacity = '1';
-                }
-            } else if (!currentAttachedFile) {
-                // User typed a custom namespace name (e.g. BPM, GED)
+            if (!currentAttachedFile && !val.startsWith('http://') && !val.startsWith('https://')) {
                 chrome.storage.local.set({ ragNamespace: val });
-                if (ragSublabel) ragSublabel.textContent = `Namespace: ${val}`;
+                if (ragSublabel) ragSublabel.textContent = `Módulo: ${val}`;
             }
         });
 
-        // Clear RAG attachment
+        // Clear RAG attachment or URL
         if (btnClearRag) {
             btnClearRag.addEventListener('click', () => {
                 inputRagFile.value = '';
@@ -913,7 +955,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     ragUploadStatus.style.display = 'none';
                     ragUploadStatus.textContent = '';
                 }
-                if (ragSublabel) ragSublabel.textContent = 'Namespace ou URL';
+                if (ragSublabel) ragSublabel.textContent = 'Contexto da IA';
                 chrome.storage.local.remove(['ragContext', 'ragNamespace']);
             });
         }

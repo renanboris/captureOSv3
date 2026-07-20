@@ -936,8 +936,8 @@ export default function AdminPanel() {
             <BookOpen size={20} />
           </div>
           <div>
-            <h2 className="text-base font-bold text-slate-900 dark:text-white">Base de Conhecimento (RAG) & Documentos</h2>
-            <p className="text-xs text-slate-500 dark:text-slate-400 font-mono">Vetorizar documentação corporativa, manuais ou Release Notes (PDF/TXT/MD)</p>
+            <h2 className="text-base font-bold text-slate-900 dark:text-white">Base de Conhecimento (RAG) & Documentação</h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400 font-mono">Injetar manuais, Release Notes ou links web de documentação na Inteligência Artificial</p>
           </div>
         </div>
 
@@ -945,11 +945,11 @@ export default function AdminPanel() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <label className="text-xs font-mono font-medium text-slate-700 dark:text-slate-300">
-                Namespace / Módulo (Opcional)
+                Módulo / Assunto (ex: BPM, GED, HCM, ERP) ou URL Web
               </label>
               <input
                 type="text"
-                placeholder="Ex: BPM, GED, HCM, ERP (Vazio = Auto)"
+                placeholder="Cole uma URL (https://...) ou digite o Módulo..."
                 value={ragNamespaceInput}
                 onChange={(e) => setRagNamespaceInput(e.target.value)}
                 className="w-full px-3.5 py-2 border border-slate-200 dark:border-white/[0.1] rounded-xl text-xs font-mono bg-white dark:bg-surface-900 text-slate-900 dark:text-white outline-none focus:border-slate-400 dark:focus:border-white/30 transition-colors"
