@@ -280,7 +280,29 @@ def extrair_texto_documento(file_data_b64: str, filename: str) -> str:
         else:
             return raw_bytes.decode("utf-8", errors="ignore")
     except Exception as e:
-        logger.error(f"Falha ao extrair texto: {e}")
+        logger.error(f"Falha ao extrair texto de arquivo: {e}")
+        return ""
+
+def extrair_texto_url(url: str) -> str:
+    """Extrai texto limpo de uma URL Web (HTML)."""
+    import urllib.request
+    import re
+    from html import unescape
+    try:
+        req = urllib.request.Request(
+            url, 
+            headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36"}
+        )
+        with urllib.request.urlopen(req, timeout=12) as response:
+            html_raw = response.read().decode("utf-8", errors="ignore")
+        
+        clean_html = re.sub(r"(?is)<(script|style).*?>.*?</\1>", "", html_raw)
+        text_only = re.sub(r"<[^>]+>", " ", clean_html)
+        text_only = unescape(text_only)
+        lines = [line.strip() for line in text_only.splitlines() if line.strip()]
+        return "\n".join(lines)
+    except Exception as e:
+        logger.error(f"Falha ao extrair texto da URL '{url}': {e}")
         return ""
 
 def gerar_embeddings_batch(textos: List[str]) -> List[List[float]]:
@@ -293,8 +315,8 @@ def gerar_embeddings_batch(textos: List[str]) -> List[List[float]]:
     )
     return [item.embedding for item in response.data]
 
-def ingerir_documento_para_namespace(file_data_b64: str, filename: str, namespace: str) -> dict:
-    """Extrai texto, gera embeddings e salva no Pinecone sob o namespace.
+def ingerir_documento_para_namespace(file_data_b64: str = "", filename: str = "", namespace: str = "auto", url: str = "") -> dict:
+    """Extrai texto (de arquivo em base64 ou URL web), gera embeddings em lotes e salva no Pinecone sob o namespace.
     
     Returns:
         dict com {"success": bool, "namespace": str, "chunks": int, "error": str | None}
@@ -312,10 +334,16 @@ def ingerir_documento_para_namespace(file_data_b64: str, filename: str, namespac
         
     namespace = sanitizar_namespace(namespace)
     
-    texto_puro = extrair_texto_documento(file_data_b64, filename)
+    if url and url.startswith(("http://", "https://")):
+        texto_puro = extrair_texto_url(url)
+        if not filename:
+            filename = url
+    else:
+        texto_puro = extrair_texto_documento(file_data_b64, filename)
+        
     if not texto_puro.strip():
-        logger.warning(f"Documento vazio: {filename}")
-        return {"success": False, "namespace": namespace, "chunks": 0, "error": "Documento vazio ou ilegível"}
+        logger.warning(f"Conteúdo vazio de arquivo ou URL: {filename or url}")
+        return {"success": False, "namespace": namespace, "chunks": 0, "error": "Documento/URL vazio ou inacessível"}
         
     # Quebrar texto em chunks de forma inteligente
     chunks = split_text_smartly(texto_puro)

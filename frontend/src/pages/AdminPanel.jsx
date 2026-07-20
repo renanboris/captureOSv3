@@ -51,22 +51,44 @@ export default function AdminPanel() {
 
   const handleUploadRagDocument = async (e) => {
     e.preventDefault();
-    if (!ragSelectedFile) {
-      showToast({ type: 'warning', message: 'Selecione um arquivo PDF ou TXT/MD.' });
+    const urlVal = ragNamespaceInput.trim();
+    const isUrl = urlVal.startsWith('http://') || urlVal.startsWith('https://');
+
+    if (!ragSelectedFile && !isUrl) {
+      showToast({ type: 'warning', message: 'Selecione um arquivo (PDF/TXT/MD) ou cole uma URL (http://...).' });
       return;
     }
     setUploadingRag(true);
     setRagStatusMsg(null);
     try {
+      const token = localStorage.getItem('dev_token');
+      const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+      const headers = { 'Content-Type': 'application/json', ...(token ? { 'Authorization': `Bearer ${token}` } : {}) };
+
+      if (isUrl && !ragSelectedFile) {
+        const res = await fetch(`${API_URL}/api/v1/rag/upload_context`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            url: urlVal,
+            namespace: 'auto'
+          })
+        });
+
+        if (!res.ok) throw new Error('Falha ao vetorizar URL');
+        const data = await res.json();
+        setRagNamespaceInput('');
+        setRagStatusMsg(`URL vetorizada com sucesso (${data.chunks} chunks no namespace "${data.namespace}")!`);
+        showToast({ type: 'success', message: `Conteúdo da URL integrado no RAG (${data.chunks} chunks).` });
+        setUploadingRag(false);
+        return;
+      }
+
       const reader = new FileReader();
       reader.onload = async () => {
         try {
           const base64Str = reader.result.split(',')[1];
-          const token = localStorage.getItem('dev_token');
-          const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
-          const headers = { 'Content-Type': 'application/json', ...(token ? { 'Authorization': `Bearer ${token}` } : {}) };
-
-          const namespace = ragNamespaceInput.trim() || 'auto';
+          const namespace = (isUrl ? 'auto' : ragNamespaceInput.trim()) || 'auto';
           const res = await fetch(`${API_URL}/api/v1/rag/upload_context`, {
             method: 'POST',
             headers,
@@ -81,7 +103,7 @@ export default function AdminPanel() {
           const data = await res.json();
           setRagSelectedFile(null);
           setRagNamespaceInput('');
-          setRagStatusMsg(`Vetorizado com sucesso (${data.chunks} chunks no namespace "${data.namespace}")!`);
+          setRagStatusMsg(`Documento vetorizado com sucesso (${data.chunks} chunks no namespace "${data.namespace}")!`);
           showToast({ type: 'success', message: `Base RAG atualizada (${data.chunks} chunks).` });
         } catch (err) {
           setRagStatusMsg(`Erro ao anexar: ${err.message}`);
@@ -92,7 +114,7 @@ export default function AdminPanel() {
       };
       reader.readAsDataURL(ragSelectedFile);
     } catch (err) {
-      setRagStatusMsg(`Erro ao ler arquivo: ${err.message}`);
+      setRagStatusMsg(`Erro ao ler arquivo/URL: ${err.message}`);
       setUploadingRag(false);
     }
   };

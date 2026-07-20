@@ -753,33 +753,51 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     // ═══════════════════════════════════════════
-    // RAG UPLOAD LOGIC
+    // RAG UPLOAD & URL LOGIC
     // ═══════════════════════════════════════════
     const btnUploadRag = document.getElementById('btn-upload-rag');
     const inputRagFile = document.getElementById('rag-file');
-    const ragFileName = document.getElementById('rag-file-name');
+    const ragInput = document.getElementById('rag-input');
     const ragUploadStatus = document.getElementById('rag-upload-status');
-    const selectRagNamespace = document.getElementById('rag-namespace');
     const btnClearRag = document.getElementById('btn-clear-rag');
+    const ragSublabel = document.getElementById('rag-sublabel');
 
-    if (btnUploadRag && inputRagFile) {
+    let currentAttachedFile = null;
+
+    if (btnUploadRag && inputRagFile && ragInput) {
+        // Restore saved RAG namespace if any
+        chrome.storage.local.get(['ragNamespace', 'ragContext'], (res) => {
+            if (res.ragNamespace && !ragInput.value) {
+                ragInput.value = res.ragNamespace;
+            }
+            if (res.ragContext && res.ragContext.filename) {
+                ragInput.value = res.ragContext.filename;
+                if (btnUploadRag) btnUploadRag.style.display = 'none';
+                if (btnClearRag) btnClearRag.style.display = 'flex';
+                if (ragSublabel) ragSublabel.textContent = 'Arquivo anexado';
+            }
+        });
+
+        // Click on Paperclip icon opens file picker
         btnUploadRag.addEventListener('click', () => {
             inputRagFile.click();
         });
 
+        // File Selection Event
         inputRagFile.addEventListener('change', async (e) => {
             const file = e.target.files[0];
             if (!file) return;
 
-            ragFileName.textContent = file.name;
-            ragFileName.style.display = 'block';
-            if (btnClearRag) btnClearRag.style.display = 'inline-flex';
+            currentAttachedFile = file;
+            ragInput.value = file.name;
             btnUploadRag.style.display = 'none';
+            if (btnClearRag) btnClearRag.style.display = 'flex';
+            if (ragSublabel) ragSublabel.textContent = 'Arquivo anexado';
+            
             ragUploadStatus.style.display = 'block';
             ragUploadStatus.textContent = 'Vetorizando arquivo...';
             ragUploadStatus.style.color = '#00998F';
             
-            // Disable start recording
             btnStart.disabled = true;
             btnStart.style.opacity = '0.5';
 
@@ -791,8 +809,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                     reader.readAsDataURL(file);
                 });
 
-                const rawNamespace = selectRagNamespace ? selectRagNamespace.value.trim() : '';
-                const namespace = rawNamespace || 'auto';
                 const { backendUrl: storedBackendUrl, authToken } = await chrome.storage.local.get(['backendUrl', 'authToken']);
                 const backendUrl = storedBackendUrl || "https://api.nomadelabs.com.br";
 
@@ -805,18 +821,17 @@ document.addEventListener('DOMContentLoaded', async () => {
                     body: JSON.stringify({
                         filename: file.name,
                         file_data: base64Str,
-                        namespace: namespace
+                        namespace: 'auto'
                     })
                 });
 
                 if (!res.ok) throw new Error("Falha ao vetorizar");
 
-                ragUploadStatus.textContent = 'Contexto anexado!';
-                ragUploadStatus.style.color = '#34C759'; // Success green
+                ragUploadStatus.textContent = 'Documento vetorizado!';
+                ragUploadStatus.style.color = '#34C759';
                 
-                // Save context info to be sent when recording stops
                 chrome.storage.local.set({ 
-                    ragContext: { namespace: namespace, filename: file.name }
+                    ragContext: { namespace: 'auto', filename: file.name }
                 });
                 
             } catch (err) {
@@ -828,21 +843,78 @@ document.addEventListener('DOMContentLoaded', async () => {
                 btnStart.style.opacity = '1';
             }
         });
-        
-        selectRagNamespace.addEventListener('change', () => {
-            chrome.storage.local.set({ ragNamespace: selectRagNamespace.value });
+
+        // URL or Namespace text input change
+        ragInput.addEventListener('change', async () => {
+            const val = ragInput.value.trim();
+            if (!val) {
+                chrome.storage.local.remove(['ragNamespace', 'ragContext']);
+                return;
+            }
+
+            // Check if user pasted a Web URL
+            if (val.startsWith('http://') || val.startsWith('https://')) {
+                ragUploadStatus.style.display = 'block';
+                ragUploadStatus.textContent = 'Extraindo e vetorizando URL...';
+                ragUploadStatus.style.color = '#00998F';
+                btnStart.disabled = true;
+                btnStart.style.opacity = '0.5';
+
+                try {
+                    const { backendUrl: storedBackendUrl, authToken } = await chrome.storage.local.get(['backendUrl', 'authToken']);
+                    const backendUrl = storedBackendUrl || "https://api.nomadelabs.com.br";
+
+                    const res = await fetch(`${backendUrl}/api/v1/rag/upload_context`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${authToken}`
+                        },
+                        body: JSON.stringify({
+                            url: val,
+                            namespace: 'auto'
+                        })
+                    });
+
+                    if (!res.ok) throw new Error("Falha ao vetorizar URL");
+
+                    ragUploadStatus.textContent = 'URL vetorizada!';
+                    ragUploadStatus.style.color = '#34C759';
+                    if (ragSublabel) ragSublabel.textContent = 'URL RAG Ativa';
+
+                    chrome.storage.local.set({ 
+                        ragContext: { namespace: 'auto', url: val }
+                    });
+
+                } catch (err) {
+                    ragUploadStatus.textContent = 'Erro na URL.';
+                    ragUploadStatus.style.color = '#FF3B30';
+                    console.error("RAG URL Error:", err);
+                } finally {
+                    btnStart.disabled = false;
+                    btnStart.style.opacity = '1';
+                }
+            } else if (!currentAttachedFile) {
+                // User typed a custom namespace name (e.g. BPM, GED)
+                chrome.storage.local.set({ ragNamespace: val });
+                if (ragSublabel) ragSublabel.textContent = `Namespace: ${val}`;
+            }
         });
 
+        // Clear RAG attachment
         if (btnClearRag) {
             btnClearRag.addEventListener('click', () => {
                 inputRagFile.value = '';
-                ragFileName.textContent = '';
-                ragFileName.style.display = 'none';
-                btnClearRag.style.display = 'none';
-                btnUploadRag.style.display = 'block';
-                ragUploadStatus.style.display = 'none';
-                ragUploadStatus.textContent = '';
-                chrome.storage.local.remove('ragContext');
+                ragInput.value = '';
+                currentAttachedFile = null;
+                if (btnClearRag) btnClearRag.style.display = 'none';
+                if (btnUploadRag) btnUploadRag.style.display = 'flex';
+                if (ragUploadStatus) {
+                    ragUploadStatus.style.display = 'none';
+                    ragUploadStatus.textContent = '';
+                }
+                if (ragSublabel) ragSublabel.textContent = 'Namespace ou URL';
+                chrome.storage.local.remove(['ragContext', 'ragNamespace']);
             });
         }
     }

@@ -332,8 +332,9 @@ class TTSPreviewPayload(BaseModel):
     voice_id: str = "Portuguese_Casual_Speaker_v1"
 
 class UploadContextPayload(BaseModel):
-    filename: str
-    file_data: str
+    filename: Optional[str] = ""
+    file_data: Optional[str] = ""
+    url: Optional[str] = ""
     namespace: str = "auto"
 
 class RatingPayload(BaseModel):
@@ -376,7 +377,7 @@ async def upload_context(payload: UploadContextPayload):
         
     resultado = await run_in_threadpool(
         ingerir_documento_para_namespace,
-        payload.file_data, payload.filename, payload.namespace
+        payload.file_data or "", payload.filename or "", payload.namespace, payload.url or ""
     )
     if not resultado.get("success"):
         error_msg = resultado.get("error") or "Falha ao vetorizar documento"
