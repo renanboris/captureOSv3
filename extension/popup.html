@@ -715,18 +715,21 @@
       <div class="setting-card" style="flex-direction: column; align-items: flex-start; gap: 10px; background: #F9FAFB;">
         <div style="font-size: 13px; font-weight: 600; color: #111827; display: flex; align-items: center; gap: 6px;">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#00998F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
-          Módulo e Contexto (RAG)
+          Base de Conhecimento (RAG)
         </div>
-        <input list="rag-namespaces-list" id="rag-namespace" placeholder="Auto (Todos) ou digite um novo..." style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #E5E7EB; font-size: 13px; color: #4B5563; background: #FFFFFF; outline: none;">
-        <datalist id="rag-namespaces-list">
-          <option value="auto">Busca Automática (Todos)</option>
-        </datalist>
+        
+        <div style="width: 100%; display: flex; flex-direction: column; gap: 4px;">
+          <label style="font-size: 11px; font-weight: 500; color: #6B7280;">Namespace / Módulo (opcional)</label>
+          <input type="text" id="rag-namespace" placeholder="Ex: BPM, GED, HCM (Vazio = Auto)" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #E5E7EB; font-size: 12px; color: #111827; background: #FFFFFF; outline: none;">
+        </div>
+
         <div style="width: 100%; display: flex; align-items: center; gap: 8px;">
-          <input type="file" id="rag-file" accept=".pdf,.txt" style="display: none;">
-          <button id="btn-upload-rag" style="flex: 1; padding: 6px 10px; border-radius: 6px; border: 1px dashed #00998F; background: rgba(0,153,143,0.05); color: #00998F; font-size: 12px; font-weight: 500; cursor: pointer; transition: all 0.2s;">
-            + Anexar Release Notes
+          <input type="file" id="rag-file" accept=".pdf,.txt,.md" style="display: none;">
+          <button id="btn-upload-rag" style="flex: 1; padding: 7px 10px; border-radius: 6px; border: 1px dashed #00998F; background: rgba(0,153,143,0.05); color: #00998F; font-size: 12px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 6px; transition: all 0.2s;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+            Anexar Documento (PDF/TXT)
           </button>
-          <span id="rag-file-name" style="font-size: 11px; color: #6B7280; max-width: 120px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: none;"></span>
+          <span id="rag-file-name" style="font-size: 11px; color: #374151; font-weight: 500; max-width: 120px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: none;"></span>
           <button id="btn-clear-rag" style="border: none; background: transparent; color: #EF4444; font-size: 14px; cursor: pointer; padding: 0 4px; display: none; align-items: center; justify-content: center;" title="Remover arquivo">✖</button>
         </div>
         <div id="rag-upload-status" style="font-size: 11px; font-weight: 600; color: #00998F; display: none;">Vetorizando arquivo...</div>

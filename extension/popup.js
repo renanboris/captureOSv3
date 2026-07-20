@@ -723,10 +723,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         }
         
-        // Fetch dynamic namespaces from Pinecone.
-        // Always attempt the fetch when authToken is present — backendUrl has a
-        // localhost:8000 fallback (same pattern as carregarModulosPratica and
-        // carregarRoteiros) so no hard guard on backendUrl is needed.
+        // DESATIVADO MOMENTANEAMENTE: Busca dinâmica de namespaces Pinecone
+        // A busca no modo 'auto' já atende perfeitamente. Para reativar a busca dinâmica no futuro, descomente o bloco abaixo.
+        /*
         if (res.authToken) {
             syncOrgSettings(res.authToken);
             const backendUrl = res.backendUrl || "https://api.nomadelabs.com.br";
@@ -737,7 +736,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             .then(data => {
                 const datalist = document.getElementById('rag-namespaces-list');
                 if (datalist && data.namespaces) {
-                    // Keep the "auto" option, remove the rest
                     datalist.innerHTML = '<option value="auto">Busca Automática (Todos)</option>';
                     data.namespaces.forEach(ns => {
                         const opt = document.createElement('option');
@@ -746,7 +744,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                     });
                 }
             })
-            .catch(() => { /* backend unreachable — datalist keeps default "auto" option */ });
+            .catch(() => { });
+        }
+        */
+        if (res.authToken) {
+            syncOrgSettings(res.authToken);
         }
     });
 
@@ -789,7 +791,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                     reader.readAsDataURL(file);
                 });
 
-                const namespace = selectRagNamespace.value;
+                const rawNamespace = selectRagNamespace ? selectRagNamespace.value.trim() : '';
+                const namespace = rawNamespace || 'auto';
                 const { backendUrl: storedBackendUrl, authToken } = await chrome.storage.local.get(['backendUrl', 'authToken']);
                 const backendUrl = storedBackendUrl || "https://api.nomadelabs.com.br";
 

@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Download, AlertTriangle, ShieldCheck, DollarSign, Users, Award, Lock, Plus, CheckCircle2, RefreshCw, BarChart2, Trash2, X } from 'lucide-react';
+import { Download, AlertTriangle, ShieldCheck, DollarSign, Users, Award, Lock, Plus, CheckCircle2, RefreshCw, BarChart2, Trash2, X, Paperclip, BookOpen, UploadCloud } from 'lucide-react';
 import { BarChart, Bar, AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell } from 'recharts';
 
 import KpiCard from '../components/KpiCard';
@@ -37,12 +37,64 @@ export default function AdminPanel() {
   const [isMock, setIsMock] = useState(false);
   const [selectedRun, setSelectedRun] = useState(null);
   const [runToDelete, setRunToDelete] = useState(null);
-  const [deleting, setDeleting] = useState(false);
   const [toast, setToast] = useState(null);
+
+  const [ragNamespaceInput, setRagNamespaceInput] = useState('');
+  const [ragSelectedFile, setRagSelectedFile] = useState(null);
+  const [uploadingRag, setUploadingRag] = useState(false);
+  const [ragStatusMsg, setRagStatusMsg] = useState(null);
 
   const showToast = (toastObj) => {
     setToast(toastObj);
     setTimeout(() => setToast(null), 4000);
+  };
+
+  const handleUploadRagDocument = async (e) => {
+    e.preventDefault();
+    if (!ragSelectedFile) {
+      showToast({ type: 'warning', message: 'Selecione um arquivo PDF ou TXT/MD.' });
+      return;
+    }
+    setUploadingRag(true);
+    setRagStatusMsg(null);
+    try {
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
+          const base64Str = reader.result.split(',')[1];
+          const token = localStorage.getItem('dev_token');
+          const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+          const headers = { 'Content-Type': 'application/json', ...(token ? { 'Authorization': `Bearer ${token}` } : {}) };
+
+          const namespace = ragNamespaceInput.trim() || 'auto';
+          const res = await fetch(`${API_URL}/api/v1/rag/upload_context`, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({
+              filename: ragSelectedFile.name,
+              file_data: base64Str,
+              namespace
+            })
+          });
+
+          if (!res.ok) throw new Error('Falha ao vetorizar documento');
+          const data = await res.json();
+          setRagSelectedFile(null);
+          setRagNamespaceInput('');
+          setRagStatusMsg(`Vetorizado com sucesso (${data.chunks} chunks no namespace "${data.namespace}")!`);
+          showToast({ type: 'success', message: `Base RAG atualizada (${data.chunks} chunks).` });
+        } catch (err) {
+          setRagStatusMsg(`Erro ao anexar: ${err.message}`);
+          showToast({ type: 'error', message: `Erro na vetorização: ${err.message}` });
+        } finally {
+          setUploadingRag(false);
+        }
+      };
+      reader.readAsDataURL(ragSelectedFile);
+    } catch (err) {
+      setRagStatusMsg(`Erro ao ler arquivo: ${err.message}`);
+      setUploadingRag(false);
+    }
   };
 
   const handleConfirmDelete = async () => {
@@ -853,6 +905,85 @@ export default function AdminPanel() {
             </span>
           )}
         </div>
+      </div>
+
+      {/* Section 4.5: RAG Knowledge Base Upload */}
+      <div className="p-6 rounded-2xl bg-white border border-slate-200 dark:bg-surface-850 dark:border-white/[0.08] shadow-sm dark:shadow-xl space-y-6 transition-colors duration-200">
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 bg-emerald-500/10 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400 border border-emerald-500/20 rounded-xl">
+            <BookOpen size={20} />
+          </div>
+          <div>
+            <h2 className="text-base font-bold text-slate-900 dark:text-white">Base de Conhecimento (RAG) & Documentos</h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400 font-mono">Vetorizar documentação corporativa, manuais ou Release Notes (PDF/TXT/MD)</p>
+          </div>
+        </div>
+
+        <form onSubmit={handleUploadRagDocument} className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <label className="text-xs font-mono font-medium text-slate-700 dark:text-slate-300">
+                Namespace / Módulo (Opcional)
+              </label>
+              <input
+                type="text"
+                placeholder="Ex: BPM, GED, HCM, ERP (Vazio = Auto)"
+                value={ragNamespaceInput}
+                onChange={(e) => setRagNamespaceInput(e.target.value)}
+                className="w-full px-3.5 py-2 border border-slate-200 dark:border-white/[0.1] rounded-xl text-xs font-mono bg-white dark:bg-surface-900 text-slate-900 dark:text-white outline-none focus:border-slate-400 dark:focus:border-white/30 transition-colors"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-mono font-medium text-slate-700 dark:text-slate-300">
+                Anexar Documento (.pdf, .txt, .md)
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="file"
+                  id="admin-rag-file"
+                  accept=".pdf,.txt,.md"
+                  onChange={(e) => setRagSelectedFile(e.target.files[0] || null)}
+                  className="hidden"
+                />
+                <label
+                  htmlFor="admin-rag-file"
+                  className="flex-1 px-3.5 py-2 border border-dashed border-emerald-500/40 bg-emerald-50/50 dark:bg-emerald-500/5 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 rounded-xl text-xs font-medium font-mono cursor-pointer flex items-center justify-center gap-2 transition-all"
+                >
+                  <Paperclip size={15} />
+                  {ragSelectedFile ? ragSelectedFile.name : 'Clique para Anexar Arquivo'}
+                </label>
+                {ragSelectedFile && (
+                  <button
+                    type="button"
+                    onClick={() => setRagSelectedFile(null)}
+                    className="p-2 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10 rounded-lg text-xs font-bold cursor-pointer"
+                    title="Remover arquivo"
+                  >
+                    <X size={16} />
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-4 pt-2">
+            <button
+              type="submit"
+              disabled={uploadingRag || !ragSelectedFile}
+              className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white dark:bg-emerald-500 dark:hover:bg-emerald-400 dark:text-slate-950 rounded-xl text-xs font-bold font-mono disabled:opacity-40 transition-all shadow-md cursor-pointer flex items-center gap-2"
+            >
+              <UploadCloud size={16} />
+              {uploadingRag ? 'Vetorizando em Lotes...' : 'Vetorizar Documento RAG'}
+            </button>
+
+            {ragStatusMsg && (
+              <span className="text-xs font-mono font-medium text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5 animate-fade-in">
+                <CheckCircle2 size={15} /> {ragStatusMsg}
+              </span>
+            )}
+          </div>
+        </form>
       </div>
 
       {/* Section 5: Publication Audit Trail */}
