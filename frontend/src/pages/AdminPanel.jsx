@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Download, AlertTriangle } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
+import { Download, AlertTriangle, ShieldCheck, DollarSign, Users, Award, Lock, Plus, CheckCircle2, RefreshCw, BarChart2, Trash2, X, Paperclip, BookOpen, UploadCloud } from 'lucide-react';
+import { BarChart, Bar, AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell } from 'recharts';
 
 import KpiCard from '../components/KpiCard';
 import StatusPill from '../components/StatusPill';
@@ -9,6 +9,9 @@ import ErrorState from '../components/ErrorState';
 import SkeletonRow from '../components/SkeletonRow';
 import EditRateGauge from '../components/EditRateGauge';
 import DemoBanner from '../components/DemoBanner';
+import RunDetailsModal from '../components/RunDetailsModal';
+import DeleteConfirmModal from '../components/DeleteConfirmModal';
+import Toast from '../components/Toast';
 
 export default function AdminPanel() {
   const [runs, setRuns] = useState(window.cachedAdminData ? window.cachedAdminData.runs : []);
@@ -32,6 +35,119 @@ export default function AdminPanel() {
   const [loading, setLoading] = useState(!window.cachedAdminData);
   const [error, setError] = useState(null);
   const [isMock, setIsMock] = useState(false);
+  const [selectedRun, setSelectedRun] = useState(null);
+  const [runToDelete, setRunToDelete] = useState(null);
+  const [toast, setToast] = useState(null);
+
+  const [ragNamespaceInput, setRagNamespaceInput] = useState('');
+  const [ragSelectedFile, setRagSelectedFile] = useState(null);
+  const [uploadingRag, setUploadingRag] = useState(false);
+  const [ragStatusMsg, setRagStatusMsg] = useState(null);
+
+  const showToast = (toastObj) => {
+    setToast(toastObj);
+    setTimeout(() => setToast(null), 4000);
+  };
+
+  const handleUploadRagDocument = async (e) => {
+    e.preventDefault();
+    const urlVal = ragNamespaceInput.trim();
+    const isUrl = urlVal.startsWith('http://') || urlVal.startsWith('https://');
+
+    if (!ragSelectedFile && !isUrl) {
+      showToast({ type: 'warning', message: 'Selecione um arquivo (PDF/TXT/MD) ou cole uma URL (http://...).' });
+      return;
+    }
+    setUploadingRag(true);
+    setRagStatusMsg(null);
+    try {
+      const token = localStorage.getItem('dev_token');
+      const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+      const headers = { 'Content-Type': 'application/json', ...(token ? { 'Authorization': `Bearer ${token}` } : {}) };
+
+      if (isUrl && !ragSelectedFile) {
+        const res = await fetch(`${API_URL}/api/v1/rag/upload_context`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            url: urlVal,
+            namespace: 'auto'
+          })
+        });
+
+        if (!res.ok) throw new Error('Falha ao vetorizar URL');
+        const data = await res.json();
+        setRagNamespaceInput('');
+        setRagStatusMsg(`URL vetorizada com sucesso (${data.chunks} chunks no namespace "${data.namespace}")!`);
+        showToast({ type: 'success', message: `Conteúdo da URL integrado no RAG (${data.chunks} chunks).` });
+        setUploadingRag(false);
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
+          const base64Str = reader.result.split(',')[1];
+          const namespace = (isUrl ? 'auto' : ragNamespaceInput.trim()) || 'auto';
+          const res = await fetch(`${API_URL}/api/v1/rag/upload_context`, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({
+              filename: ragSelectedFile.name,
+              file_data: base64Str,
+              namespace
+            })
+          });
+
+          if (!res.ok) throw new Error('Falha ao vetorizar documento');
+          const data = await res.json();
+          setRagSelectedFile(null);
+          setRagNamespaceInput('');
+          setRagStatusMsg(`Documento vetorizado com sucesso (${data.chunks} chunks no namespace "${data.namespace}")!`);
+          showToast({ type: 'success', message: `Base RAG atualizada (${data.chunks} chunks).` });
+        } catch (err) {
+          setRagStatusMsg(`Erro ao anexar: ${err.message}`);
+          showToast({ type: 'error', message: `Erro na vetorização: ${err.message}` });
+        } finally {
+          setUploadingRag(false);
+        }
+      };
+      reader.readAsDataURL(ragSelectedFile);
+    } catch (err) {
+      setRagStatusMsg(`Erro ao ler arquivo/URL: ${err.message}`);
+      setUploadingRag(false);
+    }
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!runToDelete) return;
+    setDeleting(true);
+    try {
+      const token = localStorage.getItem('dev_token');
+      const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+      const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+
+      const res = await fetch(`${API_URL}/api/v1/admin/pipeline-runs/${runToDelete.session_id}`, {
+        method: 'DELETE',
+        headers
+      });
+
+      if (res.ok) {
+        setRuns(prev => prev.filter(r => r.session_id !== runToDelete.session_id));
+        window.cachedAdminData = null;
+        window.cachedDashboardData = null;
+        showToast({ type: 'success', message: `Captação "${runToDelete.titulo || runToDelete.session_id}" excluída com sucesso.` });
+      } else {
+        showToast({ type: 'error', message: 'Erro ao excluir a captação no servidor.' });
+      }
+    } catch (e) {
+      console.error(e);
+      showToast({ type: 'error', message: 'Erro de conexão ao excluir captação.' });
+    } finally {
+      setDeleting(false);
+      setRunToDelete(null);
+    }
+  };
 
   // Table states
   const [filter, setFilter] = useState('all');
@@ -45,20 +161,38 @@ export default function AdminPanel() {
   const [savingSettings, setSavingSettings] = useState(false);
   const [settingsSuccess, setSettingsSuccess] = useState(false);
 
+  const fetchSettings = async (token) => {
+    try {
+      const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+      const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+      const res = await fetch(`${API_URL}/api/v1/admin/settings`, { headers });
+      if (res.ok) {
+        const data = await res.json();
+        setDisableWhitelist(data.disable_whitelist || false);
+        setAllowedDomains(data.allowed_domains || []);
+      }
+    } catch (e) {
+      console.warn("Erro ao buscar configurações de whitelist:", e);
+    }
+  };
+
   const handleAddDomain = (e) => {
     e.preventDefault();
     const domain = newDomain.trim().toLowerCase();
     if (!domain) return;
     if (allowedDomains.includes(domain)) {
       setNewDomain('');
+      showToast({ type: 'info', message: `O domínio ${domain} já está na lista.` });
       return;
     }
     setAllowedDomains([...allowedDomains, domain]);
     setNewDomain('');
+    showToast({ type: 'success', message: `Domínio ${domain} adicionado à whitelist.` });
   };
 
   const handleRemoveDomain = (domainToRemove) => {
     setAllowedDomains(allowedDomains.filter(d => d !== domainToRemove));
+    showToast({ type: 'info', message: `Domínio ${domainToRemove} removido.` });
   };
 
   const handleSaveAdminSettings = async () => {
@@ -83,13 +217,14 @@ export default function AdminPanel() {
 
       if (res.ok) {
         setSettingsSuccess(true);
+        showToast({ type: 'success', message: 'Configurações de Whitelist e Privacidade salvas!' });
         setTimeout(() => setSettingsSuccess(false), 3000);
       } else {
-        alert("Erro ao salvar configurações.");
+        showToast({ type: 'error', message: 'Erro ao salvar configurações no servidor.' });
       }
     } catch (e) {
       console.error(e);
-      alert("Erro de rede ao salvar configurações.");
+      showToast({ type: 'error', message: 'Erro de conexão ao salvar configurações.' });
     } finally {
       setSavingSettings(false);
     }
@@ -110,7 +245,6 @@ export default function AdminPanel() {
   const fetchData = async (force = false) => {
     const CACHE_TTL_MS = 30000;
 
-    // Se o prefetch em background está rodando no momento, aguarda ele terminar em vez de duplicar requisições
     if (window.activePrefetchPromise && !force) {
       console.log("[CaptureOS Admin] Prefetch em background em execução. Aguardando conclusão...");
       setLoading(true);
@@ -130,35 +264,27 @@ export default function AdminPanel() {
       }
     }
 
-    console.log("[CaptureOS Admin] Carregando dados. Status do cache global (window.cachedAdminData):", 
-      window.cachedAdminData ? "Presente" : "Ausente/Nulo");
-
     if (window.cachedAdminData && !force) {
       const elapsed = Date.now() - window.cachedAdminData.timestamp;
       const isFresh = elapsed < CACHE_TTL_MS;
-      console.log(`[CaptureOS Admin] Cache encontrado. Idade: ${Math.round(elapsed/1000)}s | TTL: 30s | Válido/Fresh: ${isFresh}`);
       if (isFresh) {
         setRuns(window.cachedAdminData.runs);
         setPublications(window.cachedAdminData.publications);
         setMetrics(window.cachedAdminData.metrics);
         setCosts(window.cachedAdminData.costs);
         setLoading(false);
-        console.log("[CaptureOS Admin] SUCESSO: Renderização instantânea usando cache válido.");
         return;
       }
     }
 
-    console.log("[CaptureOS Admin] Cache ausente ou expirado. Iniciando busca de dados na API...");
     if (!window.cachedAdminData || force) {
       setLoading(true);
     }
     setError(null);
     try {
-      // 1. Tentar obter o token dos parâmetros da URL (?token=...)
       const urlToken = getQueryParam('token');
       if (urlToken) {
         localStorage.setItem('dev_token', urlToken);
-        // Limpar o token da barra de endereços para segurança e estética (evita vazamento no histórico/compartilhamento)
         try {
           if (window.location.search.includes('token=')) {
             const url = new URL(window.location.href);
@@ -181,7 +307,6 @@ export default function AdminPanel() {
       let token = urlToken || localStorage.getItem('dev_token');
       const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
 
-      // Se não houver token localmente nem na URL, tenta obter um de dev (apenas local)
       if (!token) {
         try {
           const authRes = await fetch(`${API_URL}/api/v1/auth/dev-token`);
@@ -224,7 +349,6 @@ export default function AdminPanel() {
         const runsList = runsData.runs || [];
         const pubsList = pubsData.publications || [];
         
-        // Atualiza o cache global com timestamp
         window.cachedAdminData = {
           runs: runsList,
           publications: pubsList,
@@ -242,7 +366,6 @@ export default function AdminPanel() {
       }
       
       if (runsRes.status === 401) {
-        // Token expirou ou é inválido, tenta renovar uma vez via endpoint de dev
         try {
           const authRes = await fetch(`${API_URL}/api/v1/auth/dev-token`);
           if (authRes.ok) {
@@ -274,7 +397,6 @@ export default function AdminPanel() {
                 const runsList = runsData.runs || [];
                 const pubsList = pubsData.publications || [];
                 
-                // Atualiza o cache global com timestamp
                 window.cachedAdminData = {
                   runs: runsList,
                   publications: pubsList,
@@ -296,16 +418,15 @@ export default function AdminPanel() {
           console.warn("Falha ao renovar token de dev:", e);
         }
 
-        // Se mesmo assim não autenticou, cai no mock
         setIsMock(true);
         const mockRuns = [
-          { id: '1', session_id: 's_abc123', status: 'completed', failure_stage: null, detected_interface_type: 'sap_fiori', recording_duration_seconds: 420, created_at: new Date().toISOString() },
-          { id: '2', session_id: 's_xyz789', status: 'tech_error', failure_stage: 'ai_generation', detected_interface_type: 'unknown', recording_duration_seconds: 180, created_at: new Date(Date.now() - 3600000).toISOString() },
-          { id: '3', session_id: 's_def456', status: 'user_reported_error', failure_stage: 'capture', detected_interface_type: 'salesforce_lightning', recording_duration_seconds: 300, created_at: new Date(Date.now() - 7200000).toISOString() },
-          { id: '4', session_id: 's_ghj789', status: 'completed', failure_stage: null, detected_interface_type: 'sap_fiori', recording_duration_seconds: 500, created_at: new Date(Date.now() - 8640000).toISOString() }
+          { id: '1', session_id: 's_abc123', titulo: 'Navegação SAP Fiori - Ordem de Compra', status: 'completed', failure_stage: null, detected_interface_type: 'sap_fiori', recording_duration_seconds: 420, gemini_call_count: 4, cost_usd: 0.15, created_at: new Date().toISOString() },
+          { id: '2', session_id: 's_xyz789', titulo: 'Geração do Pacote SCORM 1.2', status: 'tech_error', failure_stage: 'ai_generation', detected_interface_type: 'unknown', recording_duration_seconds: 180, gemini_call_count: 8, cost_usd: 0.35, created_at: new Date(Date.now() - 3600000).toISOString() },
+          { id: '3', session_id: 's_def456', titulo: 'Ajuste de Prompt de Captura', status: 'user_reported_error', failure_stage: 'capture', detected_interface_type: 'salesforce_lightning', recording_duration_seconds: 300, gemini_call_count: 2, cost_usd: 0.08, created_at: new Date(Date.now() - 7200000).toISOString() },
+          { id: '4', session_id: 's_ghj789', titulo: 'Consulta de Holerite Senior HCM', status: 'completed', failure_stage: null, detected_interface_type: 'sap_fiori', recording_duration_seconds: 500, gemini_call_count: 5, cost_usd: 0.22, created_at: new Date(Date.now() - 8640000).toISOString() }
         ];
         const mockPubs = [
-          { id: '1', session_id: 's_abc123', destination: 'SCORM_DOWNLOAD', published_by: 'João Silva', published_at: new Date().toISOString() }
+          { id: '1', session_id: 's_abc123', destination: 'SCORM_DOWNLOAD', published_by: 'boris.renan@gmail.com', published_at: new Date().toISOString() }
         ];
         const mockMetrics = {
           total_runs: 45, success_rate: 94.5, avg_edit_rate: 12.5, time_saved_hours: 168.5,
@@ -320,17 +441,16 @@ export default function AdminPanel() {
           total_cost_brl: 69.7368,
           avg_cost_per_run_usd: 0.2767,
           cost_by_instructor: [
-            { user_id: 'João S.', total_cost_usd: 5.10, run_count: 20 },
-            { user_id: 'Maria P.', total_cost_usd: 4.85, run_count: 15 }
+            { user_id: 'boris.renan@gmail.com', total_cost_usd: 5.10, run_count: 20 },
+            { user_id: 'maria.p@empresa.com', total_cost_usd: 4.85, run_count: 15 }
           ],
           most_expensive_runs: [
-            { session_id: 'sess_1780690407909', cost_usd: 1.85, gemini_call_count: 12 },
-            { session_id: 'sess_9981234567890', cost_usd: 0.95, gemini_call_count: 6 }
+            { session_id: 'sess_1780690407909', titulo: 'Re-Análise de Transação SAP Complexa', cost_usd: 1.85, gemini_call_count: 12, status: 'completed' },
+            { session_id: 'sess_9981234567890', titulo: 'Captura com Áudio Longo Narrado', cost_usd: 0.95, gemini_call_count: 6, status: 'completed' }
           ],
           unverified_cost_warning: true
         };
 
-        // Salvar no cache para navegação instantânea em modo mock
         window.cachedAdminData = {
           runs: mockRuns,
           publications: mockPubs,
@@ -344,13 +464,13 @@ export default function AdminPanel() {
         setMetrics(mockMetrics);
         setCosts(mockCosts);
         setDisableWhitelist(true);
-        setAllowedDomains(["localhost", "127.0.0.1", "senior.com.br", "senior.com"]);
+        setAllowedDomains(["localhost", "127.0.0.1", "senior.com.br", "salesforce.com"]);
         setLoading(false);
       } else {
         throw new Error("Falha na API");
       }
     } catch (err) {
-      setError("Não foi possível carregar as execuções. Verifique se o servidor está ativo ou atualize a página.");
+      setError("Não foi possível carregar as execuções do Painel do Gestor.");
       setLoading(false);
     }
   };
@@ -372,7 +492,7 @@ export default function AdminPanel() {
   }, [filteredRuns, page]);
 
   useEffect(() => {
-    setPage(1); // Reset page on filter change
+    setPage(1);
   }, [filter]);
 
   const filterOptions = [
@@ -384,11 +504,11 @@ export default function AdminPanel() {
 
   const getStatusBorderColor = (status) => {
     switch (status) {
-      case 'completed': return 'border-l-status-ok';
-      case 'tech_error': return 'border-l-status-error';
-      case 'user_reported_error': return 'border-l-status-warn';
-      case 'processing': return 'border-l-status-pending';
-      default: return 'border-l-zinc-300 dark:border-l-zinc-600';
+      case 'completed': return 'border-l-emerald-500';
+      case 'tech_error': return 'border-l-rose-500';
+      case 'user_reported_error': return 'border-l-amber-500';
+      case 'processing': return 'border-l-purple-500';
+      default: return 'border-l-slate-700';
     }
   };
 
@@ -399,9 +519,17 @@ export default function AdminPanel() {
     return `${m}m ${s.toString().padStart(2, '0')}s`;
   };
 
+  const instructorChartData = useMemo(() => {
+    return (metrics.runs_by_instructor || []).map(inst => ({
+      name: (inst.display_name || inst.instructor_id).split('@')[0],
+      total: inst.total_runs,
+      completadas: inst.completed_runs
+    }));
+  }, [metrics]);
+
   if (error) {
     return (
-      <div className="p-8">
+      <div className="p-8 max-w-7xl mx-auto">
         <DemoBanner isVisible={isMock} />
         <ErrorState message={error} onRetry={fetchData} />
       </div>
@@ -409,75 +537,84 @@ export default function AdminPanel() {
   }
 
   return (
-    <div className="p-8 max-w-7xl mx-auto">
+    <div className="p-8 max-w-7xl mx-auto space-y-8 animate-fade-in font-sans">
       <DemoBanner isVisible={isMock} />
 
-      <header className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-8">
+      {/* Header Gestor Diamante */}
+      <header className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 pb-6 border-b border-slate-200 dark:border-white/[0.08]">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">Painel do Gestor</h1>
-          <p className="text-slate-500 dark:text-slate-400 mt-1">
-            Métricas de Qualidade (ROI) e Governança Organizacional.
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white flex items-center gap-2">
+              Painel do Gestor
+            </h1>
+            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-semibold bg-slate-100 text-slate-700 border border-slate-200 dark:bg-white/10 dark:text-slate-200 dark:border-white/15">
+              ROI & Governança
+            </span>
+          </div>
+          <p className="text-xs text-slate-500 dark:text-slate-400 font-mono mt-1">
+            Qualidade da IA, métricas financeiras, auditoria de publicações e segurança corporativa.
           </p>
         </div>
-        <div className="flex gap-4">
+
+        <div className="flex items-center gap-3">
           <button 
-            onClick={() => fetchData(true)} 
+            onClick={() => {
+              fetchData(true);
+              showToast({ type: 'info', message: 'Métricas do gestor sincronizadas!' });
+            }} 
             disabled={loading}
-            className="flex items-center gap-2 px-3 py-2 bg-white dark:bg-surface-800 hover:bg-slate-50 dark:hover:bg-surface-700 text-slate-700 dark:text-slate-200 font-medium rounded-lg transition-colors border border-surface-200 dark:border-surface-700 shadow-sm"
+            className="flex items-center gap-2 px-3.5 py-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 dark:bg-surface-850 dark:hover:bg-white/[0.08] dark:text-slate-300 dark:border-white/[0.08] font-mono text-xs font-medium rounded-xl transition-all shadow-xs cursor-pointer"
           >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={loading ? "animate-spin" : ""}>
-              <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
-            </svg>
+            <RefreshCw size={14} className={loading ? "animate-spin text-slate-900 dark:text-white" : "text-slate-400"} />
             <span>Atualizar</span>
           </button>
         </div>
       </header>
 
-      {/* Alerta de Execuções Extras / Caras - Redesigned */}
+      {/* Alerta de Execuções Atípicas / Custo Elevado */}
       {!loading && costs.most_expensive_runs?.some(run => run.gemini_call_count > 5 && run.cost_usd >= 0.10) && (
-        <div className="bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-500/20 dark:border-amber-500/30 rounded-2xl p-5 mb-8 shadow-sm backdrop-blur-sm relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/10 rounded-full blur-2xl pointer-events-none"></div>
-          
+        <div className="p-5 rounded-2xl bg-amber-50 border border-amber-200 dark:bg-amber-500/[0.06] dark:border-amber-500/30 shadow-sm dark:shadow-xl relative overflow-hidden backdrop-blur-sm transition-colors duration-200">
           <div className="flex items-start gap-4">
-            <div className="p-3 bg-gradient-to-br from-amber-500 to-orange-600 text-white rounded-xl shadow-md flex-shrink-0">
-              <AlertTriangle size={22} />
+            <div className="p-3 bg-amber-500 text-slate-950 rounded-xl shadow-md font-bold flex-shrink-0">
+              <AlertTriangle size={20} />
             </div>
             
-            <div className="flex-1">
+            <div className="flex-1 space-y-3">
               <div className="flex items-center gap-2 flex-wrap">
-                <h4 className="font-semibold text-slate-900 dark:text-white text-base">
-                  Alerta de Custo Operacional (Execuções Atípicas)
+                <h4 className="font-bold text-slate-900 dark:text-white text-sm">
+                  Alerta Operacional: Execuções com Alto Custo de IA
                 </h4>
-                <span className="px-2.5 py-0.5 text-xs font-semibold rounded-full bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30">
-                  &gt; 5 chamadas Gemini (&ge; R$ 0,55)
+                <span className="px-2 py-0.5 text-[10px] font-mono font-semibold rounded-full bg-amber-100 text-amber-800 border border-amber-300 dark:bg-amber-500/20 dark:text-amber-300 dark:border-amber-500/40">
+                  &gt; 5 reqs Gemini (&ge; R$ 0,55)
                 </span>
               </div>
               
-              <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
-                As sessões abaixo exigiram re-análise avançada pela IA e geraram custo relevante. Considere revisar a captura original ou otimizar as instruções do roteiro:
+              <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed font-mono">
+                Sessões que exigiram re-processamento intensivo pela IA. Clique no card para abrir o raio-x completo:
               </p>
               
-              <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3 max-w-4xl">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
                 {costs.most_expensive_runs
                   .filter(run => run.gemini_call_count > 5 && run.cost_usd >= 0.10)
                   .map(run => (
                     <div 
                       key={run.session_id} 
-                      className="bg-white/80 dark:bg-surface-850/90 border border-amber-200/60 dark:border-amber-900/40 rounded-xl p-3 flex items-center justify-between gap-3 shadow-xs hover:border-amber-400 transition-all"
+                      onClick={() => setSelectedRun(run)}
+                      className="bg-white border border-amber-200 dark:bg-surface-850 dark:border-amber-500/20 rounded-xl p-3 flex items-center justify-between gap-3 shadow-xs hover:border-amber-400 dark:hover:border-amber-500/50 hover:bg-slate-50 dark:hover:bg-white/[0.03] transition-all cursor-pointer"
                     >
                       <div className="min-w-0 flex-1">
                         <p className="text-xs font-semibold text-slate-900 dark:text-slate-100 truncate" title={run.titulo || run.session_id}>
                           {run.titulo || `Sessão ${run.session_id.substring(0, 8)}`}
                         </p>
-                        <p className="text-[10px] font-mono text-slate-400 truncate">{run.session_id}</p>
+                        <p className="text-[10px] font-mono text-slate-500 dark:text-slate-400 truncate">{run.session_id}</p>
                       </div>
                       
                       <div className="flex items-center gap-2 text-right">
-                        <span className="px-2 py-0.5 text-[11px] font-semibold font-mono rounded-md bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20">
+                        <span className="px-2 py-0.5 text-[10px] font-mono font-semibold rounded bg-rose-100 text-rose-800 dark:bg-rose-500/10 dark:text-rose-400 border border-rose-200 dark:border-rose-500/20">
                           {run.gemini_call_count} reqs
                         </span>
-                        <span className="text-xs font-bold font-mono text-slate-700 dark:text-slate-200">
-                          R$ {(run.cost_usd * 5.60).toFixed(2)} <span className="text-[10px] text-slate-400 font-normal">(${(run.cost_usd).toFixed(4)})</span>
+                        <span className="text-xs font-bold font-mono text-slate-900 dark:text-white">
+                          R$ {(run.cost_usd * (costs.usd_to_brl_rate || 5.55)).toFixed(2)}
                         </span>
                       </div>
                     </div>
@@ -488,147 +625,188 @@ export default function AdminPanel() {
         </div>
       )}
 
-      {/* 1. KPI Bar */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
+      {/* Top 5 KPI Cards Row */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         {loading ? (
           Array.from({ length: 5 }).map((_, i) => (
-            <div key={i} className="bg-white dark:bg-surface-800 p-6 rounded-xl shadow-sm border border-surface-200 dark:border-surface-700">
-              <div className="h-3 w-16 bg-surface-200 dark:bg-surface-700 rounded mb-4 animate-pulse"></div>
-              <div className="h-8 w-24 bg-surface-200 dark:bg-surface-700 rounded animate-pulse"></div>
+            <div key={i} className="bg-white border border-slate-200 dark:bg-surface-850 dark:border-white/[0.08] p-5 rounded-2xl">
+              <div className="h-3 w-16 bg-slate-200 dark:bg-white/10 rounded mb-4 animate-pulse"></div>
+              <div className="h-8 w-24 bg-slate-200 dark:bg-white/10 rounded animate-pulse"></div>
             </div>
           ))
         ) : (
           <>
-            <KpiCard title="Total de Execuções" value={metrics.total_runs} />
+            <KpiCard title="Execuções Totais" value={metrics.total_runs} trend="+15%" />
             <KpiCard title="Taxa de Sucesso" value={`${metrics.success_rate}%`} status={metrics.success_rate > 90 ? 'ok' : 'warn'} />
-            <KpiCard title="Tempo Economizado" value={`${metrics.time_saved_hours}h`} status="info" />
-            <KpiCard title="Modos Reportados" value="0" />
+            <KpiCard title="Tempo Economizado" value={`${metrics.time_saved_hours}h`} status="info" subtitle="ROI em Automação" />
+            <KpiCard title="Falhas Reportadas" value="0" status="neutral" />
             
-            {/* Custo da Operação KPI Card */}
-            <div className="bg-white dark:bg-surface-800 p-6 rounded-xl shadow-sm border border-surface-200 dark:border-surface-700 flex flex-col justify-center relative">
-              <div className="flex items-center justify-between mb-1">
-                <p className="text-xs uppercase tracking-widest text-zinc-500 dark:text-zinc-400">
+            {/* Custo Operacional Card */}
+            <div className="p-5 rounded-2xl bg-white border border-slate-200 dark:bg-surface-850 dark:border-white/[0.08] shadow-sm dark:shadow-xl flex flex-col justify-between relative overflow-hidden card-linear-hover transition-colors duration-200">
+              <div className="flex items-center justify-between">
+                <p className="text-[11px] font-mono uppercase tracking-wider text-slate-500 dark:text-slate-400 font-medium">
                   Custo Operacional
                 </p>
-              </div>
-              <div className="flex items-baseline gap-1.5 flex-wrap">
-                <p className="text-2xl font-mono font-bold text-slate-900 dark:text-white">
-                  R$ {(costs.total_cost_brl || (costs.total_cost_usd ? costs.total_cost_usd * 5.60 : 0)).toFixed(2)}
-                </p>
-                <span className="text-[11px] text-slate-400 font-mono">
-                  (${costs.total_cost_usd ? costs.total_cost_usd.toFixed(2) : '0.00'} USD)
+                <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 dark:bg-emerald-500/10 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-500/20 font-semibold" title="Cotação em tempo real via AwesomeAPI">
+                  USD: R$ {(costs.usd_to_brl_rate || 5.55).toFixed(2)}
                 </span>
+              </div>
+              <div className="mt-2">
+                <p className="text-2xl font-mono font-bold text-slate-900 dark:text-white">
+                  R$ {(costs.total_cost_brl || (costs.total_cost_usd ? costs.total_cost_usd * (costs.usd_to_brl_rate || 5.55) : 0)).toFixed(2)}
+                </p>
+                <p className="text-[10px] text-slate-500 dark:text-slate-400 font-mono mt-0.5">
+                  ${costs.total_cost_usd ? costs.total_cost_usd.toFixed(2) : '0.00'} USD acumulado
+                </p>
               </div>
             </div>
           </>
         )}
       </div>
 
-      {/* 2. Secondary Analytics Section */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-        <div className="bg-white dark:bg-surface-800 p-6 rounded-xl shadow-sm border border-surface-200 dark:border-surface-700 lg:col-span-2">
-          <h3 className="text-base font-semibold text-slate-900 dark:text-white mb-4">
-            Uso por Instrutor
-          </h3>
-          <div className="space-y-4">
+      {/* Section 2: AI Quality & Instructor Productivity */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        {/* Usage by Instructor Chart */}
+        <div className="p-6 rounded-2xl bg-white border border-slate-200 dark:bg-surface-850 dark:border-white/[0.08] shadow-sm dark:shadow-xl lg:col-span-2 space-y-4 transition-colors duration-200">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <Users size={18} className="text-slate-700 dark:text-white" />
+                <span>Uso por Instrutor</span>
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-mono mt-0.5">Produtividade de tutoriais criados no time</p>
+            </div>
+            <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-slate-100 text-slate-700 border border-slate-200 dark:bg-white/10 dark:text-slate-300 dark:border-white/15 font-semibold">
+              Top Performers
+            </span>
+          </div>
+
+          {/* Recharts BarChart */}
+          <div className="h-48 w-full pt-2">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={instructorChartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(148, 163, 184, 0.15)" />
+                <XAxis dataKey="name" stroke="#64748b" tick={{ fontSize: 11, fill: '#64748b' }} />
+                <YAxis stroke="#64748b" tick={{ fontSize: 11, fill: '#64748b' }} />
+                <Tooltip cursor={{ fill: 'rgba(148, 163, 184, 0.08)' }} content={({ active, payload }) => {
+                  if (active && payload && payload.length) {
+                    return (
+                      <div className="bg-white border border-slate-200 dark:bg-surface-850 dark:border-white/10 p-3 rounded-xl shadow-2xl text-xs font-mono">
+                        <p className="text-slate-900 dark:text-white font-bold">{payload[0].payload.name}</p>
+                        <p className="text-slate-700 dark:text-white mt-1">Execuções Totais: {payload[0].value}</p>
+                      </div>
+                    );
+                  }
+                  return null;
+                }} />
+                <Bar dataKey="total" radius={[6, 6, 0, 0]}>
+                  {instructorChartData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={index === 0 ? '#0f172a' : index === 1 ? '#06b6d4' : '#8b5cf6'} className="dark:fill-white" />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+
+          <div className="space-y-2 pt-2 border-t border-slate-100 dark:border-white/[0.06]">
             {metrics.runs_by_instructor?.map((inst, idx) => {
               const name = inst.display_name || inst.name || (inst.instructor_id.includes('@') ? inst.instructor_id : `Instrutor (${inst.instructor_id.substring(0, 8)})`);
               const initial = name.charAt(0).toUpperCase();
               return (
-                <div key={idx} className="flex items-center justify-between p-3 bg-surface-50 dark:bg-surface-900/50 rounded-lg">
+                <div key={idx} className="flex items-center justify-between p-2.5 bg-slate-50 hover:bg-slate-100 dark:bg-white/[0.02] dark:hover:bg-white/[0.04] rounded-xl transition-colors text-xs">
                   <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full bg-brand-500/10 text-brand-600 dark:text-brand-400 flex items-center justify-center font-semibold text-xs">
+                    <div className="w-7 h-7 rounded-full bg-slate-900 text-white dark:bg-white dark:text-slate-950 flex items-center justify-center font-bold font-mono">
                       {initial}
                     </div>
                     <div>
-                      <p className="text-sm font-medium text-slate-900 dark:text-white" title={name}>{name}</p>
-                      <p className="text-xs text-slate-500">{inst.total_runs} execuções criadas</p>
+                      <p className="font-semibold text-slate-900 dark:text-slate-100" title={name}>{name}</p>
+                      <p className="text-[10px] font-mono text-slate-500 dark:text-slate-400">{inst.total_runs} módulos gravados</p>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <span className="text-xs font-semibold px-2.5 py-1 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 rounded-full">
-                      {inst.completed_runs} completadas
-                    </span>
-                  </div>
+                  <span className="text-[10px] font-mono px-2 py-0.5 bg-slate-100 text-slate-700 border border-slate-200 dark:bg-white/10 dark:text-slate-300 dark:border-white/15 rounded-md font-semibold">
+                    {inst.completed_runs} 100% OK
+                  </span>
                 </div>
               );
             })}
           </div>
         </div>
 
-        <div className="bg-white dark:bg-surface-800 p-6 rounded-xl shadow-sm border border-surface-200 dark:border-surface-700">
-          <h3 className="text-base font-semibold text-slate-900 dark:text-white mb-4">
-            Últimas Publicações
-          </h3>
-          <div className="space-y-3">
-            {publications.length === 0 ? (
-              <p className="text-xs text-slate-500 py-4 text-center">Nenhuma publicação recente.</p>
-            ) : (
-              publications.map((pub) => (
-                <div key={pub.id} className="p-3 bg-surface-50 dark:bg-surface-900/50 rounded-lg text-xs">
-                  <div className="flex justify-between items-center mb-1">
-                    <span className="font-semibold text-slate-900 dark:text-white">{pub.destination}</span>
-                    <span className="text-slate-400">{new Date(pub.published_at).toLocaleDateString()}</span>
-                  </div>
-                  <p className="text-slate-500">Por: {pub.published_by}</p>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
+        {/* AI Precision Gauge */}
+        <EditRateGauge rate={metrics.avg_edit_rate || 12.5} />
       </div>
 
-      {/* 3. Pipeline Runs Table */}
-      <div className="bg-white dark:bg-surface-800 rounded-xl shadow-sm border border-surface-200 dark:border-surface-700 mb-8 overflow-hidden">
-        <div className="px-6 py-4 border-b border-surface-200 dark:border-surface-700 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Pipeline de Captura</h2>
+      {/* Section 3: Main Runs Table */}
+      <div className="rounded-2xl bg-white border border-slate-200 dark:bg-surface-850 dark:border-white/[0.08] shadow-sm dark:shadow-xl overflow-hidden transition-colors duration-200">
+        <div className="px-6 py-4 border-b border-slate-200 dark:border-white/[0.08] flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-slate-50/50 dark:bg-white/[0.02]">
+          <div>
+            <h2 className="text-base font-bold text-slate-900 dark:text-white">Pipeline de Captura & Gravações</h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400 font-mono mt-0.5">Clique em qualquer linha para abrir o raio-x da execução</p>
+          </div>
           <FilterPills options={filterOptions} selected={filter} onChange={setFilter} />
         </div>
         
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="bg-surface-50 dark:bg-surface-900/50">
-                <th className="px-6 py-3 border-b border-surface-200 dark:border-surface-700 font-medium text-slate-600 dark:text-slate-300">Sessão / Título</th>
-                <th className="px-6 py-3 border-b border-surface-200 dark:border-surface-700 font-medium text-slate-600 dark:text-slate-300">Status</th>
-                <th className="px-6 py-3 border-b border-surface-200 dark:border-surface-700 font-medium text-slate-600 dark:text-slate-300">Duração</th>
-                <th className="px-6 py-3 border-b border-surface-200 dark:border-surface-700 font-medium text-slate-600 dark:text-slate-300">Interface</th>
-                <th className="px-6 py-3 border-b border-surface-200 dark:border-surface-700 font-medium text-slate-600 dark:text-slate-300">Falha</th>
-                <th className="px-6 py-3 border-b border-surface-200 dark:border-surface-700 font-medium text-slate-600 dark:text-slate-300">Data</th>
+              <tr className="bg-slate-50 border-b border-slate-200 dark:bg-white/[0.02] dark:border-white/[0.06] font-mono text-[11px] text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                <th className="px-6 py-3">Sessão / Título</th>
+                <th className="px-6 py-3">Status</th>
+                <th className="px-6 py-3">Duração</th>
+                <th className="px-6 py-3">Interface Detectada</th>
+                <th className="px-6 py-3">Etapa de Falha</th>
+                <th className="px-6 py-3">Data</th>
+                <th className="px-6 py-3 text-right">Ações</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-slate-100 dark:divide-white/[0.04]">
               {loading ? (
-                Array.from({ length: 5 }).map((_, i) => <SkeletonRow key={i} columns={6} />)
+                Array.from({ length: 5 }).map((_, i) => <SkeletonRow key={i} columns={7} />)
               ) : currentRuns.length === 0 ? (
                 <tr>
-                  <td colSpan="6" className="px-6 py-12 text-center text-slate-500">
-                    Nenhuma execução ainda. Quando um instrutor gravar o primeiro módulo, ele aparecerá aqui.
+                  <td colSpan="7" className="px-6 py-12 text-center text-slate-500 font-mono text-xs">
+                    Nenhuma execução encontrada para este filtro.
                   </td>
                 </tr>
               ) : (
                 currentRuns.map((run) => (
-                  <tr key={run.id} className="hover:bg-surface-50 dark:hover:bg-surface-900/50 transition-colors group">
-                    <td className={`px-6 py-4 border-b border-surface-200 dark:border-surface-700 border-l-4 ${getStatusBorderColor(run.status)} text-sm`}>
-                      <div className="font-semibold text-slate-900 dark:text-white" title={run.session_id}>
+                  <tr 
+                    key={run.id} 
+                    onClick={() => setSelectedRun(run)}
+                    className="hover:bg-slate-50 dark:hover:bg-white/[0.04] transition-colors cursor-pointer group"
+                  >
+                    <td className={`px-6 py-4 border-l-2 ${getStatusBorderColor(run.status)} text-xs`}>
+                      <div className="font-semibold text-slate-900 group-hover:text-slate-900 dark:text-slate-100 dark:group-hover:text-white transition-colors" title={run.session_id}>
                         {run.titulo || `Sessão ${run.session_id.substring(0, 8)}`}
                       </div>
-                      <div className="text-[11px] font-mono text-slate-400 mt-0.5">{run.session_id}</div>
+                      <div className="text-[10px] font-mono text-slate-500 mt-0.5">{run.session_id}</div>
                     </td>
-                    <td className="px-6 py-4 border-b border-surface-200 dark:border-surface-700">
+                    <td className="px-6 py-4">
                       <StatusPill status={run.status} type="pipeline" />
                     </td>
-                    <td className="px-6 py-4 border-b border-surface-200 dark:border-surface-700 text-sm">
+                    <td className="px-6 py-4 text-xs font-mono text-slate-700 dark:text-slate-300">
                       {formatDuration(run.recording_duration_seconds)}
                     </td>
-                    <td className="px-6 py-4 border-b border-surface-200 dark:border-surface-700">
+                    <td className="px-6 py-4">
                       <StatusPill status={run.detected_interface_type} type="interface" />
                     </td>
-                    <td className="px-6 py-4 border-b border-surface-200 dark:border-surface-700 text-sm text-slate-500">
-                      {run.failure_stage ? run.failure_stage.replace('_', ' ') : '—'}
+                    <td className="px-6 py-4 text-xs font-mono text-slate-500 dark:text-slate-400">
+                      {(run.status !== 'completed' && run.failure_stage) ? run.failure_stage.replace('_', ' ') : '—'}
                     </td>
-                    <td className="px-6 py-4 border-b border-surface-200 dark:border-surface-700 text-slate-500 text-sm">
-                      {new Date(run.created_at).toLocaleDateString()}
+                    <td className="px-6 py-4 text-xs font-mono text-slate-500 dark:text-slate-400">
+                      {new Date(run.created_at).toLocaleDateString('pt-BR')}
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setRunToDelete(run);
+                        }}
+                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer"
+                        title="Excluir captação"
+                      >
+                        <Trash2 size={15} />
+                      </button>
                     </td>
                   </tr>
                 ))
@@ -637,24 +815,24 @@ export default function AdminPanel() {
           </table>
         </div>
         
-        {/* Paginação */}
+        {/* Paginação Estilizada */}
         {!loading && filteredRuns.length > 0 && (
-          <div className="px-6 py-3 border-t border-surface-200 dark:border-surface-700 flex items-center justify-between">
-            <span className="text-sm text-slate-500">
-              Mostrando {(page - 1) * itemsPerPage + 1}–{Math.min(page * itemsPerPage, filteredRuns.length)} de {filteredRuns.length}
+          <div className="px-6 py-3 border-t border-slate-200 dark:border-white/[0.08] bg-slate-50/50 dark:bg-white/[0.02] flex items-center justify-between text-xs font-mono">
+            <span className="text-slate-500 dark:text-slate-400">
+              Exibindo {(page - 1) * itemsPerPage + 1}–{Math.min(page * itemsPerPage, filteredRuns.length)} de {filteredRuns.length}
             </span>
             <div className="flex items-center gap-2">
               <button 
                 disabled={page === 1}
                 onClick={() => setPage(p => p - 1)}
-                className="px-3 py-1 bg-surface-100 dark:bg-surface-800 disabled:opacity-50 rounded text-sm font-medium transition-colors hover:bg-surface-200 dark:hover:bg-surface-700"
+                className="px-3 py-1 bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 dark:bg-surface-850 dark:border-white/10 dark:text-slate-300 dark:hover:border-white/20 disabled:opacity-40 rounded-lg transition-all cursor-pointer shadow-xs"
               >
                 Anterior
               </button>
               <button 
                 disabled={page === totalPages || totalPages === 0}
                 onClick={() => setPage(p => p + 1)}
-                className="px-3 py-1 bg-surface-100 dark:bg-surface-800 disabled:opacity-50 rounded text-sm font-medium transition-colors hover:bg-surface-200 dark:hover:bg-surface-700"
+                className="px-3 py-1 bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 dark:bg-surface-850 dark:border-white/10 dark:text-slate-300 dark:hover:border-white/20 disabled:opacity-40 rounded-lg transition-all cursor-pointer shadow-xs"
               >
                 Próximo
               </button>
@@ -663,42 +841,50 @@ export default function AdminPanel() {
         )}
       </div>
 
-      {/* 4. Configurações de Privacidade & Whitelist */}
-      <div className="bg-white dark:bg-surface-800 rounded-xl shadow-sm border border-surface-200 dark:border-surface-700 p-6 mb-8">
-        <h2 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">Configurações de Privacidade & Whitelist</h2>
-        
-        <div className="mb-6 flex items-center justify-between p-4 bg-surface-50 dark:bg-surface-900/50 rounded-lg">
+      {/* Section 4: Governance & Whitelist Settings */}
+      <div className="p-6 rounded-2xl bg-white border border-slate-200 dark:bg-surface-850 dark:border-white/[0.08] shadow-sm dark:shadow-xl space-y-6 transition-colors duration-200">
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 bg-slate-100 text-slate-900 border border-slate-200 dark:bg-white/10 dark:text-white dark:border-white/15 rounded-xl">
+            <ShieldCheck size={20} />
+          </div>
           <div>
-            <h4 className="font-semibold text-sm text-slate-900 dark:text-white">Liberar gravação em qualquer domínio (Desativar Whitelist)</h4>
-            <p className="text-xs text-slate-500 dark:text-zinc-400 mt-1">
-              Se ativado, os instrutores poderão usar a extensão em qualquer domínio ou URL sem restrições de privacidade corporativa.
+            <h2 className="text-base font-bold text-slate-900 dark:text-white">Configurações de Segurança & Whitelist</h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400 font-mono">Governança de domínios corporativos permitidos para captura</p>
+          </div>
+        </div>
+        
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 bg-slate-50 border border-slate-200 dark:bg-white/[0.02] dark:border-white/[0.06] rounded-xl">
+          <div>
+            <h4 className="font-semibold text-xs text-slate-900 dark:text-white">Liberar captura em qualquer domínio (Desativar Whitelist)</h4>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 font-mono mt-0.5">
+              Se ativo, a extensão funcionará em qualquer URL sem restrições de domínios cadastrados.
             </p>
           </div>
-          <label className="relative inline-flex items-center cursor-pointer">
+          <label className="relative inline-flex items-center cursor-pointer shrink-0">
             <input 
               type="checkbox" 
               className="sr-only peer" 
               checked={disableWhitelist} 
               onChange={(e) => setDisableWhitelist(e.target.checked)} 
             />
-            <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-zinc-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-zinc-600 peer-checked:bg-emerald-500"></div>
+            <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500 dark:bg-slate-800"></div>
           </label>
         </div>
 
         {!disableWhitelist && (
-          <div className="mb-6 animate-fadeIn">
-            <h4 className="font-semibold text-sm text-slate-900 dark:text-white mb-3">Domínios Permitidos</h4>
-            <div className="flex flex-wrap gap-2 mb-4">
+          <div className="space-y-4 animate-fade-in">
+            <h4 className="font-semibold text-xs text-slate-900 dark:text-white font-mono">Domínios Autorizados</h4>
+            <div className="flex flex-wrap gap-2">
               {allowedDomains.length === 0 ? (
-                <span className="text-sm text-slate-500 italic">Nenhum domínio configurado. Todos os domínios exceto localhost serão restritos.</span>
+                <span className="text-xs text-slate-500 font-mono italic">Nenhum domínio configurado. Apenas localhost é liberado.</span>
               ) : (
                 allowedDomains.map(domain => (
-                  <span key={domain} className="inline-flex items-center gap-1.5 px-3 py-1 bg-zinc-100 dark:bg-zinc-800 text-slate-800 dark:text-slate-200 text-sm font-medium rounded-full border border-zinc-200 dark:border-zinc-700">
+                  <span key={domain} className="inline-flex items-center gap-1.5 px-3 py-1 bg-slate-100 text-slate-800 border border-slate-200 dark:bg-white/10 dark:text-white dark:border-white/15 text-xs font-mono font-medium rounded-lg">
                     {domain}
                     <button 
                       type="button" 
                       onClick={() => handleRemoveDomain(domain)}
-                      className="text-slate-400 hover:text-red-500 transition-colors focus:outline-none ml-1 text-xs"
+                      className="text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 transition-colors ml-1 font-bold text-xs cursor-pointer"
                     >
                       &times;
                     </button>
@@ -713,11 +899,11 @@ export default function AdminPanel() {
                 placeholder="Ex: minhaempresa.com.br" 
                 value={newDomain}
                 onChange={(e) => setNewDomain(e.target.value)}
-                className="flex-1 px-3 py-2 border border-zinc-200 dark:border-zinc-700 rounded-lg text-sm bg-white dark:bg-surface-850 text-slate-900 dark:text-white outline-none focus:border-brand-500"
+                className="flex-1 px-3.5 py-2 border border-slate-200 dark:border-white/[0.1] rounded-xl text-xs font-mono bg-white dark:bg-surface-900 text-slate-900 dark:text-white outline-none focus:border-slate-400 dark:focus:border-white/30 transition-colors"
               />
               <button 
                 type="submit"
-                className="px-4 py-2 bg-emerald-500 text-white rounded-lg text-sm font-semibold hover:bg-emerald-600 transition-colors"
+                className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white dark:bg-white dark:hover:bg-slate-200 dark:text-slate-950 rounded-xl text-xs font-bold font-mono transition-all shadow-xs cursor-pointer"
               >
                 Adicionar
               </button>
@@ -725,57 +911,147 @@ export default function AdminPanel() {
           </div>
         )}
 
-        <div className="flex items-center gap-4 border-t border-surface-200 dark:border-surface-700 pt-4">
+        <div className="flex items-center gap-4 border-t border-slate-200 dark:border-white/[0.08] pt-4">
           <button 
             type="button"
             onClick={handleSaveAdminSettings}
             disabled={savingSettings}
-            className="px-4 py-2 bg-slate-900 dark:bg-white text-white dark:text-slate-900 rounded-lg text-sm font-semibold hover:bg-slate-800 dark:hover:bg-slate-100 disabled:opacity-50 transition-colors"
+            className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white dark:bg-white dark:hover:bg-slate-200 dark:text-slate-950 rounded-xl text-xs font-bold font-mono disabled:opacity-50 transition-all shadow-md cursor-pointer"
           >
-            {savingSettings ? 'Salvando...' : 'Salvar Configurações'}
+            {savingSettings ? 'Salvar...' : 'Salvar Configurações'}
           </button>
           
           {settingsSuccess && (
-            <span className="text-sm font-semibold text-emerald-500 animate-pulse">Configurações salvas com sucesso!</span>
+            <span className="text-xs font-mono font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5 animate-fade-in">
+              <CheckCircle2 size={15} /> Configurações salvas com sucesso!
+            </span>
           )}
         </div>
       </div>
 
-      {/* 5. Trilha de Publicação */}
-      <div className="bg-white dark:bg-surface-800 rounded-xl shadow-sm border border-surface-200 dark:border-surface-700 overflow-hidden">
+      {/* Section 4.5: RAG Knowledge Base Upload */}
+      <div className="p-6 rounded-2xl bg-white border border-slate-200 dark:bg-surface-850 dark:border-white/[0.08] shadow-sm dark:shadow-xl space-y-6 transition-colors duration-200">
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 bg-emerald-500/10 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400 border border-emerald-500/20 rounded-xl">
+            <BookOpen size={20} />
+          </div>
+          <div>
+            <h2 className="text-base font-bold text-slate-900 dark:text-white">Base de Conhecimento (RAG) & Documentação</h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400 font-mono">Injetar manuais, Release Notes ou links web de documentação na Inteligência Artificial</p>
+          </div>
+        </div>
+
+        <form onSubmit={handleUploadRagDocument} className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <label className="text-xs font-mono font-medium text-slate-700 dark:text-slate-300">
+                Módulo / Assunto (ex: BPM, GED, HCM, ERP) ou URL Web
+              </label>
+              <input
+                type="text"
+                placeholder="Cole uma URL (https://...) ou digite o Módulo..."
+                value={ragNamespaceInput}
+                onChange={(e) => setRagNamespaceInput(e.target.value)}
+                className="w-full px-3.5 py-2 border border-slate-200 dark:border-white/[0.1] rounded-xl text-xs font-mono bg-white dark:bg-surface-900 text-slate-900 dark:text-white outline-none focus:border-slate-400 dark:focus:border-white/30 transition-colors"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-mono font-medium text-slate-700 dark:text-slate-300">
+                Anexar Documento (.pdf, .txt, .md)
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="file"
+                  id="admin-rag-file"
+                  accept=".pdf,.txt,.md"
+                  onChange={(e) => setRagSelectedFile(e.target.files[0] || null)}
+                  className="hidden"
+                />
+                <label
+                  htmlFor="admin-rag-file"
+                  className="flex-1 px-3.5 py-2 border border-dashed border-emerald-500/40 bg-emerald-50/50 dark:bg-emerald-500/5 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 rounded-xl text-xs font-medium font-mono cursor-pointer flex items-center justify-center gap-2 transition-all"
+                >
+                  <Paperclip size={15} />
+                  {ragSelectedFile ? ragSelectedFile.name : 'Clique para Anexar Arquivo'}
+                </label>
+                {ragSelectedFile && (
+                  <button
+                    type="button"
+                    onClick={() => setRagSelectedFile(null)}
+                    className="p-2 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10 rounded-lg text-xs font-bold cursor-pointer"
+                    title="Remover arquivo"
+                  >
+                    <X size={16} />
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-4 pt-2">
+            <button
+              type="submit"
+              disabled={uploadingRag || !ragSelectedFile}
+              className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white dark:bg-emerald-500 dark:hover:bg-emerald-400 dark:text-slate-950 rounded-xl text-xs font-bold font-mono disabled:opacity-40 transition-all shadow-md cursor-pointer flex items-center gap-2"
+            >
+              <UploadCloud size={16} />
+              {uploadingRag ? 'Vetorizando em Lotes...' : 'Vetorizar Documento RAG'}
+            </button>
+
+            {ragStatusMsg && (
+              <span className="text-xs font-mono font-medium text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5 animate-fade-in">
+                <CheckCircle2 size={15} /> {ragStatusMsg}
+              </span>
+            )}
+          </div>
+        </form>
+      </div>
+
+      {/* Section 5: Publication Audit Trail */}
+      <div className="rounded-2xl bg-white border border-slate-200 dark:bg-surface-850 dark:border-white/[0.08] shadow-sm dark:shadow-xl overflow-hidden transition-colors duration-200">
         <details className="group">
-          <summary className="px-6 py-4 cursor-pointer flex justify-between items-center bg-surface-50 dark:bg-surface-800 hover:bg-surface-100 dark:hover:bg-surface-700/50 transition-colors">
-            <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Trilha de Publicações</h2>
-            <Download size={18} className="text-slate-400 group-open:rotate-180 transition-transform" />
+          <summary className="px-6 py-4 cursor-pointer flex justify-between items-center bg-slate-50/50 hover:bg-slate-100 dark:bg-white/[0.02] dark:hover:bg-white/[0.04] transition-colors">
+            <div className="flex items-center gap-2">
+              <h2 className="text-base font-bold text-slate-900 dark:text-white">Trilha de Exportação SCORM & Publicações</h2>
+              <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-slate-100 text-slate-600 dark:bg-white/[0.06] dark:text-slate-400">
+                Auditoria LMS
+              </span>
+            </div>
+            <Download size={16} className="text-slate-400 group-open:rotate-180 transition-transform" />
           </summary>
           
-          <div className="overflow-x-auto border-t border-surface-200 dark:border-surface-700">
+          <div className="overflow-x-auto border-t border-slate-200 dark:border-white/[0.08]">
             <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="bg-surface-50 dark:bg-surface-900/50">
-                  <th className="px-6 py-3 border-b border-surface-200 dark:border-surface-700 font-medium text-slate-600 dark:text-slate-300">Sessão</th>
-                  <th className="px-6 py-3 border-b border-surface-200 dark:border-surface-700 font-medium text-slate-600 dark:text-slate-300">Destino</th>
-                  <th className="px-6 py-3 border-b border-surface-200 dark:border-surface-700 font-medium text-slate-600 dark:text-slate-300">Exportado Por</th>
-                  <th className="px-6 py-3 border-b border-surface-200 dark:border-surface-700 font-medium text-slate-600 dark:text-slate-300">Data</th>
+                <tr className="bg-slate-50 border-b border-slate-200 dark:bg-white/[0.02] dark:border-white/[0.06] font-mono text-[11px] text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                  <th className="px-6 py-3">Sessão</th>
+                  <th className="px-6 py-3">Destino</th>
+                  <th className="px-6 py-3">Exportado Por</th>
+                  <th className="px-6 py-3">Data da Publicação</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-slate-100 dark:divide-white/[0.04]">
                 {loading ? (
-                   Array.from({ length: 3 }).map((_, i) => <SkeletonRow key={i} columns={4} />)
+                  Array.from({ length: 3 }).map((_, i) => <SkeletonRow key={i} columns={4} />)
                 ) : publications.length === 0 ? (
-                  <tr><td colSpan="4" className="px-6 py-12 text-center text-slate-500">Nenhum módulo publicado ainda.</td></tr>
+                  <tr><td colSpan="4" className="px-6 py-12 text-center text-slate-500 font-mono text-xs">Nenhum pacote SCORM exportado até o momento.</td></tr>
                 ) : (
                   publications.map((pub) => (
-                    <tr key={pub.id} className="hover:bg-surface-50 dark:hover:bg-surface-900/50 transition-colors">
-                      <td className="px-6 py-4 border-b border-surface-200 dark:border-surface-700 font-mono text-sm">{pub.session_id.substring(0, 8)}...</td>
-                      <td className="px-6 py-4 border-b border-surface-200 dark:border-surface-700">
-                        <span className="px-2 py-1 bg-surface-200 dark:bg-surface-700 text-slate-700 dark:text-slate-300 rounded text-xs font-medium uppercase tracking-wider">
+                    <tr 
+                      key={pub.id} 
+                      onClick={() => showToast({ type: 'info', message: `Publicação ${pub.destination} realizada por ${pub.published_by}` })}
+                      className="hover:bg-slate-50 dark:hover:bg-white/[0.03] transition-colors cursor-pointer"
+                    >
+                      <td className="px-6 py-4 font-mono text-xs text-slate-800 dark:text-slate-200">{pub.session_id.substring(0, 12)}...</td>
+                      <td className="px-6 py-4">
+                        <span className="px-2.5 py-1 bg-slate-100 text-slate-800 border border-slate-200 dark:bg-white/10 dark:text-white dark:border-white/15 rounded-md text-[10px] font-mono font-semibold uppercase tracking-wider">
                           {pub.destination}
                         </span>
                       </td>
-                      <td className="px-6 py-4 border-b border-surface-200 dark:border-surface-700 text-sm font-medium">{pub.published_by}</td>
-                      <td className="px-6 py-4 border-b border-surface-200 dark:border-surface-700 text-slate-500 text-sm">
-                        {new Date(pub.published_at).toLocaleString()}
+                      <td className="px-6 py-4 text-xs font-semibold text-slate-800 dark:text-slate-200">{pub.published_by}</td>
+                      <td className="px-6 py-4 text-xs font-mono text-slate-500 dark:text-slate-400">
+                        {new Date(pub.published_at).toLocaleString('pt-BR')}
                       </td>
                     </tr>
                   ))
@@ -786,6 +1062,25 @@ export default function AdminPanel() {
         </details>
       </div>
 
+      {/* Modal para Raio-X da Execução Selecionada */}
+      <RunDetailsModal 
+        run={selectedRun}
+        isOpen={!!selectedRun}
+        onClose={() => setSelectedRun(null)}
+        onToast={showToast}
+      />
+
+      {/* Modal de Confirmação de Exclusão */}
+      <DeleteConfirmModal 
+        isOpen={!!runToDelete}
+        onClose={() => setRunToDelete(null)}
+        onConfirm={handleConfirmDelete}
+        itemTitle={runToDelete?.titulo}
+        sessionId={runToDelete?.session_id}
+        loading={deleting}
+      />
+
+      <Toast toast={toast} onClose={() => setToast(null)} />
     </div>
   );
 }

@@ -280,11 +280,43 @@ def extrair_texto_documento(file_data_b64: str, filename: str) -> str:
         else:
             return raw_bytes.decode("utf-8", errors="ignore")
     except Exception as e:
-        logger.error(f"Falha ao extrair texto: {e}")
+        logger.error(f"Falha ao extrair texto de arquivo: {e}")
         return ""
 
-def ingerir_documento_para_namespace(file_data_b64: str, filename: str, namespace: str) -> dict:
-    """Extrai texto, gera embeddings e salva no Pinecone sob o namespace.
+def extrair_texto_url(url: str) -> str:
+    """Extrai texto limpo de uma URL Web (HTML)."""
+    import urllib.request
+    import re
+    from html import unescape
+    try:
+        req = urllib.request.Request(
+            url, 
+            headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36"}
+        )
+        with urllib.request.urlopen(req, timeout=12) as response:
+            html_raw = response.read().decode("utf-8", errors="ignore")
+        
+        clean_html = re.sub(r"(?is)<(script|style).*?>.*?</\1>", "", html_raw)
+        text_only = re.sub(r"<[^>]+>", " ", clean_html)
+        text_only = unescape(text_only)
+        lines = [line.strip() for line in text_only.splitlines() if line.strip()]
+        return "\n".join(lines)
+    except Exception as e:
+        logger.error(f"Falha ao extrair texto da URL '{url}': {e}")
+        return ""
+
+def gerar_embeddings_batch(textos: List[str]) -> List[List[float]]:
+    if not client_openai:
+        raise Exception("OpenAI Client não inicializado")
+    if not textos:
+        return []
+    response = client_openai.embeddings.create(
+        input=textos, model=OPENAI_EMBED_MODEL, dimensions=TARGET_DIM
+    )
+    return [item.embedding for item in response.data]
+
+def ingerir_documento_para_namespace(file_data_b64: str = "", filename: str = "", namespace: str = "auto", url: str = "") -> dict:
+    """Extrai texto (de arquivo em base64 ou URL web), gera embeddings em lotes e salva no Pinecone sob o namespace.
     
     Returns:
         dict com {"success": bool, "namespace": str, "chunks": int, "error": str | None}
@@ -302,10 +334,16 @@ def ingerir_documento_para_namespace(file_data_b64: str, filename: str, namespac
         
     namespace = sanitizar_namespace(namespace)
     
-    texto_puro = extrair_texto_documento(file_data_b64, filename)
+    if url and url.startswith(("http://", "https://")):
+        texto_puro = extrair_texto_url(url)
+        if not filename:
+            filename = url
+    else:
+        texto_puro = extrair_texto_documento(file_data_b64, filename)
+        
     if not texto_puro.strip():
-        logger.warning(f"Documento vazio: {filename}")
-        return {"success": False, "namespace": namespace, "chunks": 0, "error": "Documento vazio ou ilegível"}
+        logger.warning(f"Conteúdo vazio de arquivo ou URL: {filename or url}")
+        return {"success": False, "namespace": namespace, "chunks": 0, "error": "Documento/URL vazio ou inacessível"}
         
     # Quebrar texto em chunks de forma inteligente
     chunks = split_text_smartly(texto_puro)
@@ -314,25 +352,27 @@ def ingerir_documento_para_namespace(file_data_b64: str, filename: str, namespac
     doc_id = hashlib.md5(filename.encode()).hexdigest()[:10]
     skipped = 0
     
-    for i, chunk in enumerate(chunks):
+    # Processar embeddings em lotes (batching) de 32 chunks por requisição HTTP
+    BATCH_EMBED_SIZE = 32
+    for b_idx in range(0, len(chunks), BATCH_EMBED_SIZE):
+        batch_chunks = chunks[b_idx : b_idx + BATCH_EMBED_SIZE]
         try:
-            embedding = gerar_embedding(chunk)
+            batch_embeddings = gerar_embeddings_batch(batch_chunks)
+            for j, (chunk_text, embedding) in enumerate(zip(batch_chunks, batch_embeddings)):
+                c_global_idx = b_idx + j
+                chunk_id = f"doc_{doc_id}_chunk_{c_global_idx}"
+                vectors_to_upsert.append({
+                    "id": chunk_id,
+                    "values": embedding,
+                    "metadata": {
+                        "text": chunk_text,
+                        "titulo": filename,
+                        "fonte": "Upload Local Release Notes"
+                    }
+                })
         except Exception as e:
-            logger.warning(f"Falha ao gerar embedding para chunk {i} de '{filename}': {e}")
-            skipped += 1
-            continue
-            
-        chunk_id = f"doc_{doc_id}_chunk_{i}"
-        
-        vectors_to_upsert.append({
-            "id": chunk_id,
-            "values": embedding,
-            "metadata": {
-                "text": chunk,
-                "titulo": filename,
-                "fonte": "Upload Local Release Notes"
-            }
-        })
+            logger.warning(f"Falha ao gerar embeddings no lote {b_idx}: {e}")
+            skipped += len(batch_chunks)
     
     if not vectors_to_upsert:
         logger.error(f"Nenhum embedding gerado para '{filename}' (todos os {len(chunks)} chunks falharam)")

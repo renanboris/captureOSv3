@@ -102,7 +102,6 @@ function renderizarPassos() {
         const lowConfidenceBadge = isLowConfidence 
             ? `<span class="badge-warning" style="background:#FFFBEB; color:#B45309; border:1px solid #FCD34D; font-size:11px; padding:2px 8px; border-radius:12px; font-weight:600; margin-left:8px;">⚠️ Seletor Frágil</span>`
             : '';
-        const recapturarBtn = `<button class="btn-recapturar" onclick="recapturarPasso(${index})" style="background:#00998F; color:white; border:none; padding:4px 8px; border-radius:6px; font-size:11px; cursor:pointer; font-weight:500; display:inline-flex; align-items:center; gap:4px; margin-left:8px;" title="Recapturar seletor deste passo na tela">🎯 Recapturar este passo</button>`;
 
         item.innerHTML = `
             <div class="transcript-time" title="Tempo da gravação">${tempoReal}</div>
@@ -112,7 +111,6 @@ function renderizarPassos() {
                     <textarea id="texto-${index}" style="display:none;" placeholder="Digite o texto deste passo..." onblur="finalizarEdicao(this, 'texto-view-${index}')">${textoCompletoReal}</textarea>
                 </div>
                 <div class="actions" style="display:flex; align-items:center; gap:8px;">
-                    ${recapturarBtn}
                     <button class="btn-icon" onclick="previewTTS(${index}, this)" title="Ouvir com a voz real">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5L6 9H2v6h4l5 4V5z"></path><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>
                     </button>

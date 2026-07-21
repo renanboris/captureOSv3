@@ -711,26 +711,42 @@
   <div id="tab-record" class="tab-content active">
     <div class="content" id="settings-content">
 
-      <!-- Contexto RAG -->
-      <div class="setting-card" style="flex-direction: column; align-items: flex-start; gap: 10px; background: #F9FAFB;">
-        <div style="font-size: 13px; font-weight: 600; color: #111827; display: flex; align-items: center; gap: 6px;">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#00998F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
-          Módulo e Contexto (RAG)
+      <!-- Base de Conhecimento (RAG) -->
+      <div class="setting-card" style="align-items: center; justify-content: space-between; gap: 8px; position: relative;">
+        <div class="setting-info" style="min-width: 100px;">
+          <div class="icon-box active" style="color: #00998F; background: rgba(0,153,143,0.1);">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
+          </div>
+          <div class="setting-text">
+            <h3>Base RAG</h3>
+            <p id="rag-sublabel">Contexto da IA</p>
+          </div>
         </div>
-        <input list="rag-namespaces-list" id="rag-namespace" placeholder="Auto (Todos) ou digite um novo..." style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #E5E7EB; font-size: 13px; color: #4B5563; background: #FFFFFF; outline: none;">
-        <datalist id="rag-namespaces-list">
-          <option value="auto">Busca Automática (Todos)</option>
-        </datalist>
-        <div style="width: 100%; display: flex; align-items: center; gap: 8px;">
-          <input type="file" id="rag-file" accept=".pdf,.txt" style="display: none;">
-          <button id="btn-upload-rag" style="flex: 1; padding: 6px 10px; border-radius: 6px; border: 1px dashed #00998F; background: rgba(0,153,143,0.05); color: #00998F; font-size: 12px; font-weight: 500; cursor: pointer; transition: all 0.2s;">
-            + Anexar Release Notes
+        
+        <div style="position: relative; flex: 1; max-width: 160px; display: flex; align-items: center;">
+          <input type="text" id="rag-input" placeholder="Módulo (ex: BPM, GED)..." style="width: 100%; padding: 6px 26px 6px 8px; border-radius: 6px; border: 1px solid #E5E7EB; font-size: 11px; color: #111827; background: #FFFFFF; outline: none; transition: border-color 0.2s;">
+          <input type="file" id="rag-file" accept=".pdf,.txt,.md" style="display: none;">
+          <button id="btn-upload-rag" type="button" title="Opções de contexto (Arquivo ou URL)" style="position: absolute; right: 4px; top: 50%; transform: translateY(-50%); border: none; background: transparent; color: #00998F; cursor: pointer; padding: 2px; display: flex; align-items: center; justify-content: center;">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
           </button>
-          <span id="rag-file-name" style="font-size: 11px; color: #6B7280; max-width: 120px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: none;"></span>
-          <button id="btn-clear-rag" style="border: none; background: transparent; color: #EF4444; font-size: 14px; cursor: pointer; padding: 0 4px; display: none; align-items: center; justify-content: center;" title="Remover arquivo">✖</button>
+          <button id="btn-clear-rag" type="button" title="Remover contexto" style="position: absolute; right: 4px; top: 50%; transform: translateY(-50%); border: none; background: transparent; color: #EF4444; cursor: pointer; padding: 2px; display: none; align-items: center; justify-content: center;">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
+
+          <!-- Menu de Contexto do Clipe -->
+          <div id="rag-context-menu" style="display: none; position: absolute; right: 0; top: 100%; margin-top: 6px; background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 8px; box-shadow: 0 4px 14px rgba(0,0,0,0.12); padding: 4px; z-index: 100; min-width: 175px;">
+            <button id="menu-opt-file" type="button" style="width: 100%; padding: 6px 10px; border: none; background: transparent; color: #111827; font-size: 11px; font-weight: 500; cursor: pointer; display: flex; align-items: center; gap: 8px; border-radius: 6px; text-align: left;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#00998F" stroke-width="2"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
+              Anexar Arquivo (PDF/TXT)
+            </button>
+            <button id="menu-opt-url" type="button" style="width: 100%; padding: 6px 10px; border: none; background: transparent; color: #111827; font-size: 11px; font-weight: 500; cursor: pointer; display: flex; align-items: center; gap: 8px; border-radius: 6px; text-align: left;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#00998F" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+              Injetar Site / Link (URL)
+            </button>
+          </div>
         </div>
-        <div id="rag-upload-status" style="font-size: 11px; font-weight: 600; color: #00998F; display: none;">Vetorizando arquivo...</div>
       </div>
+      <div id="rag-upload-status" style="font-size: 10px; font-weight: 600; color: #00998F; display: none; margin-top: -6px; padding-left: 16px;">Vetorizando...</div>
 
 
       <!-- Capturar Tela (always on, disabled) -->
