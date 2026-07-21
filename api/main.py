@@ -1414,8 +1414,12 @@ async def listar_roteiros(limit: int = 0, offset: int = 0):
                         intencao = p.get("intencao_original", "").strip()
                         if intencao and not titulo:
                             titulo = intencao
-                    if not titulo:
-                        titulo = f"Sessão {session_id[-8:]}" if session_id else "Sem título"
+                    if titulo:
+                        titulo = titulo.replace("_", " ").strip()
+                        if titulo.lower().startswith("sess ") or titulo.lower().startswith("sess_") or "sess_" in titulo.lower():
+                            titulo = f"Tutorial {session_id[-8:]}" if session_id else "Tutorial"
+                    else:
+                        titulo = f"Tutorial {session_id[-8:]}" if session_id else "Sem título"
 
                 # Buscar status atual
                 status_data = get_status(session_id)
