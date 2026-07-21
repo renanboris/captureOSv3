@@ -162,6 +162,7 @@ app = FastAPI(title="Capture OS v3 Ingestion API")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_allowed_origins(),
+    allow_origin_regex=r"^chrome-extension://.*$|^https?://.*$|^http://.*$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
