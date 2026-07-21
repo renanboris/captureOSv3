@@ -3,6 +3,7 @@ services:
   api:
     build: .
     container_name: capture_os_api
+    restart: always
     ports:
       - "8000:8000"
     volumes:
@@ -11,21 +12,17 @@ services:
       # Carrega o .env automaticamente
       - ./.env:/app/.env
     environment:
-      - BACKEND_URL=http://localhost:8000
-    # Opcional: Se já quiser subir um banco local
-    # depends_on:
-    #   - db
+      - BACKEND_URL=https://api.nomadelabs.com.br
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.captureos.entrypoints=websecure"
+      - "traefik.http.routers.captureos.rule=Host(`api.nomadelabs.com.br`)"
+      - "traefik.http.routers.captureos.tls.certresolver=le"
+      - "traefik.http.services.captureos.loadbalancer.server.port=8000"
+    networks:
+      - default
+      - n8n-traefik_app_network
 
-  # db:
-  #   image: postgres:15-alpine
-  #   environment:
-  #     POSTGRES_USER: admin
-  #     POSTGRES_PASSWORD: adminpassword
-  #     POSTGRES_DB: captureos
-  #   ports:
-  #     - "5432:5432"
-  #   volumes:
-  #     - pgdata:/var/lib/postgresql/data
-
-volumes:
-  pgdata:
+networks:
+  n8n-traefik_app_network:
+    external: true
