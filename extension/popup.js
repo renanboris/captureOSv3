@@ -376,7 +376,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (resStorage.authToken) headers['Authorization'] = `Bearer ${resStorage.authToken}`;
 
             const res = await fetch(`${backendUrl}/api/v1/roteiros`, { headers });
-            if (!res.ok) throw new Error("Falha ao buscar roteiros");
+            if (!res.ok) {
+                if (res.status === 401) {
+                    throw new Error("Faça login na extensão para ver seus roteiros (Sessão expirada)");
+                }
+                throw new Error(`Servidor retornou HTTP ${res.status}`);
+            }
             const data = await res.json();
 
             if (data.total === 0) {
@@ -490,7 +495,12 @@ document.addEventListener('DOMContentLoaded', async () => {
                 container.appendChild(div);
             });
         } catch (e) {
-            container.innerHTML = `<p class="modules-error">Erro: ${e.message}</p>`;
+            console.error("Erro ao carregar roteiros:", e);
+            if (e.name === 'TypeError' || (e.message && e.message.includes('fetch'))) {
+                container.innerHTML = `<p class="modules-error">Servidor inacessível (${backendUrl}). Verifique a URL nas configurações ⚙️.</p>`;
+            } else {
+                container.innerHTML = `<p class="modules-error">${e.message}</p>`;
+            }
         }
     }
 
