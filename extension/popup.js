@@ -13,7 +13,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     async function syncOrgSettings(token) {
         if (!token) return;
         chrome.storage.local.get(['backendUrl'], async (res) => {
-            const backendUrl = res.backendUrl || "https://api.nomadelabs.com.br";
+            const backendUrl = res.backendUrl || "http://api.nomadelabs.com.br:8000";
             try {
                 const response = await fetch(`${backendUrl}/api/v1/organization/settings`, {
                     headers: { 'Authorization': `Bearer ${token}` }
@@ -56,7 +56,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         try {
             const { backendUrl: storedBackendUrl, authToken } = await chrome.storage.local.get(['backendUrl', 'authToken']);
             if (!authToken) return;
-            const backendUrl = storedBackendUrl || "https://api.nomadelabs.com.br";
+            const backendUrl = storedBackendUrl || "http://api.nomadelabs.com.br:8000";
             
             const res = await fetch(`${backendUrl}/api/v1/admin/settings`, {
                 headers: {
@@ -312,7 +312,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             const resStorage = await chrome.storage.local.get(['backendUrl', 'authToken']);
             // Dev-only fallback assembled from parts so no production endpoint
             // is hardcoded; configure `backendUrl` via the options page.
-            const backendUrl = resStorage.backendUrl || "https://api.nomadelabs.com.br";
+            const backendUrl = resStorage.backendUrl || "http://api.nomadelabs.com.br:8000";
             const headers = {};
             if (resStorage.authToken) headers['Authorization'] = `Bearer ${resStorage.authToken}`;
 
@@ -371,7 +371,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         try {
             const resStorage = await chrome.storage.local.get(['backendUrl', 'authToken']);
-            const backendUrl = resStorage.backendUrl || "https://api.nomadelabs.com.br";
+            const backendUrl = resStorage.backendUrl || "http://api.nomadelabs.com.br:8000";
             const headers = {};
             if (resStorage.authToken) headers['Authorization'] = `Bearer ${resStorage.authToken}`;
 
@@ -738,7 +738,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         /*
         if (res.authToken) {
             syncOrgSettings(res.authToken);
-            const backendUrl = res.backendUrl || "https://api.nomadelabs.com.br";
+            const backendUrl = res.backendUrl || "http://api.nomadelabs.com.br:8000";
             fetch(`${backendUrl}/api/v1/rag/namespaces`, {
                 headers: { 'Authorization': `Bearer ${res.authToken}` }
             })
@@ -856,7 +856,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 });
 
                 const { backendUrl: storedBackendUrl, authToken } = await chrome.storage.local.get(['backendUrl', 'authToken']);
-                const backendUrl = storedBackendUrl || "https://api.nomadelabs.com.br";
+                const backendUrl = storedBackendUrl || "http://api.nomadelabs.com.br:8000";
 
                 const res = await fetch(`${backendUrl}/api/v1/rag/upload_context`, {
                     method: 'POST',
@@ -904,7 +904,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             try {
                 const { backendUrl: storedBackendUrl, authToken } = await chrome.storage.local.get(['backendUrl', 'authToken']);
-                const backendUrl = storedBackendUrl || "https://api.nomadelabs.com.br";
+                const backendUrl = storedBackendUrl || "http://api.nomadelabs.com.br:8000";
 
                 const res = await fetch(`${backendUrl}/api/v1/rag/upload_context`, {
                     method: 'POST',
