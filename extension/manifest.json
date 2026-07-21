@@ -17,8 +17,6 @@
   "host_permissions": [
     "https://api.captureos.fly.dev/*",
     "https://api.nomadelabs.com.br/*",
-    "http://api.nomadelabs.com.br:8000/*",
-    "http://143.95.218.215:8000/*",
     "<all_urls>"
   ],
   "icons": {
