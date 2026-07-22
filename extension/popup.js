@@ -384,9 +384,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             <div class="skeleton-card"><div class="skeleton-line w-70"></div><div class="skeleton-line w-45"></div></div>
         `;
 
+        let backendUrl = "https://api.nomadelabs.com.br";
         try {
             const resStorage = await chrome.storage.local.get(['backendUrl', 'authToken']);
-            const backendUrl = resStorage.backendUrl || "https://api.nomadelabs.com.br";
+            backendUrl = resStorage.backendUrl || "https://api.nomadelabs.com.br";
             const headers = {};
             if (resStorage.authToken) headers['Authorization'] = `Bearer ${resStorage.authToken}`;
 
