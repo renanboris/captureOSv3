@@ -15,6 +15,7 @@ services:
       - BACKEND_URL=https://api.nomadelabs.com.br
     labels:
       - "traefik.enable=true"
+      - "traefik.docker.network=n8n-traefik_app_network"
       - "traefik.http.routers.captureos.entrypoints=websecure"
       - "traefik.http.routers.captureos.rule=Host(`api.nomadelabs.com.br`)"
       - "traefik.http.routers.captureos.tls.certresolver=le"
