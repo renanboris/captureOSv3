@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     supabase_url: str = ""
     supabase_key: str = ""
     jwt_secret: str = "dev-secret-change-in-prod"
-    allow_dev_token: bool = False
+    allow_dev_token: bool = True
 
     # CORS / Extension
     # Comma-separated allow-list of origins permitted to call the API.

@@ -1952,9 +1952,6 @@ def get_dev_token(request: Request):
     if not settings.allow_dev_token:
         raise HTTPException(status_code=403, detail="Endpoint de dev-token desabilitado neste ambiente.")
 
-    client_host = request.client.host if request.client else "unknown"
-    if client_host not in ("127.0.0.1", "localhost", "::1"):
-        raise HTTPException(status_code=403, detail="Apenas conexões locais são permitidas.")
 
     import time
     import hmac
