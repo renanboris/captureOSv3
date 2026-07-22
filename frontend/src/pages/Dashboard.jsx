@@ -36,7 +36,7 @@ export default function Dashboard() {
     setDeleting(true);
     try {
       const token = localStorage.getItem('dev_token');
-      const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+      const API_URL = import.meta.env.VITE_API_URL || 'https://api.nomadelabs.com.br';
       const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
 
       const res = await fetch(`${API_URL}/api/v1/admin/pipeline-runs/${runToDelete.session_id}`, {
@@ -153,7 +153,7 @@ export default function Dashboard() {
       }
 
       let token = urlToken || localStorage.getItem('dev_token');
-      const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+      const API_URL = import.meta.env.VITE_API_URL || 'https://api.nomadelabs.com.br';
 
       if (!token) {
         try {

@@ -62,7 +62,7 @@ export default function AdminPanel() {
     setRagStatusMsg(null);
     try {
       const token = localStorage.getItem('dev_token');
-      const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+      const API_URL = import.meta.env.VITE_API_URL || 'https://api.nomadelabs.com.br';
       const headers = { 'Content-Type': 'application/json', ...(token ? { 'Authorization': `Bearer ${token}` } : {}) };
 
       if (isUrl && !ragSelectedFile) {
@@ -124,7 +124,7 @@ export default function AdminPanel() {
     setDeleting(true);
     try {
       const token = localStorage.getItem('dev_token');
-      const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+      const API_URL = import.meta.env.VITE_API_URL || 'https://api.nomadelabs.com.br';
       const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
 
       const res = await fetch(`${API_URL}/api/v1/admin/pipeline-runs/${runToDelete.session_id}`, {
@@ -163,7 +163,7 @@ export default function AdminPanel() {
 
   const fetchSettings = async (token) => {
     try {
-      const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+      const API_URL = import.meta.env.VITE_API_URL || 'https://api.nomadelabs.com.br';
       const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
       const res = await fetch(`${API_URL}/api/v1/admin/settings`, { headers });
       if (res.ok) {
@@ -200,7 +200,7 @@ export default function AdminPanel() {
     setSettingsSuccess(false);
     try {
       const token = localStorage.getItem('dev_token');
-      const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+      const API_URL = import.meta.env.VITE_API_URL || 'https://api.nomadelabs.com.br';
       const headers = {
         'Content-Type': 'application/json',
         ...(token ? { 'Authorization': `Bearer ${token}` } : {})
@@ -305,7 +305,7 @@ export default function AdminPanel() {
       }
 
       let token = urlToken || localStorage.getItem('dev_token');
-      const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+      const API_URL = import.meta.env.VITE_API_URL || 'https://api.nomadelabs.com.br';
 
       if (!token) {
         try {

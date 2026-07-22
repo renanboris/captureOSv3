@@ -34,7 +34,7 @@ export default function Sidebar({ onOpenCommandPalette, onOpenUserProfile }) {
       }
     }
 
-    const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+    const API_URL = import.meta.env.VITE_API_URL || 'https://api.nomadelabs.com.br';
     if (token) {
       fetch(`${API_URL}/api/v1/auth/me`, {
         headers: { 'Authorization': `Bearer ${token}` }

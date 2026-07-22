@@ -49,7 +49,7 @@ export default function UserProfileModal({ isOpen, onClose, userEmail, onToast }
             </div>
             <div className="flex justify-between items-center text-xs">
               <span className="text-slate-500 dark:text-slate-400 font-mono">Servidor Backend:</span>
-              <span className="text-cyan-600 dark:text-cyan-400 font-mono text-[11px]">http://127.0.0.1:8000</span>
+              <span className="text-cyan-600 dark:text-cyan-400 font-mono text-[11px]">https://api.nomadelabs.com.br</span>
             </div>
           </div>
 

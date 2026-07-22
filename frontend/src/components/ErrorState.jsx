@@ -10,7 +10,7 @@ export default function ErrorState({ message, onRetry }) {
         Não foi possível sincronizar os dados
       </h3>
       <p className="text-xs text-slate-400 mb-6 max-w-sm font-mono">
-        {message || "Verifique se o backend Capture OS está ativo em http://127.0.0.1:8000"}
+        {message || "Verifique se o backend Capture OS está ativo em https://api.nomadelabs.com.br"}
       </p>
       {onRetry && (
         <button 
