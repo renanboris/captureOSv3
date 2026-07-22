@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+// Force Vercel rebuild v1.0.12
 import { Download, AlertTriangle, ShieldCheck, DollarSign, Users, Award, Lock, Plus, CheckCircle2, RefreshCw, BarChart2, Trash2, X, Paperclip, BookOpen, UploadCloud } from 'lucide-react';
 import { BarChart, Bar, AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell } from 'recharts';
 
@@ -305,6 +306,8 @@ export default function AdminPanel() {
       }
 
       let token = urlToken || localStorage.getItem('dev_token');
+      if (token === 'null' || token === 'undefined') token = null;
+
       const API_URL = import.meta.env.VITE_API_URL || 'https://api.nomadelabs.com.br';
 
       if (!token) {
