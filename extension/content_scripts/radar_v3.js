@@ -84,6 +84,11 @@
         if (window.__capture_os_active_script_id !== currentScriptId) {
             return;
         }
+        if (changes.isProcessing && !changes.isProcessing.newValue) {
+            const existingToast = document.getElementById("capture-os-toast");
+            if (existingToast) fecharToast(existingToast);
+        }
+
         if (changes.sandboxMode) isSandboxMode = changes.sandboxMode.newValue;
         if (changes.sandboxSessionId) sandboxSessionId = changes.sandboxSessionId.newValue;
         if (changes.sandboxTotalPassos) sandboxTotalPassos = changes.sandboxTotalPassos.newValue;
@@ -770,28 +775,31 @@
         }, 10);
 
         if (type === "processing") {
-            toast.style.background = '#FFFFFF';
-            toast.style.border = '1px solid #E5E7EB';
-            toast.style.color = '#111827';
-            // Adicionada a Progress Bar na base do Toast
+            toast.style.background = 'linear-gradient(135deg, rgba(15, 23, 42, 0.94) 0%, rgba(30, 41, 59, 0.94) 100%)';
+            toast.style.border = '1px solid rgba(255, 255, 255, 0.12)';
+            toast.style.color = '#F8FAFC';
+            toast.style.boxShadow = '0 16px 40px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.05)';
             toast.style.flexDirection = "column";
             toast.style.alignItems = "stretch";
-            toast.style.gap = "8px";
-            toast.style.padding = "14px 20px 10px 20px";
+            toast.style.gap = "10px";
+            toast.style.padding = "14px 18px 12px 18px";
             
             toast.innerHTML = `
                 <div style="display: flex; flex-direction: column; width: 100%; gap: 10px;">
                     <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
-                        <div style="display: flex; align-items: center; gap: 14px; flex: 1; min-width: 0; margin-right: 12px;">
+                        <div style="display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; margin-right: 12px;">
                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" class="capture-spin" style="flex-shrink:0;">
-                                <circle cx="12" cy="12" r="10" stroke="#F3F4F6" stroke-width="2.5" fill="none"></circle>
-                                <path d="M12 2a10 10 0 0 1 10 10" stroke="#00998F" stroke-width="2.5" stroke-linecap="round" fill="none"></path>
+                                <circle cx="12" cy="12" r="10" stroke="rgba(255, 255, 255, 0.15)" stroke-width="2.5" fill="none"></circle>
+                                <path d="M12 2a10 10 0 0 1 10 10" stroke="#38BDF8" stroke-width="2.5" stroke-linecap="round" fill="none"></path>
                             </svg>
-                            <span id="capture-os-toast-msg" style="font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${msg || 'Processando...'}</span>
+                            <span id="capture-os-toast-msg" style="font-size: 13.5px; font-weight: 500; color: #F8FAFC; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${msg || 'Processando...'}</span>
                         </div>
-                        <button id="capture-os-cancel-btn" style="background: #FEF2F2; border: none; color: #EF4444; font-size: 13px; font-weight: 600; cursor: pointer; padding: 5px 12px; border-radius: 8px; transition: all 0.2s;">Cancelar</button>
+                        <button id="capture-os-cancel-btn" style="position: relative; overflow: hidden; background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.3); color: #F87171; font-size: 12px; font-weight: 600; cursor: pointer; padding: 6px 14px; border-radius: 8px; user-select: none; transition: all 0.2s ease;">
+                            <span id="capture-os-cancel-fill" style="position: absolute; top: 0; left: 0; bottom: 0; width: 0%; background: rgba(239, 68, 68, 0.4); transition: width 0.05s linear; pointer-events: none;"></span>
+                            <span id="capture-os-cancel-label" style="position: relative; z-index: 1;">Segure p/ Cancelar</span>
+                        </button>
                     </div>
-                    <div style="width: 100%; height: 3px; background: #F3F4F6; border-radius: 3px; overflow: hidden;">
+                    <div style="width: 100%; height: 3px; background: rgba(255, 255, 255, 0.08); border-radius: 3px; overflow: hidden;">
                         <div class="capture-progress-fill"></div>
                     </div>
                 </div>
@@ -799,11 +807,44 @@
             
             setTimeout(() => {
                 const cancelBtn = document.getElementById("capture-os-cancel-btn");
+                const fill = document.getElementById("capture-os-cancel-fill");
+                const label = document.getElementById("capture-os-cancel-label");
                 if (cancelBtn) {
-                    cancelBtn.onclick = () => {
-                        chrome.runtime.sendMessage({ action: "abort_processing" }).catch(() => {});
-                        fecharToast(toast);
+                    let holdStartTime = 0;
+                    let animationFrame = null;
+
+                    const startHold = (e) => {
+                        if (e.button !== undefined && e.button !== 0) return;
+                        holdStartTime = Date.now();
+                        if (label) label.innerText = "Segure 1s...";
+                        
+                        const updateFill = () => {
+                            const elapsed = Date.now() - holdStartTime;
+                            const pct = Math.min(100, (elapsed / 1000) * 100);
+                            if (fill) fill.style.width = pct + "%";
+                            if (elapsed < 1000) {
+                                animationFrame = requestAnimationFrame(updateFill);
+                            } else {
+                                if (label) label.innerText = "Cancelado!";
+                                chrome.runtime.sendMessage({ action: "abort_processing" }).catch(() => {});
+                                fecharToast(toast);
+                            }
+                        };
+                        animationFrame = requestAnimationFrame(updateFill);
                     };
+
+                    const cancelHold = () => {
+                        if (animationFrame) cancelAnimationFrame(animationFrame);
+                        if (fill) fill.style.width = "0%";
+                        if (label) label.innerText = "Segure p/ Cancelar";
+                    };
+
+                    cancelBtn.addEventListener("mousedown", startHold);
+                    cancelBtn.addEventListener("mouseup", cancelHold);
+                    cancelBtn.addEventListener("mouseleave", cancelHold);
+                    cancelBtn.addEventListener("touchstart", startHold, { passive: true });
+                    cancelBtn.addEventListener("touchend", cancelHold);
+                    cancelBtn.addEventListener("touchcancel", cancelHold);
                 }
             }, 100);
             if (!document.getElementById("capture-os-toast-style")) {
@@ -821,7 +862,7 @@
                     }
                     .capture-progress-fill {
                         height: 100%;
-                        background: #2AC4AA;
+                        background: linear-gradient(90deg, #38BDF8 0%, #818CF8 100%);
                         width: 0%;
                         border-radius: 3px;
                         animation: capture-progress 60s cubic-bezier(0.1, 0.7, 0.1, 1) forwards;
@@ -830,20 +871,22 @@
                 document.head.appendChild(style);
             }
         } else if (type === "success") {
-            toast.style.background = '#F0FDF4';
-            toast.style.border = '1px solid #BBF7D0';
-            toast.style.color = '#15803D';
+            toast.style.background = 'linear-gradient(135deg, rgba(6, 78, 59, 0.95) 0%, rgba(15, 23, 42, 0.95) 100%)';
+            toast.style.border = '1px solid rgba(16, 185, 129, 0.4)';
+            toast.style.color = '#34D399';
+            toast.style.boxShadow = '0 16px 40px rgba(0, 0, 0, 0.4), 0 0 20px rgba(16, 185, 129, 0.2)';
             toast.innerHTML = `
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                     <polyline points="20 6 9 17 4 12"></polyline>
                 </svg>
-                <span id="capture-os-toast-msg">${msg || "Vídeo finalizado! Abrindo player..."}</span>
+                <span id="capture-os-toast-msg" style="font-weight: 600;">${msg || "Vídeo finalizado! Abrindo player..."}</span>
             `;
             setTimeout(() => fecharToast(toast), 6000);
         } else if (type === "error") {
-            toast.style.background = '#FEF2F2';
-            toast.style.border = '1px solid #FECACA';
-            toast.style.color = '#B91C1C';
+            toast.style.background = 'linear-gradient(135deg, rgba(127, 29, 29, 0.95) 0%, rgba(15, 23, 42, 0.95) 100%)';
+            toast.style.border = '1px solid rgba(239, 68, 68, 0.4)';
+            toast.style.color = '#F87171';
+            toast.style.boxShadow = '0 16px 40px rgba(0, 0, 0, 0.4)';
             toast.innerHTML = `
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <circle cx="12" cy="12" r="10"></circle>
@@ -854,9 +897,10 @@
             `;
             setTimeout(() => fecharToast(toast), 6000);
         } else if (type === "warning") {
-            toast.style.background = '#FFFBEB';
-            toast.style.border = '1px solid #FDE68A';
-            toast.style.color = '#B45309';
+            toast.style.background = 'linear-gradient(135deg, rgba(120, 53, 15, 0.95) 0%, rgba(15, 23, 42, 0.95) 100%)';
+            toast.style.border = '1px solid rgba(245, 158, 11, 0.4)';
+            toast.style.color = '#FBBF24';
+            toast.style.boxShadow = '0 16px 40px rgba(0, 0, 0, 0.4)';
             toast.innerHTML = `
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
@@ -1207,31 +1251,36 @@
                 </div>
             </div>
         `;
-
         const closeBtn = shadow.getElementById('close-btn');
         closeBtn.addEventListener('click', () => {
             // Ao fechar, mostramos o modal de Rating no mesmo host, mas bem menor
             const modal = shadow.getElementById('modal');
-            modal.style.width = '400px';
-            modal.style.height = '280px';
+            modal.style.width = '420px';
+            modal.style.height = 'auto';
+            modal.style.minHeight = '300px';
             modal.innerHTML = `
-                <div style="padding: 32px 24px; text-align: center; width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #ffffff; border-radius: 12px; box-sizing: border-box;">
-                    <h2 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: #0f172a;">Processo Concluído!</h2>
-                    <p style="margin: 0 0 24px 0; font-size: 15px; color: #475569;">Como foi sua experiência gravando este material hoje?</p>
-                    <div id="ext-stars-container" style="display: flex; gap: 8px; justify-content: center; margin-bottom: 24px;">
-                        <span class="ext-star" data-val="1" style="font-size: 36px; color: #cbd5e1; cursor: pointer; transition: 0.2s; user-select: none;">★</span>
-                        <span class="ext-star" data-val="2" style="font-size: 36px; color: #cbd5e1; cursor: pointer; transition: 0.2s; user-select: none;">★</span>
-                        <span class="ext-star" data-val="3" style="font-size: 36px; color: #cbd5e1; cursor: pointer; transition: 0.2s; user-select: none;">★</span>
-                        <span class="ext-star" data-val="4" style="font-size: 36px; color: #cbd5e1; cursor: pointer; transition: 0.2s; user-select: none;">★</span>
-                        <span class="ext-star" data-val="5" style="font-size: 36px; color: #cbd5e1; cursor: pointer; transition: 0.2s; user-select: none;">★</span>
-                    </div>
-                    <div id="ext-rating-msg" style="display: none; color: #10b981; font-weight: 500; margin-bottom: 24px;">Obrigado pela sua avaliação! ✅</div>
-                    <button id="ext-btn-skip" class="btn btn-secondary" style="background: white; border: 1px solid #cbd5e1; padding: 10px 24px; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 14px; color: #64748b; transition: 0.2s;">Pular e Fechar</button>
+                <div style="padding: 32px 24px; text-align: center; width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; background: linear-gradient(145deg, #0F172A 0%, #1E293B 100%); border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 16px; box-shadow: 0 20px 50px rgba(0,0,0,0.5); box-sizing: border-box; color: #F8FAFC;">
+                    <h2 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 700; color: #F8FAFC;">Processo Concluído!</h2>
+                    <p id="ext-rating-subtitle" style="margin: 0 0 20px 0; font-size: 14px; color: #94A3B8;">Como foi sua experiência gravando este material hoje?</p>
                     
-                    <p id="ext-report-link" style="margin-top: 24px; font-size: 12px; color: #94a3b8; cursor: pointer; text-decoration: underline; transition: 0.2s;">Encontrou algum problema? Reportar erro</p>
+                    <div id="ext-stars-container" style="display: flex; gap: 10px; justify-content: center; margin-bottom: 20px;">
+                        <span class="ext-star" data-val="1" style="font-size: 36px; color: rgba(255, 255, 255, 0.2); cursor: pointer; transition: all 0.2s; user-select: none;">★</span>
+                        <span class="ext-star" data-val="2" style="font-size: 36px; color: rgba(255, 255, 255, 0.2); cursor: pointer; transition: all 0.2s; user-select: none;">★</span>
+                        <span class="ext-star" data-val="3" style="font-size: 36px; color: rgba(255, 255, 255, 0.2); cursor: pointer; transition: all 0.2s; user-select: none;">★</span>
+                        <span class="ext-star" data-val="4" style="font-size: 36px; color: rgba(255, 255, 255, 0.2); cursor: pointer; transition: all 0.2s; user-select: none;">★</span>
+                        <span class="ext-star" data-val="5" style="font-size: 36px; color: rgba(255, 255, 255, 0.2); cursor: pointer; transition: all 0.2s; user-select: none;">★</span>
+                    </div>
+                    
+                    <div id="ext-rating-msg" style="display: none; color: #34D399; font-weight: 600; font-size: 16px; margin-bottom: 24px; padding: 12px 16px; background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.25); border-radius: 10px; width: 100%;">
+                        Obrigado pela sua avaliação! ✅
+                    </div>
+                    
+                    <button id="ext-btn-skip" class="btn btn-secondary" style="background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.12); padding: 10px 24px; border-radius: 10px; cursor: pointer; font-weight: 600; font-size: 13px; color: #F8FAFC; transition: all 0.2s;">Pular e Fechar</button>
+                    
+                    <p id="ext-report-link" style="margin-top: 20px; font-size: 12px; color: #64748B; cursor: pointer; text-decoration: underline; transition: all 0.2s;">Encontrou algum problema? Reportar erro</p>
                     <div id="ext-report-container" style="display: none; width: 100%; margin-top: 16px;">
-                        <textarea id="ext-report-text" placeholder="Descreva o problema ou erro encontrado..." style="width: 100%; height: 70px; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13px; font-family: inherit; resize: none; outline: none; margin-bottom: 12px; box-sizing: border-box;"></textarea>
-                        <button id="ext-btn-report" class="btn btn-primary" style="width: 100%; padding: 10px; font-size: 13px; margin: 0; box-sizing: border-box;">Enviar Relato</button>
+                        <textarea id="ext-report-text" placeholder="Descreva o problema ou erro encontrado..." style="width: 100%; height: 75px; padding: 10px 12px; border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 8px; font-size: 13px; font-family: inherit; background: rgba(255, 255, 255, 0.05); color: #F8FAFC; resize: none; outline: none; margin-bottom: 12px; box-sizing: border-box;"></textarea>
+                        <button id="ext-btn-report" class="btn btn-primary" style="width: 100%; padding: 10px; font-size: 13px; font-weight: 600; background: linear-gradient(135deg, #10B981 0%, #059669 100%); border: none; border-radius: 8px; color: white; cursor: pointer; margin: 0; box-sizing: border-box;">Enviar Relato</button>
                     </div>
                 </div>
             `;
@@ -1250,11 +1299,11 @@
             shadow.getElementById('ext-report-link').addEventListener('click', (e) => {
                 e.target.style.display = 'none';
                 shadow.getElementById('ext-stars-container').style.display = 'none';
+                shadow.getElementById('ext-rating-subtitle').style.display = 'none';
                 shadow.querySelector('h2').innerText = 'Reportar um Problema';
-                shadow.querySelector('p').style.display = 'none';
                 shadow.getElementById('ext-btn-skip').style.display = 'none';
                 shadow.getElementById('ext-report-container').style.display = 'block';
-                shadow.getElementById('modal').style.height = '320px';
+                shadow.getElementById('modal').style.minHeight = '320px';
             });
 
             shadow.getElementById('ext-btn-report').addEventListener('click', () => {
@@ -1279,7 +1328,7 @@
                     }
                 });
                 
-                shadow.getElementById('ext-report-container').innerHTML = '<p style="color: #10b981; font-weight: 500; font-size: 14px; margin: 0;">Relato enviado com sucesso! Muito obrigado.</p>';
+                shadow.getElementById('ext-report-container').innerHTML = '<p style="color: #34D399; font-weight: 500; font-size: 14px; margin: 0;">Relato enviado com sucesso! Muito obrigado.</p>';
                 setTimeout(fecharFinal, 2500);
             });
 
@@ -1289,10 +1338,10 @@
                     const val = parseInt(this.getAttribute('data-val'));
                     stars.forEach(s => {
                         if (parseInt(s.getAttribute('data-val')) <= val) {
-                            s.style.color = '#fbbf24';
+                            s.style.color = '#FBBF24';
                             s.style.textShadow = '0 2px 10px rgba(251, 191, 36, 0.4)';
                         } else {
-                            s.style.color = '#cbd5e1';
+                            s.style.color = 'rgba(255, 255, 255, 0.2)';
                             s.style.textShadow = 'none';
                         }
                     });
@@ -1300,7 +1349,7 @@
                 star.addEventListener('mouseleave', function() {
                     if (nota > 0) return;
                     stars.forEach(s => {
-                        s.style.color = '#cbd5e1';
+                        s.style.color = 'rgba(255, 255, 255, 0.2)';
                         s.style.textShadow = 'none';
                     });
                 });
@@ -1309,15 +1358,17 @@
                     nota = parseInt(this.getAttribute('data-val'));
                     stars.forEach(s => {
                         if (parseInt(s.getAttribute('data-val')) <= nota) {
-                            s.style.color = '#fbbf24';
+                            s.style.color = '#FBBF24';
                             s.style.textShadow = '0 2px 10px rgba(251, 191, 36, 0.4)';
                         } else {
-                            s.style.color = '#cbd5e1';
+                            s.style.color = 'rgba(255, 255, 255, 0.2)';
                             s.style.textShadow = 'none';
                         }
                         s.style.cursor = 'default';
                     });
                     
+                    shadow.getElementById('ext-stars-container').style.display = 'none';
+                    shadow.getElementById('ext-rating-subtitle').style.display = 'none';
                     shadow.getElementById('ext-rating-msg').style.display = 'block';
                     shadow.getElementById('ext-btn-skip').innerText = 'Fechar';
                     

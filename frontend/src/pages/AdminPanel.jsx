@@ -523,11 +523,14 @@ export default function AdminPanel() {
   };
 
   const instructorChartData = useMemo(() => {
-    return (metrics.runs_by_instructor || []).map(inst => ({
-      name: (inst.display_name || inst.instructor_id).split('@')[0],
-      total: inst.total_runs,
-      completadas: inst.completed_runs
-    }));
+    return (metrics?.runs_by_instructor || []).map(inst => {
+      const rawId = String(inst?.display_name || inst?.instructor_id || inst?.user_id || 'Instrutor');
+      return {
+        name: rawId.includes('@') ? rawId.split('@')[0] : rawId,
+        total: inst?.total_runs || 0,
+        completadas: inst?.completed_runs || 0
+      };
+    });
   }, [metrics]);
 
   if (error) {
@@ -712,9 +715,10 @@ export default function AdminPanel() {
           </div>
 
           <div className="space-y-2 pt-2 border-t border-slate-100 dark:border-white/[0.06]">
-            {metrics.runs_by_instructor?.map((inst, idx) => {
-              const name = inst.display_name || inst.name || (inst.instructor_id.includes('@') ? inst.instructor_id : `Instrutor (${inst.instructor_id.substring(0, 8)})`);
-              const initial = name.charAt(0).toUpperCase();
+            {(metrics?.runs_by_instructor || []).map((inst, idx) => {
+              const rawId = String(inst?.display_name || inst?.name || inst?.instructor_id || inst?.user_id || 'Instrutor');
+              const name = rawId.includes('@') ? rawId : `Instrutor (${rawId.substring(0, 8)})`;
+              const initial = (name.charAt(0) || 'I').toUpperCase();
               return (
                 <div key={idx} className="flex items-center justify-between p-2.5 bg-slate-50 hover:bg-slate-100 dark:bg-white/[0.02] dark:hover:bg-white/[0.04] rounded-xl transition-colors text-xs">
                   <div className="flex items-center gap-3">
