@@ -34,29 +34,35 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     async function checkSession() {
         try {
-            if (typeof supabaseClient === 'undefined' || !supabaseClient || !supabaseClient.auth) {
-                if (loginOverlay) loginOverlay.style.display = 'none';
-                return;
+            const { authToken, awaitingOtpEmail } = await chrome.storage.local.get(['authToken', 'awaitingOtpEmail']);
+            let session = null;
+            if (typeof supabaseClient !== 'undefined' && supabaseClient && supabaseClient.auth) {
+                try {
+                    const res = await supabaseClient.auth.getSession();
+                    session = res && res.data ? res.data.session : null;
+                } catch (e) {
+                    console.warn("[CaptureOS] Supabase getSession warning:", e);
+                }
             }
-            const { data, error } = await supabaseClient.auth.getSession();
-            const session = data ? data.session : null;
-            if (session) {
-                await chrome.storage.local.set({ authToken: session.access_token });
+
+            if (session || authToken) {
+                if (session && session.access_token) {
+                    await chrome.storage.local.set({ authToken: session.access_token });
+                }
                 await chrome.storage.local.remove('awaitingOtpEmail');
                 if (loginOverlay) loginOverlay.style.display = 'none';
                 sincronizarConfiguracoesWhitelist().catch(err => console.warn(err));
             } else {
                 if (loginOverlay) loginOverlay.style.display = 'flex';
-                const res = await chrome.storage.local.get(['awaitingOtpEmail']);
-                if (res && res.awaitingOtpEmail && loginEmail) {
-                    loginEmail.value = res.awaitingOtpEmail;
+                if (awaitingOtpEmail && loginEmail) {
+                    loginEmail.value = awaitingOtpEmail;
                     if (btnSendOtp) btnSendOtp.style.display = 'none';
                     if (otpContainer) otpContainer.style.display = 'flex';
                     if (loginError) loginError.style.display = 'none';
                 }
             }
         } catch (err) {
-            console.warn("[CaptureOS] Session check warning:", err);
+            console.warn("[CaptureOS] Session check error:", err);
             if (loginOverlay) loginOverlay.style.display = 'none';
         }
     }
