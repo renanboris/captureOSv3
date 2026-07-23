@@ -122,7 +122,7 @@ async def rerenderizar_com_roteiro_aprovado(session_id: str, roteiro_aprovado: l
             timeline_events.append(event)
             
     # --- 4. RENDERIZAÇÃO DE VÍDEO ---
-    update_status(session_id, "rendering_final", "🎬 Renderizando seu vídeo final aprovado...")
+    update_status(session_id, "rendering_final", "Renderizando seu vídeo final aprovado...")
 
     overlay_path = DEFAULT_OVERLAY if usar_overlay else None
 

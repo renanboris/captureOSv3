@@ -98,16 +98,11 @@ function renderizarPassos() {
         const textoCompletoReal = `${passo.ancora || ''} ${passo.micro_narracao || ''}`.trim();
         const textoView = textoCompletoReal || '(vazio)';
 
-        const isLowConfidence = (passo._simlink && passo._simlink.confianca_captura === 'baixa') || false;
-        const lowConfidenceBadge = isLowConfidence 
-            ? `<span class="badge-warning" style="background:#FFFBEB; color:#B45309; border:1px solid #FCD34D; font-size:11px; padding:2px 8px; border-radius:12px; font-weight:600; margin-left:8px;">⚠️ Seletor Frágil</span>`
-            : '';
-
         item.innerHTML = `
             <div class="transcript-time" title="Tempo da gravação">${tempoReal}</div>
             <div class="transcript-content">
                 <div class="editable-text-container" onclick="iniciarEdicao(this, 'texto-${index}')">
-                    <p class="editable-text" id="texto-view-${index}">${textoView} ${lowConfidenceBadge}</p>
+                    <p class="editable-text" id="texto-view-${index}">${textoView}</p>
                     <textarea id="texto-${index}" style="display:none;" placeholder="Digite o texto deste passo..." onblur="finalizarEdicao(this, 'texto-view-${index}')">${textoCompletoReal}</textarea>
                 </div>
                 <div class="actions" style="display:flex; align-items:center; gap:8px;">

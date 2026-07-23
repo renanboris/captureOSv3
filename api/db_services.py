@@ -343,7 +343,9 @@ def get_pipeline_runs_for_organization(
 def get_organization_settings(organization_id: str) -> dict:
     default_settings = {
         "disable_whitelist": True,
-        "allowed_domains": ["localhost", "127.0.0.1", "senior.com.br", "senior.com"]
+        "allowed_domains": ["localhost", "127.0.0.1", "senior.com.br", "senior.com"],
+        "anonimizacao_ativa": True,
+        "anonimizar_tipos": {"cpf": True, "cnpj": True, "email": False, "telefone": False}
     }
 
     def _read_local():
@@ -352,14 +354,20 @@ def get_organization_settings(organization_id: str) -> dict:
             try:
                 with open(settings_file, "r", encoding="utf-8") as f:
                     data = json.load(f)
-                    if organization_id in data:
-                        return data[organization_id]
+                    if organization_id and organization_id in data:
+                        org_conf = data[organization_id]
+                        merged = {**default_settings, **org_conf}
+                        return merged
             except Exception as e:
                 logger.error(f"Error reading local organization settings: {e}")
         return None
 
+    local_data = _read_local()
+    if local_data is not None:
+        return local_data
+
     client = get_supabase_client()
-    if client:
+    if client and organization_id:
         try:
             res = client.table("organizations").select("disable_whitelist", "allowed_domains").eq("id", organization_id).execute()
             if res.data and len(res.data) > 0:
@@ -367,15 +375,12 @@ def get_organization_settings(organization_id: str) -> dict:
                 disable_whitelist = org_data.get("disable_whitelist")
                 allowed_domains = org_data.get("allowed_domains")
                 return {
+                    **default_settings,
                     "disable_whitelist": disable_whitelist if disable_whitelist is not None else True,
                     "allowed_domains": allowed_domains if allowed_domains is not None else default_settings["allowed_domains"]
                 }
         except Exception as e:
             logger.error(f"Error fetching organization settings for org {organization_id}: {e}")
-
-    local_data = _read_local()
-    if local_data is not None:
-        return local_data
 
     return default_settings
 
@@ -383,6 +388,8 @@ def get_organization_settings(organization_id: str) -> dict:
 def save_organization_settings(organization_id: str, settings_data: dict) -> bool:
     disable_whitelist = settings_data.get("disable_whitelist", True)
     allowed_domains = settings_data.get("allowed_domains", ["localhost", "127.0.0.1", "senior.com.br", "senior.com"])
+    anonimizacao_ativa = settings_data.get("anonimizacao_ativa", True)
+    anonimizar_tipos = settings_data.get("anonimizar_tipos", {"cpf": True, "cnpj": True, "email": False, "telefone": False})
 
     # Always persist locally for resilience
     settings_file = "data/organization_settings.json"
@@ -396,7 +403,9 @@ def save_organization_settings(organization_id: str, settings_data: dict) -> boo
 
     data[organization_id] = {
         "disable_whitelist": disable_whitelist,
-        "allowed_domains": allowed_domains
+        "allowed_domains": allowed_domains,
+        "anonimizacao_ativa": anonimizacao_ativa,
+        "anonimizar_tipos": anonimizar_tipos
     }
 
     try:
@@ -407,7 +416,7 @@ def save_organization_settings(organization_id: str, settings_data: dict) -> boo
         logger.error(f"Error writing local organization settings: {e}")
 
     client = get_supabase_client()
-    if client:
+    if client and organization_id:
         try:
             client.table("organizations").update({
                 "disable_whitelist": disable_whitelist,

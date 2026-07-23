@@ -1032,6 +1032,9 @@ def admin_get_settings(user_dict: dict = Depends(require_auth)):
 class OrganizationSettingsPayload(BaseModel):
     disable_whitelist: bool
     allowed_domains: List[str]
+    anonimizacao_ativa: Optional[bool] = True
+    anonimizar_tipos: Optional[Dict[str, bool]] = None
+
 
 
 @app.post("/api/v1/admin/settings", dependencies=_auth_deps)

@@ -162,6 +162,15 @@ export default function AdminPanel() {
   const [savingSettings, setSavingSettings] = useState(false);
   const [settingsSuccess, setSettingsSuccess] = useState(false);
 
+  // Anonymization settings states
+  const [anonimizacaoAtiva, setAnonimizacaoAtiva] = useState(true);
+  const [anonimizarTipos, setAnonimizarTipos] = useState({
+    cpf: true,
+    cnpj: true,
+    email: false,
+    telefone: false
+  });
+
   const fetchSettings = async (token) => {
     try {
       const API_URL = import.meta.env.VITE_API_URL || 'https://api.nomadelabs.com.br';
@@ -171,6 +180,10 @@ export default function AdminPanel() {
         const data = await res.json();
         setDisableWhitelist(data.disable_whitelist || false);
         setAllowedDomains(data.allowed_domains || []);
+        setAnonimizacaoAtiva(data.anonimizacao_ativa !== undefined ? data.anonimizacao_ativa : true);
+        if (data.anonimizar_tipos) {
+          setAnonimizarTipos(data.anonimizar_tipos);
+        }
       }
     } catch (e) {
       console.warn("Erro ao buscar configurações de whitelist:", e);
@@ -212,7 +225,9 @@ export default function AdminPanel() {
         headers,
         body: JSON.stringify({
           disable_whitelist: disableWhitelist,
-          allowed_domains: allowedDomains
+          allowed_domains: allowedDomains,
+          anonimizacao_ativa: anonimizacaoAtiva,
+          anonimizar_tipos: anonimizarTipos
         })
       });
 
@@ -917,6 +932,71 @@ export default function AdminPanel() {
             </form>
           </div>
         )}
+
+        {/* Subseção: Anonimização de Dados Sensíveis */}
+        <div className="border-t border-slate-200 dark:border-white/[0.08] pt-6 space-y-4">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 bg-slate-50 border border-slate-200 dark:bg-white/[0.02] dark:border-white/[0.06] rounded-xl">
+            <div>
+              <h4 className="font-semibold text-xs text-slate-900 dark:text-white">Anonimização Automática de Dados Sensíveis</h4>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 font-mono mt-0.5">
+                Ofusca dados sensíveis nos eventos de captura antes do envio aos modelos de Inteligência Artificial.
+              </p>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer shrink-0">
+              <input 
+                type="checkbox" 
+                className="sr-only peer" 
+                checked={anonimizacaoAtiva} 
+                onChange={(e) => setAnonimizacaoAtiva(e.target.checked)} 
+              />
+              <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500 dark:bg-slate-800"></div>
+            </label>
+          </div>
+
+          {anonimizacaoAtiva && (
+            <div className="p-4 bg-slate-50 border border-slate-200 dark:bg-white/[0.02] dark:border-white/[0.06] rounded-xl space-y-3 animate-fade-in">
+              <h5 className="font-semibold text-xs text-slate-900 dark:text-white font-mono">Tipos de Dados a Anonimizar</h5>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs font-mono">
+                <label className="flex items-center gap-2 cursor-pointer select-none text-slate-700 dark:text-slate-300">
+                  <input 
+                    type="checkbox" 
+                    checked={anonimizarTipos.cpf} 
+                    onChange={(e) => setAnonimizarTipos({ ...anonimizarTipos, cpf: e.target.checked })} 
+                    className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" 
+                  />
+                  <span>CPF</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer select-none text-slate-700 dark:text-slate-300">
+                  <input 
+                    type="checkbox" 
+                    checked={anonimizarTipos.cnpj} 
+                    onChange={(e) => setAnonimizarTipos({ ...anonimizarTipos, cnpj: e.target.checked })} 
+                    className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" 
+                  />
+                  <span>CNPJ</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer select-none text-slate-700 dark:text-slate-300">
+                  <input 
+                    type="checkbox" 
+                    checked={anonimizarTipos.email} 
+                    onChange={(e) => setAnonimizarTipos({ ...anonimizarTipos, email: e.target.checked })} 
+                    className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" 
+                  />
+                  <span>E-mail</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer select-none text-slate-700 dark:text-slate-300">
+                  <input 
+                    type="checkbox" 
+                    checked={anonimizarTipos.telefone} 
+                    onChange={(e) => setAnonimizarTipos({ ...anonimizarTipos, telefone: e.target.checked })} 
+                    className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" 
+                  />
+                  <span>Telefone</span>
+                </label>
+              </div>
+            </div>
+          )}
+        </div>
 
         <div className="flex items-center gap-4 border-t border-slate-200 dark:border-white/[0.08] pt-4">
           <button 

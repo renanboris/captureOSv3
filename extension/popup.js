@@ -659,7 +659,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         btnStart.disabled = true;
         btnStart.classList.remove('pulse-anim');
         btnStart.innerHTML = `
-            <div class="processing-spinner" style="width:14px;height:14px;border-width:2px;border-color:#fff;border-top-color:transparent;"></div>
+            <div class="processing-spinner" style="width:14px;height:14px;border-width:2px;border-color:rgba(255,255,255,0.3);border-top-color:#ffffff;"></div>
             Processando...
         `;
         btnStart.style.opacity = '0.7';

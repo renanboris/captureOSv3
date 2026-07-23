@@ -175,7 +175,7 @@ async def _renderizar_exportacao_impl(payload: dict, session_id: str):
         roteiro_enriquecido = payload["roteiro_manual"]
     else:
         # --- 1. INTELIGÊNCIA VISUAL ---
-        update_status(session_id, "processing", "✨ Assistente interpretando suas ações na tela...")
+        update_status(session_id, "processing", "Assistente interpretando suas ações na tela...")
         # Defect 2 fix: coalesce click+click+dblclick bursts on the same target
         # into a single dblclick event BEFORE the per-event processar_evento
         # fan-out, so downstream enrichment/TTS/timeline see one step per burst.
@@ -276,7 +276,7 @@ async def _renderizar_exportacao_impl(payload: dict, session_id: str):
         roteiro = list(roteiro_raw)
 
         # --- 2. ENRIQUECIMENTO SEMÂNTICO ---
-        update_status(session_id, "processing", "✍️ Assistente montando o roteiro do seu tutorial...")
+        update_status(session_id, "processing", "Assistente montando o roteiro do seu tutorial...")
         rag_namespace = payload.get("rag_namespace", "auto")
         try:
             roteiro_enriquecido = await enriquecer_narrativa(roteiro, transcricao_instrutor, rag_namespace, session_id=session_id)
@@ -310,7 +310,7 @@ async def _renderizar_exportacao_impl(payload: dict, session_id: str):
         roteiro_enriquecido = roteiro_limpo
 
         # --- 3. GERAR TÍTULO INTELIGENTE ---
-        update_status(session_id, "processing", "🧠 Extraindo intenção para gerar título...")
+        update_status(session_id, "processing", "Extraindo intenção para gerar título...")
         try:
             titulo_inteligente = await gerar_titulo_inteligente(roteiro_enriquecido, rag_namespace, session_id=session_id)
         except Exception as e:

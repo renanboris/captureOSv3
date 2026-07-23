@@ -67,7 +67,18 @@ def _strip_code_fences(texto: str) -> str:
     return t.strip()
 
 
-async def processar_intencao(image_bytes: bytes, event_data: dict, a11y_tree: list, session_id: str = None) -> dict:
+def _anonymize_if_enabled(user_content: str, org_id: str = None) -> str:
+    from api.db_services import get_organization_settings
+    from api.anonymizer import anonymize_text
+    
+    settings = get_organization_settings(org_id) if org_id else get_organization_settings("")
+    if settings.get("anonimizacao_ativa", True):
+        types_config = settings.get("anonimizar_tipos", {"cpf": True, "cnpj": True, "email": False, "telefone": False})
+        return anonymize_text(user_content, config=types_config)
+    return user_content
+
+
+async def processar_intencao(image_bytes: bytes, event_data: dict, a11y_tree: list, session_id: str = None, org_id: str = None) -> dict:
     load_dotenv()
 
     try:
@@ -91,8 +102,7 @@ async def processar_intencao(image_bytes: bytes, event_data: dict, a11y_tree: li
         f"{action_value_str}"
     ).strip()
 
-    from api.anonymizer import anonymize_text
-    user_content = anonymize_text(user_content)
+    user_content = _anonymize_if_enabled(user_content, org_id)
 
     try:
         response = await client.aio.models.generate_content(
@@ -170,7 +180,7 @@ async def processar_intencao(image_bytes: bytes, event_data: dict, a11y_tree: li
         return {"intencao_detalhada": "Interagir com o sistema"}
 
 
-async def enriquecer_narrativa(roteiro_bruto: list, transcricao_instrutor: str = None, rag_namespace: str = "auto", session_id: str = None) -> list:
+async def enriquecer_narrativa(roteiro_bruto: list, transcricao_instrutor: str = None, rag_namespace: str = "auto", session_id: str = None, org_id: str = None) -> list:
     """
     Passo 2 (Enriquecimento Semântico):
     Olha o cenário completo de cliques e gera a âncora (Big Picture) e a micro narração (Instrução exata).
@@ -199,8 +209,10 @@ Use a terminologia oficial (nomes de telas, menus e conceitos) deste material qu
     else:
         logger.info("Nenhum manual RAG compatível encontrado para os passos iniciais.")
 
-    # Prepara o JSON para injetar no prompt
-    roteiro_texto = json.dumps(roteiro_bruto, ensure_ascii=False, indent=2)
+    roteiro_texto = "\n".join([
+        f"Passo {i+1} [{p.get('action', 'click')}]: Elemento='{p.get('_simlink', {}).get('target_text') or p.get('intencao_original')}' | Intenção Bruta='{p.get('intencao_original')}'"
+        for i, p in enumerate(roteiro_bruto)
+    ])
 
     transcricao_section = ""
     if transcricao_instrutor:
@@ -219,8 +231,7 @@ O instrutor explicou o processo com as próprias palavras acima. Use o raciocín
 {roteiro_texto}
 </ROTEIRO_BRUTO>""".strip()
 
-    from api.anonymizer import anonymize_text
-    user_content = anonymize_text(user_content)
+    user_content = _anonymize_if_enabled(user_content, org_id)
 
     try:
         response = await client.aio.models.generate_content(
@@ -336,7 +347,7 @@ O instrutor explicou o processo com as próprias palavras acima. Use o raciocín
         return roteiro_bruto
 
 
-async def regerar_passo_isolado(passo_alvo: dict, passo_anterior: dict = None, passo_seguinte: dict = None, session_id: str = None) -> dict:
+async def regerar_passo_isolado(passo_alvo: dict, passo_anterior: dict = None, passo_seguinte: dict = None, session_id: str = None, org_id: str = None) -> dict:
     """
     Regera a âncora e a micro narração de um passo específico,
     levando em consideração o contexto dos passos adjacentes.
@@ -363,8 +374,7 @@ async def regerar_passo_isolado(passo_alvo: dict, passo_anterior: dict = None, p
 {contexto}
 </CONTEXTO_DOS_PASSOS_ADJACENTES>"""
 
-    from api.anonymizer import anonymize_text
-    user_content = anonymize_text(user_content)
+    user_content = _anonymize_if_enabled(user_content, org_id)
 
     try:
         response = await client.aio.models.generate_content(

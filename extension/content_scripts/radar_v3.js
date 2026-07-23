@@ -286,6 +286,55 @@
         return sel.includes(':nth-child') || sel.includes(':nth-of-type') || sel.includes('/tr[') || sel.includes('/div[');
     }
 
+    function ehIdPosicional(id) {
+        if (!id) return false;
+        return /[-_](item[-_]?)?\d+$/i.test(id) || /^(menu|item|row|col|list)[-_]?\d+$/i.test(id);
+    }
+
+    function extrairSegmentoAncora(text) {
+        if (!text) return '';
+        const primeiraLinha = text.split('\n')[0].trim();
+        return primeiraLinha;
+    }
+
+    function isUrlMatch(expectedUrl) {
+        if (!expectedUrl) return true;
+        const currentTopUrl = window.location.href;
+        if (currentTopUrl === expectedUrl) return true;
+
+        try {
+            const parsed = new URL(currentTopUrl);
+            const linkParam = parsed.searchParams.get('link');
+            if (linkParam) {
+                const decodedLink = decodeURIComponent(linkParam);
+                if (linkParam === expectedUrl || decodedLink === expectedUrl || decodedLink.includes(expectedUrl) || expectedUrl.includes(decodedLink)) {
+                    return true;
+                }
+            }
+        } catch(e) {}
+
+        try {
+            const iframes = Array.from(document.querySelectorAll('iframe'));
+            for (const iframe of iframes) {
+                try {
+                    const iframeSrc = iframe.src || iframe.contentWindow?.location?.href;
+                    if (iframeSrc && (iframeSrc === expectedUrl || iframeSrc.includes(expectedUrl) || expectedUrl.includes(iframeSrc))) {
+                        return true;
+                    }
+                } catch(e) {}
+            }
+        } catch(e) {}
+
+        try {
+            const stepObj = new URL(expectedUrl, window.location.origin);
+            if (stepObj.hostname === window.location.hostname && (stepObj.pathname === window.location.pathname || window.location.pathname === '/')) {
+                return true;
+            }
+        } catch(e) {}
+
+        return false;
+    }
+
     function getSelectorsAndConfidence(el, text) {
         let confidence = 'alta';
         let candidates = [];
@@ -313,10 +362,11 @@
             candidates.push(primarySelector);
         }
 
+        const textoAncora = extrairSegmentoAncora(text);
         let textXpath = '';
-        if (text && text.length > 2 && text.length < 50 && !text.includes('"') && !text.includes("'")) {
+        if (textoAncora && textoAncora.length > 2 && textoAncora.length < 50 && !textoAncora.includes('"') && !textoAncora.includes("'")) {
             const tagLower = el.tagName.toLowerCase();
-            textXpath = `//${tagLower}[contains(text(), "${text}")]`;
+            textXpath = `//${tagLower}[contains(text(), "${textoAncora}")]`;
             candidates.push(textXpath);
         }
 
@@ -334,9 +384,19 @@
         }
         primaryXpath = textXpath || structXpath;
 
-        const hasSemanticAttribute = !!(el.id || dataTestId || ariaLabel || el.name || (text && text.length > 2));
-        if (ehSeletorFragilJS(primarySelector) && !hasSemanticAttribute) {
+        const isPositionalId = el.id ? ehIdPosicional(el.id) : false;
+        const hasStableSemanticAttribute = !!(
+            (el.id && !isPositionalId) || 
+            dataTestId || 
+            ariaLabel || 
+            el.name || 
+            (textoAncora && textoAncora.length > 2)
+        );
+
+        if (ehSeletorFragilJS(primarySelector) && !hasStableSemanticAttribute) {
             confidence = 'baixa';
+        } else if (isPositionalId && !textXpath && !dataTestId && !ariaLabel) {
+            confidence = 'média';
         } else {
             confidence = 'alta';
         }
@@ -427,15 +487,13 @@
             if (!step) return;
 
             // Trava de URL na prática
-            if (step.url && window.location.href !== step.url) {
+            if (step.url && !isUrlMatch(step.url)) {
                 try {
                     const stepObj = new URL(step.url, window.location.origin);
-                    if (stepObj.hostname !== window.location.hostname || (stepObj.pathname !== window.location.pathname && stepObj.pathname !== '/')) {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        showToast("warning", `Navegue para a página do passo: ${stepObj.pathname}`);
-                        return;
-                    }
+                    e.preventDefault();
+                    e.stopPropagation();
+                    showToast("warning", `Navegue para a página do passo: ${stepObj.pathname}`);
+                    return;
                 } catch(err) {}
             }
 
@@ -733,7 +791,8 @@
         }
     }, 15000);
 
-    function showToast(type, msg) {
+    function showToast(type, rawMsg) {
+        const msg = rawMsg ? rawMsg.replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{1F600}-\u{1F64F}\u{1F680}-\u{1F6FF}]/gu, '').trim() : rawMsg;
         if (document.getElementById('capture-os-editor-host')) {
             const existingToast = document.getElementById("capture-os-toast");
             if (existingToast) existingToast.remove();
@@ -775,31 +834,34 @@
         }, 10);
 
         if (type === "processing") {
-            toast.style.background = 'linear-gradient(135deg, rgba(15, 23, 42, 0.94) 0%, rgba(30, 41, 59, 0.94) 100%)';
-            toast.style.border = '1px solid rgba(255, 255, 255, 0.12)';
-            toast.style.color = '#F8FAFC';
-            toast.style.boxShadow = '0 16px 40px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.05)';
+            toast.style.background = 'rgba(255, 255, 255, 0.96)';
+            toast.style.backdropFilter = 'blur(16px)';
+            toast.style.webkitBackdropFilter = 'blur(16px)';
+            toast.style.border = '1px solid rgba(15, 23, 42, 0.08)';
+            toast.style.color = '#0F172A';
+            toast.style.boxShadow = '0 20px 40px -8px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0, 0, 0, 0.04)';
             toast.style.flexDirection = "column";
             toast.style.alignItems = "stretch";
             toast.style.gap = "10px";
             toast.style.padding = "14px 18px 12px 18px";
+            toast.style.borderRadius = "14px";
             
             toast.innerHTML = `
                 <div style="display: flex; flex-direction: column; width: 100%; gap: 10px;">
                     <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
                         <div style="display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; margin-right: 12px;">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" class="capture-spin" style="flex-shrink:0;">
-                                <circle cx="12" cy="12" r="10" stroke="rgba(255, 255, 255, 0.15)" stroke-width="2.5" fill="none"></circle>
-                                <path d="M12 2a10 10 0 0 1 10 10" stroke="#38BDF8" stroke-width="2.5" stroke-linecap="round" fill="none"></path>
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" class="capture-spin" style="flex-shrink:0;">
+                                <circle cx="12" cy="12" r="10" stroke="#E2E8F0" stroke-width="2.5" fill="none"></circle>
+                                <path d="M12 2a10 10 0 0 1 10 10" stroke="#0F172A" stroke-width="2.5" stroke-linecap="round" fill="none"></path>
                             </svg>
-                            <span id="capture-os-toast-msg" style="font-size: 13.5px; font-weight: 500; color: #F8FAFC; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${msg || 'Processando...'}</span>
+                            <span id="capture-os-toast-msg" style="font-size: 13px; font-weight: 600; color: #0F172A; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${msg || 'Processando...'}</span>
                         </div>
-                        <button id="capture-os-cancel-btn" style="position: relative; overflow: hidden; background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.3); color: #F87171; font-size: 12px; font-weight: 600; cursor: pointer; padding: 6px 14px; border-radius: 8px; user-select: none; transition: all 0.2s ease;">
-                            <span id="capture-os-cancel-fill" style="position: absolute; top: 0; left: 0; bottom: 0; width: 0%; background: rgba(239, 68, 68, 0.4); transition: width 0.05s linear; pointer-events: none;"></span>
-                            <span id="capture-os-cancel-label" style="position: relative; z-index: 1;">Segure p/ Cancelar</span>
+                        <button id="capture-os-cancel-btn" style="position: relative; overflow: hidden; background: #0F172A; border: 1px solid #0F172A; color: #FFFFFF; font-size: 11.5px; font-weight: 500; cursor: pointer; padding: 5px 14px; border-radius: 8px; user-select: none; transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1); box-shadow: 0 2px 6px rgba(15, 23, 42, 0.12);">
+                            <span id="capture-os-cancel-fill" style="position: absolute; top: 0; left: 0; bottom: 0; width: 0%; background: rgba(255, 255, 255, 0.25); transition: width 0.05s linear; pointer-events: none;"></span>
+                            <span id="capture-os-cancel-label" style="position: relative; z-index: 1;">Cancelar</span>
                         </button>
                     </div>
-                    <div style="width: 100%; height: 3px; background: rgba(255, 255, 255, 0.08); border-radius: 3px; overflow: hidden;">
+                    <div style="width: 100%; height: 3px; background: #F1F5F9; border-radius: 3px; overflow: hidden;">
                         <div class="capture-progress-fill"></div>
                     </div>
                 </div>
@@ -816,7 +878,6 @@
                     const startHold = (e) => {
                         if (e.button !== undefined && e.button !== 0) return;
                         holdStartTime = Date.now();
-                        if (label) label.innerText = "Segure 1s...";
                         
                         const updateFill = () => {
                             const elapsed = Date.now() - holdStartTime;
@@ -825,7 +886,7 @@
                             if (elapsed < 1000) {
                                 animationFrame = requestAnimationFrame(updateFill);
                             } else {
-                                if (label) label.innerText = "Cancelado!";
+                                if (label) label.innerText = "Cancelando...";
                                 chrome.runtime.sendMessage({ action: "abort_processing" }).catch(() => {});
                                 fecharToast(toast);
                             }
@@ -836,7 +897,7 @@
                     const cancelHold = () => {
                         if (animationFrame) cancelAnimationFrame(animationFrame);
                         if (fill) fill.style.width = "0%";
-                        if (label) label.innerText = "Segure p/ Cancelar";
+                        if (label) label.innerText = "Cancelar";
                     };
 
                     cancelBtn.addEventListener("mousedown", startHold);
@@ -862,7 +923,7 @@
                     }
                     .capture-progress-fill {
                         height: 100%;
-                        background: linear-gradient(90deg, #38BDF8 0%, #818CF8 100%);
+                        background: linear-gradient(90deg, #0F172A 0%, #334155 100%);
                         width: 0%;
                         border-radius: 3px;
                         animation: capture-progress 60s cubic-bezier(0.1, 0.7, 0.1, 1) forwards;
@@ -871,52 +932,56 @@
                 document.head.appendChild(style);
             }
         } else if (type === "success") {
-            toast.style.background = 'linear-gradient(135deg, rgba(6, 78, 59, 0.95) 0%, rgba(15, 23, 42, 0.95) 100%)';
-            toast.style.border = '1px solid rgba(16, 185, 129, 0.4)';
-            toast.style.color = '#34D399';
-            toast.style.boxShadow = '0 16px 40px rgba(0, 0, 0, 0.4), 0 0 20px rgba(16, 185, 129, 0.2)';
+            toast.style.background = '#FFFFFF';
+            toast.style.border = '1px solid rgba(15, 23, 42, 0.08)';
+            toast.style.color = '#0F172A';
+            toast.style.boxShadow = '0 20px 40px -8px rgba(0, 0, 0, 0.08)';
+            toast.style.borderRadius = '14px';
             toast.innerHTML = `
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0F172A" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                     <polyline points="20 6 9 17 4 12"></polyline>
                 </svg>
-                <span id="capture-os-toast-msg" style="font-weight: 600;">${msg || "Vídeo finalizado! Abrindo player..."}</span>
+                <span id="capture-os-toast-msg" style="font-weight: 600; color: #0F172A; font-size: 13.5px;">${msg || "Vídeo finalizado! Abrindo player..."}</span>
             `;
             setTimeout(() => fecharToast(toast), 6000);
         } else if (type === "error") {
-            toast.style.background = 'linear-gradient(135deg, rgba(127, 29, 29, 0.95) 0%, rgba(15, 23, 42, 0.95) 100%)';
-            toast.style.border = '1px solid rgba(239, 68, 68, 0.4)';
-            toast.style.color = '#F87171';
-            toast.style.boxShadow = '0 16px 40px rgba(0, 0, 0, 0.4)';
+            toast.style.background = '#FFFFFF';
+            toast.style.border = '1px solid rgba(239, 68, 68, 0.2)';
+            toast.style.color = '#991B1B';
+            toast.style.boxShadow = '0 20px 40px -8px rgba(0, 0, 0, 0.08)';
+            toast.style.borderRadius = '14px';
             toast.innerHTML = `
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#DC2626" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <circle cx="12" cy="12" r="10"></circle>
                     <line x1="15" y1="9" x2="9" y2="15"></line>
                     <line x1="9" y1="9" x2="15" y2="15"></line>
                 </svg>
-                <span id="capture-os-toast-msg">${msg || "Falha na comunicação com o servidor."}</span>
+                <span id="capture-os-toast-msg" style="font-weight: 600; color: #991B1B; font-size: 13.5px;">${msg || "Falha na comunicação com o servidor."}</span>
             `;
             setTimeout(() => fecharToast(toast), 6000);
         } else if (type === "warning") {
-            toast.style.background = 'linear-gradient(135deg, rgba(120, 53, 15, 0.95) 0%, rgba(15, 23, 42, 0.95) 100%)';
-            toast.style.border = '1px solid rgba(245, 158, 11, 0.4)';
-            toast.style.color = '#FBBF24';
-            toast.style.boxShadow = '0 16px 40px rgba(0, 0, 0, 0.4)';
+            toast.style.background = '#FFFFFF';
+            toast.style.border = '1px solid rgba(245, 158, 11, 0.2)';
+            toast.style.color = '#92400E';
+            toast.style.boxShadow = '0 20px 40px -8px rgba(0, 0, 0, 0.08)';
+            toast.style.borderRadius = '14px';
             toast.innerHTML = `
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#D97706" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
                     <line x1="12" y1="9" x2="12" y2="13"></line>
                     <line x1="12" y1="17" x2="12.01" y2="17"></line>
                 </svg>
-                <span id="capture-os-toast-msg">${msg || "Aviso"}</span>
+                <span id="capture-os-toast-msg" style="font-weight: 600; color: #92400E; font-size: 13.5px;">${msg || "Aviso"}</span>
             `;
             setTimeout(() => fecharToast(toast), 6000);
         } else if (type === "success_arbitro") {
-            toast.style.background = '#F0FDF4';
-            toast.style.border = '1px solid #BBF7D0';
-            toast.style.color = '#15803D';
+            toast.style.background = '#FFFFFF';
+            toast.style.border = '1px solid rgba(15, 23, 42, 0.08)';
+            toast.style.color = '#0F172A';
+            toast.style.borderRadius = '12px';
             toast.innerHTML = `
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                <span id="capture-os-toast-msg">Correto!</span>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0F172A" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                <span id="capture-os-toast-msg" style="font-size: 13px; font-weight: 600;">Correto!</span>
             `;
             setTimeout(() => fecharToast(toast), 3000);
         }
@@ -991,7 +1056,7 @@
                 let badge = passo.passo;
                 let badgeStyle = '';
                 if (passo.passo === 0) { badge = svgBulb; badgeStyle = 'background: #E6F5F4; color: #00998F;'; }
-                else if (passo.passo === 999) { badge = svgCheck; badgeStyle = 'background: #E0F5F3; color: #2AC4AA;'; }
+                else if (passo.passo === 999) { badge = svgCheck; badgeStyle = 'background: #ECFDF5; color: #059669;'; }
                 
                 const stepText = passo.ancora || passo.intencao_original || '';
                 // Pular passos sem texto
@@ -1253,34 +1318,47 @@
         `;
         const closeBtn = shadow.getElementById('close-btn');
         closeBtn.addEventListener('click', () => {
-            // Ao fechar, mostramos o modal de Rating no mesmo host, mas bem menor
+            // Ao fechar, mostramos o modal de Rating no mesmo host com visual Diamond Enterprise
             const modal = shadow.getElementById('modal');
-            modal.style.width = '420px';
-            modal.style.height = 'auto';
-            modal.style.minHeight = '300px';
+            modal.style.width = '440px';
+            modal.style.height = '330px';
+            modal.style.maxHeight = '90vh';
+            modal.style.background = 'rgba(255, 255, 255, 0.96)';
+            modal.style.backdropFilter = 'blur(16px)';
+            modal.style.webkitBackdropFilter = 'blur(16px)';
+            modal.style.border = '1px solid rgba(15, 23, 42, 0.08)';
+            modal.style.borderRadius = '16px';
+            modal.style.boxShadow = '0 24px 48px -12px rgba(0, 0, 0, 0.12)';
             modal.innerHTML = `
-                <div style="padding: 32px 24px; text-align: center; width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; background: linear-gradient(145deg, #0F172A 0%, #1E293B 100%); border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 16px; box-shadow: 0 20px 50px rgba(0,0,0,0.5); box-sizing: border-box; color: #F8FAFC;">
-                    <h2 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 700; color: #F8FAFC;">Processo Concluído!</h2>
-                    <p id="ext-rating-subtitle" style="margin: 0 0 20px 0; font-size: 14px; color: #94A3B8;">Como foi sua experiência gravando este material hoje?</p>
-                    
-                    <div id="ext-stars-container" style="display: flex; gap: 10px; justify-content: center; margin-bottom: 20px;">
-                        <span class="ext-star" data-val="1" style="font-size: 36px; color: rgba(255, 255, 255, 0.2); cursor: pointer; transition: all 0.2s; user-select: none;">★</span>
-                        <span class="ext-star" data-val="2" style="font-size: 36px; color: rgba(255, 255, 255, 0.2); cursor: pointer; transition: all 0.2s; user-select: none;">★</span>
-                        <span class="ext-star" data-val="3" style="font-size: 36px; color: rgba(255, 255, 255, 0.2); cursor: pointer; transition: all 0.2s; user-select: none;">★</span>
-                        <span class="ext-star" data-val="4" style="font-size: 36px; color: rgba(255, 255, 255, 0.2); cursor: pointer; transition: all 0.2s; user-select: none;">★</span>
-                        <span class="ext-star" data-val="5" style="font-size: 36px; color: rgba(255, 255, 255, 0.2); cursor: pointer; transition: all 0.2s; user-select: none;">★</span>
+                <div style="padding: 28px 24px; text-align: center; width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: space-between; box-sizing: border-box; color: #0F172A;">
+                    <div style="width: 100%;">
+                        <h2 style="margin: 0 0 6px 0; font-size: 18px; font-weight: 700; color: #0F172A;">Processo Concluído</h2>
+                        <p id="ext-rating-subtitle" style="margin: 0; font-size: 13px; color: #64748B;">Como foi sua experiência gravando este material hoje?</p>
                     </div>
                     
-                    <div id="ext-rating-msg" style="display: none; color: #34D399; font-weight: 600; font-size: 16px; margin-bottom: 24px; padding: 12px 16px; background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.25); border-radius: 10px; width: 100%;">
-                        Obrigado pela sua avaliação! ✅
+                    <div id="ext-rating-body" style="width: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 80px;">
+                        <div id="ext-stars-container" style="display: flex; gap: 12px; justify-content: center; margin: 6px 0;">
+                            <span class="ext-star" data-val="1" style="font-size: 32px; color: #CBD5E1; cursor: pointer; transition: all 0.2s; user-select: none;">★</span>
+                            <span class="ext-star" data-val="2" style="font-size: 32px; color: #CBD5E1; cursor: pointer; transition: all 0.2s; user-select: none;">★</span>
+                            <span class="ext-star" data-val="3" style="font-size: 32px; color: #CBD5E1; cursor: pointer; transition: all 0.2s; user-select: none;">★</span>
+                            <span class="ext-star" data-val="4" style="font-size: 32px; color: #CBD5E1; cursor: pointer; transition: all 0.2s; user-select: none;">★</span>
+                            <span class="ext-star" data-val="5" style="font-size: 32px; color: #CBD5E1; cursor: pointer; transition: all 0.2s; user-select: none;">★</span>
+                        </div>
+                        
+                        <div id="ext-rating-msg" style="display: none; color: #0F172A; font-weight: 600; font-size: 13.5px; padding: 10px 16px; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; width: 100%; box-sizing: border-box; margin-top: 6px;">
+                            Obrigado pela sua avaliação!
+                        </div>
                     </div>
                     
-                    <button id="ext-btn-skip" class="btn btn-secondary" style="background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.12); padding: 10px 24px; border-radius: 10px; cursor: pointer; font-weight: 600; font-size: 13px; color: #F8FAFC; transition: all 0.2s;">Pular e Fechar</button>
+                    <div style="width: 100%; display: flex; flex-direction: column; align-items: center; gap: 6px;">
+                        <button id="ext-btn-skip" style="width: 100%; background: #0F172A; border: 1px solid #0F172A; padding: 9px 20px; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 13px; color: #FFFFFF; transition: all 0.2s; box-shadow: 0 2px 6px rgba(15, 23, 42, 0.12);">Pular e Fechar</button>
+                        
+                        <p id="ext-report-link" style="margin: 4px 0 0 0; font-size: 11.5px; color: #64748B; cursor: pointer; text-decoration: underline; transition: all 0.2s;">Encontrou algum problema? Reportar erro</p>
+                    </div>
                     
-                    <p id="ext-report-link" style="margin-top: 20px; font-size: 12px; color: #64748B; cursor: pointer; text-decoration: underline; transition: all 0.2s;">Encontrou algum problema? Reportar erro</p>
-                    <div id="ext-report-container" style="display: none; width: 100%; margin-top: 16px;">
-                        <textarea id="ext-report-text" placeholder="Descreva o problema ou erro encontrado..." style="width: 100%; height: 75px; padding: 10px 12px; border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 8px; font-size: 13px; font-family: inherit; background: rgba(255, 255, 255, 0.05); color: #F8FAFC; resize: none; outline: none; margin-bottom: 12px; box-sizing: border-box;"></textarea>
-                        <button id="ext-btn-report" class="btn btn-primary" style="width: 100%; padding: 10px; font-size: 13px; font-weight: 600; background: linear-gradient(135deg, #10B981 0%, #059669 100%); border: none; border-radius: 8px; color: white; cursor: pointer; margin: 0; box-sizing: border-box;">Enviar Relato</button>
+                    <div id="ext-report-container" style="display: none; width: 100%; margin-top: 10px;">
+                        <textarea id="ext-report-text" placeholder="Descreva o problema ou erro encontrado..." style="width: 100%; height: 75px; padding: 10px 12px; border: 1px solid #E2E8F0; border-radius: 8px; font-size: 13px; font-family: inherit; background: #F8FAFC; color: #0F172A; resize: none; outline: none; margin-bottom: 10px; box-sizing: border-box;"></textarea>
+                        <button id="ext-btn-report" style="width: 100%; padding: 10px; font-size: 13px; font-weight: 600; background: #0F172A; border: none; border-radius: 8px; color: white; cursor: pointer; margin: 0; box-sizing: border-box;">Enviar Relato</button>
                     </div>
                 </div>
             `;
@@ -1303,7 +1381,6 @@
                 shadow.querySelector('h2').innerText = 'Reportar um Problema';
                 shadow.getElementById('ext-btn-skip').style.display = 'none';
                 shadow.getElementById('ext-report-container').style.display = 'block';
-                shadow.getElementById('modal').style.minHeight = '320px';
             });
 
             shadow.getElementById('ext-btn-report').addEventListener('click', () => {
@@ -1328,7 +1405,7 @@
                     }
                 });
                 
-                shadow.getElementById('ext-report-container').innerHTML = '<p style="color: #34D399; font-weight: 500; font-size: 14px; margin: 0;">Relato enviado com sucesso! Muito obrigado.</p>';
+                shadow.getElementById('ext-report-container').innerHTML = '<p style="color: #0F172A; font-weight: 600; font-size: 13.5px; margin: 0;">Relato enviado com sucesso! Muito obrigado.</p>';
                 setTimeout(fecharFinal, 2500);
             });
 
@@ -1338,19 +1415,16 @@
                     const val = parseInt(this.getAttribute('data-val'));
                     stars.forEach(s => {
                         if (parseInt(s.getAttribute('data-val')) <= val) {
-                            s.style.color = '#FBBF24';
-                            s.style.textShadow = '0 2px 10px rgba(251, 191, 36, 0.4)';
+                            s.style.color = '#F59E0B';
                         } else {
-                            s.style.color = 'rgba(255, 255, 255, 0.2)';
-                            s.style.textShadow = 'none';
+                            s.style.color = '#CBD5E1';
                         }
                     });
                 });
                 star.addEventListener('mouseleave', function() {
                     if (nota > 0) return;
                     stars.forEach(s => {
-                        s.style.color = 'rgba(255, 255, 255, 0.2)';
-                        s.style.textShadow = 'none';
+                        s.style.color = '#CBD5E1';
                     });
                 });
                 star.addEventListener('click', function() {
@@ -1358,21 +1432,18 @@
                     nota = parseInt(this.getAttribute('data-val'));
                     stars.forEach(s => {
                         if (parseInt(s.getAttribute('data-val')) <= nota) {
-                            s.style.color = '#FBBF24';
-                            s.style.textShadow = '0 2px 10px rgba(251, 191, 36, 0.4)';
+                            s.style.color = '#F59E0B';
                         } else {
-                            s.style.color = 'rgba(255, 255, 255, 0.2)';
-                            s.style.textShadow = 'none';
+                            s.style.color = '#CBD5E1';
                         }
                         s.style.cursor = 'default';
                     });
                     
-                    shadow.getElementById('ext-stars-container').style.display = 'none';
-                    shadow.getElementById('ext-rating-subtitle').style.display = 'none';
                     shadow.getElementById('ext-rating-msg').style.display = 'block';
                     shadow.getElementById('ext-btn-skip').innerText = 'Fechar';
+                    setTimeout(fecharFinal, 2200);
                     
-                    // Enviar API via mensagem para usar o token em background, ou via fetch direto
+                    // Enviar API via mensagem
                     chrome.runtime.sendMessage({
                         action: "auth_fetch",
                         url: `${backendUrl}/api/v1/ratings`,
@@ -1818,7 +1889,7 @@
             const progressPct = sandboxTotalPassos > 0 ? Math.round((sandboxPassoAtual / sandboxTotalPassos) * 100) : 0;
             progressFill.style.cssText = `
                 width: ${progressPct}%; height: 100%;
-                background: #2AC4AA;
+                background: #0F172A;
                 border-radius: 0 2px 2px 0;
                 transition: width 0.3s ease;
             `;
@@ -1833,10 +1904,10 @@
             `;
             headerContent.innerHTML = `
                 <div style="display: flex; align-items: center; gap: 8px;">
-                    <div style="width: 8px; height: 8px; border-radius: 50%; background: #2AC4AA;"></div>
-                    <span style="font-size: 11px; font-weight: 600; color: #6B7280; letter-spacing: 0.5px;">PRÁTICA ATIVA</span>
+                    <div style="width: 8px; height: 8px; border-radius: 50%; background: #0F172A;"></div>
+                    <span style="font-size: 11px; font-weight: 600; color: #475569; letter-spacing: 0.5px;">PRÁTICA ATIVA</span>
                 </div>
-                <div id="sandbox-xp" style="font-size: 12px; font-weight: 600; color: #00998F; background: #E0F5F3; padding: 4px 10px; border-radius: 12px;">0 XP</div>
+                <div id="sandbox-xp" style="font-size: 11px; font-weight: 600; color: #0F172A; background: #F1F5F9; border: 1px solid #E2E8F0; padding: 3px 8px; border-radius: 6px; font-family: monospace;">Passo ${sandboxPassoAtual + 1}/${sandboxTotalPassos || 1}</div>
             `;
 
             header.appendChild(progressTrack);
@@ -1888,7 +1959,7 @@
                     <button id="btn-voltar-pratica" style="background: #FFFFFF; color: #374151; border: 1px solid #D1D5DB; padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 500; transition: all 0.2s; display: none; align-items: center; gap: 5px;">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"></path><path d="M12 19l-7-7 7-7"></path></svg> Voltar
                     </button>
-                    <button id="btn-dica-pratica" style="background: #00998F; color: #FFFFFF; border: none; padding: 6px 16px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 500; transition: all 0.2s; display: flex; align-items: center; gap: 5px;">
+                    <button id="btn-dica-pratica" style="background: #0F172A; color: #FFFFFF; border: none; padding: 6px 16px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 500; transition: all 0.2s; display: flex; align-items: center; gap: 5px;">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 16v-4"></path><path d="M12 8h.01"></path></svg> Dica
                     </button>
                 </div>
@@ -1914,7 +1985,7 @@
             };
             addHover("btn-encerrar-pratica", "#FEF2F2", "transparent");
             addHover("btn-voltar-pratica", "#F3F4F6", "#FFFFFF");
-            addHover("btn-dica-pratica", "#00AF9B", "#00998F");
+            addHover("btn-dica-pratica", "#1E293B", "#0F172A");
         }
 
         // Update progress bar
@@ -1926,7 +1997,8 @@
 
         const step = sandboxHotspots[sandboxPassoAtual];
         if (step) {
-            document.getElementById("sandbox-xp").innerText = `${sandboxXP} XP`;
+            const xpEl = document.getElementById("sandbox-xp");
+            if (xpEl) xpEl.innerText = `Passo ${sandboxPassoAtual + 1}/${sandboxTotalPassos || 1}`;
             
             // Exibir/ocultar botão Voltar dinamicamente
             const btnVoltar = document.getElementById("btn-voltar-pratica");
