@@ -293,8 +293,39 @@ export default function Dashboard() {
     { day: 'Qui', roteiros: 12, automacoes: 38 },
     { day: 'Sex', roteiros: 9, automacoes: 30 },
     { day: 'Sáb', roteiros: 3, automacoes: 9 },
-    { day: 'Dom', roteiros: metrics.total_runs ? Math.min(metrics.total_runs, 15) : 8, automacoes: 28 },
+    { day: 'Dom', roteiros: metrics?.total_runs ? Math.min(metrics.total_runs, 15) : 8, automacoes: 28 },
   ], [metrics]);
+
+  const activeInstructors = useMemo(() => {
+    if (metrics?.runs_by_instructor && metrics.runs_by_instructor.length > 0) {
+      return metrics.runs_by_instructor.map(inst => {
+        const rawId = String(inst?.display_name || inst?.instructor_id || inst?.user_id || 'Instrutor');
+        const name = rawId.includes('@') ? rawId.split('@')[0] : rawId;
+        return {
+          id: rawId,
+          name,
+          initial: (name.charAt(0) || 'I').toUpperCase(),
+          total_runs: inst?.total_runs || 1
+        };
+      });
+    }
+    const map = new Map();
+    (runs || []).forEach(r => {
+      const rawId = String(r.created_by || r.published_by || r.instructor_id || 'boris.renan@gmail.com');
+      const name = rawId.includes('@') ? rawId.split('@')[0] : rawId;
+      if (!map.has(rawId)) {
+        map.set(rawId, {
+          id: rawId,
+          name,
+          initial: (name.charAt(0) || 'I').toUpperCase(),
+          total_runs: 1
+        });
+      } else {
+        map.get(rawId).total_runs += 1;
+      }
+    });
+    return Array.from(map.values());
+  }, [metrics, runs]);
 
   const CustomTooltip = ({ active, payload, label }) => {
     if (active && payload && payload.length) {
@@ -423,15 +454,35 @@ export default function Dashboard() {
                   Time Ativo
                 </span>
               </div>
-              <p className="text-xs uppercase font-mono tracking-widest text-slate-500 dark:text-slate-400">Instrutores</p>
-              <div className="flex items-baseline justify-between mt-1">
-                <p className="text-4xl font-mono font-bold tracking-tight text-slate-900 dark:text-white">4</p>
-                <div className="flex -space-x-1.5 overflow-hidden">
-                  <div className="inline-block h-6 w-6 rounded-full bg-slate-900 text-white dark:bg-white dark:text-slate-950 font-bold text-[10px] flex items-center justify-center ring-2 ring-white dark:ring-surface-850">B</div>
-                  <div className="inline-block h-6 w-6 rounded-full bg-cyan-500 text-white font-bold text-[10px] flex items-center justify-center ring-2 ring-white dark:ring-surface-850">M</div>
-                  <div className="inline-block h-6 w-6 rounded-full bg-purple-500 text-white font-bold text-[10px] flex items-center justify-center ring-2 ring-white dark:ring-surface-850">C</div>
+              <p className="text-xs uppercase font-mono tracking-widest text-slate-500 dark:text-slate-400">Instrutores Ativos</p>
+              {loading ? (
+                <div className="h-9 w-20 bg-slate-200 dark:bg-white/10 rounded animate-pulse mt-2"></div>
+              ) : (
+                <div className="flex items-baseline justify-between mt-1">
+                  <p className="text-4xl font-mono font-bold tracking-tight text-slate-900 dark:text-white">
+                    {activeInstructors.length}
+                  </p>
+                  <div className="flex -space-x-1.5 overflow-hidden">
+                    {activeInstructors.slice(0, 4).map((inst, i) => {
+                      const colors = [
+                        'bg-slate-900 text-white dark:bg-white dark:text-slate-950',
+                        'bg-cyan-500 text-white',
+                        'bg-purple-500 text-white',
+                        'bg-emerald-500 text-white'
+                      ];
+                      return (
+                        <div
+                          key={inst.id || i}
+                          title={`${inst.name} (${inst.total_runs} gravações)`}
+                          className={`inline-block h-6 w-6 rounded-full font-bold text-[10px] flex items-center justify-center ring-2 ring-white dark:ring-surface-850 ${colors[i % colors.length]}`}
+                        >
+                          {inst.initial}
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           </div>
 
