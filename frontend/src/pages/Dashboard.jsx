@@ -474,7 +474,7 @@ export default function Dashboard() {
                         <div
                           key={inst.id || i}
                           title={`${inst.name} (${inst.total_runs} gravações)`}
-                          className={`inline-block h-6 w-6 rounded-full font-bold text-[10px] flex items-center justify-center ring-2 ring-white dark:ring-surface-850 ${colors[i % colors.length]}`}
+                          className={`w-6.5 h-6.5 rounded-full font-bold text-[10px] flex items-center justify-center leading-none ring-2 ring-white dark:ring-surface-850 ${colors[i % colors.length]}`}
                         >
                           {inst.initial}
                         </div>
