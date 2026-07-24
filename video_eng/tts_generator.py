@@ -39,9 +39,9 @@ def converter_datas_por_extenso(texto: str) -> str:
     pattern = r"\b(0?[1-9]|[12][0-9]|3[01])/(0?[1-9]|1[02])(?:/(\d{2,4}))?\b"
     return re.sub(pattern, _sub_data, texto)
 
-async def gerar_audio(texto: str, output_path: str, voz: str = "pt-BR-FranciscaNeural") -> bool:
+async def gerar_audio(texto: str, output_path: str, voz: str = "pt-BR-FranciscaNeural", idioma: str = "pt-BR") -> bool:
     """
-    Converte texto em áudio MP3 usando o motor neural (Google/Edge).
+    Converte texto em áudio MP3 usando o motor neural (Google/Edge/MiniMax).
     Aplica as regras de limpeza de fonética do sistema legado.
     Utiliza cache MD5 para evitar re-geração de áudios idênticos.
     """
@@ -66,7 +66,7 @@ async def gerar_audio(texto: str, output_path: str, voz: str = "pt-BR-FranciscaN
     texto_falado = re.sub(r" {2,}", " ", texto_falado).strip()
 
     # Cache MD5: verificar se já existe áudio em cache para este texto com essa voz
-    cache_key = f"{texto_falado}_{voz}"
+    cache_key = f"{texto_falado}_{voz}_{idioma}"
     text_hash = hashlib.md5(cache_key.encode()).hexdigest()
     os.makedirs(TTS_CACHE_DIR, exist_ok=True)
     cache_path = os.path.join(TTS_CACHE_DIR, f"{text_hash}.mp3")
@@ -87,6 +87,12 @@ async def gerar_audio(texto: str, output_path: str, voz: str = "pt-BR-FranciscaN
     
     logger.info(f"MiniMax API Key: {'SET' if minimax_key else 'EMPTY'} | Group ID: {'SET' if minimax_group else 'EMPTY'}")
 
+    minimax_lang = "Portuguese"
+    if idioma and (idioma.lower().startswith("en") or "english" in idioma.lower()):
+        minimax_lang = "English"
+    elif idioma and (idioma.lower().startswith("es") or "spanish" in idioma.lower() or "espanhol" in idioma.lower()):
+        minimax_lang = "Spanish"
+
     if minimax_key and minimax_group:
         try:
             import requests as req
@@ -103,7 +109,8 @@ async def gerar_audio(texto: str, output_path: str, voz: str = "pt-BR-FranciscaN
                     "voice_id": voz,
                     "speed": 1.0,
                     "vol": 1.0,
-                    "pitch": 0
+                    "pitch": 0,
+                    "language": minimax_lang
                 },
                 "audio_setting": {
                     "sample_rate": 32000,

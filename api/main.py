@@ -1269,6 +1269,103 @@ async def regerar_passo(session_id: str, passo_num: int, user: dict = Depends(re
 
     return {"passo": passo_atualizado}
 
+class TraduzirRoteiroPayload(BaseModel):
+    target_lang: str = "es-ES"
+
+@app.post("/api/v1/session/{session_id}/traduzir", dependencies=_auth_deps)
+async def traduzir_roteiro(session_id: str, payload: TraduzirRoteiroPayload):
+    """
+    Traduz em tempo real o roteiro e título para o idioma desejado (pt-BR, en-US, es-ES) usando IA.
+    """
+    roteiro_path = f"data/roteiros/{session_id}.json"
+    if not os.path.exists(roteiro_path):
+        raise HTTPException(status_code=404, detail="Roteiro não encontrado")
+
+    with open(roteiro_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    roteiro = data.get("roteiro", [])
+    titulo_original = data.get("titulo", "")
+    target_lang = payload.target_lang
+
+    lang_names = {
+        "es-ES": "Spanish (Español)",
+        "en-US": "English",
+        "pt-BR": "Portuguese (Português do Brasil)"
+    }
+    target_name = lang_names.get(target_lang, "Spanish")
+
+    from config.genai_client import get_genai_client
+    client = get_genai_client()
+
+    prompt = f"""You are a professional translator and script localization editor.
+Translate the following software tutorial script and title into {target_name}.
+
+Original Title: {titulo_original}
+Original Steps:
+{json.dumps([{
+    "passo": p.get("passo"),
+    "ancora": p.get("ancora", ""),
+    "micro_narracao": p.get("micro_narracao", ""),
+    "intencao_original": p.get("intencao_original", "")
+} for p in roteiro], ensure_ascii=False, indent=2)}
+
+INSTRUCTIONS:
+1. Translate all 'ancora' and 'micro_narracao' text accurately into natural, clear {target_name}.
+2. Retain technical software terms if standard in {target_name}.
+3. Return STRICT JSON format with keys:
+   - "titulo": string
+   - "roteiro": array of objects with keys "passo" (int), "ancora" (string), "micro_narracao" (string).
+Do NOT include any extra markdown formatting or reasoning outside JSON.
+"""
+
+    try:
+        try:
+            response = await client.aio.models.generate_content(
+                model='gemini-2.5-flash',
+                contents=prompt,
+            )
+            resp_text = response.text.strip()
+        except Exception as gemini_err:
+            logger.warning(f"[TraduzirRoteiro] Gemini falhou ({gemini_err}). Tentando OpenAI Fallback (gpt-4o-mini)...")
+            from openai import AsyncOpenAI
+            openai_client = AsyncOpenAI(api_key=settings.openai_api_key)
+            completion = await openai_client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.3
+            )
+            resp_text = completion.choices[0].message.content.strip()
+
+        if resp_text.startswith("```json"):
+            resp_text = resp_text.split("```json")[1].split("```")[0].strip()
+        elif resp_text.startswith("```"):
+            resp_text = resp_text.split("```")[1].split("```")[0].strip()
+        
+        result = json.loads(resp_text)
+        translated_steps = result.get("roteiro", [])
+        new_titulo = result.get("titulo", titulo_original)
+
+        # Merge translations back into existing steps, preserving _simlink and metadata
+        for orig in roteiro:
+            p_num = orig.get("passo")
+            match = next((t for t in translated_steps if t.get("passo") == p_num), None)
+            if match:
+                if match.get("ancora"): orig["ancora"] = match["ancora"]
+                if match.get("micro_narracao"): orig["micro_narracao"] = match["micro_narracao"]
+
+        # Persist updated language in session json
+        data["roteiro"] = roteiro
+        data["titulo"] = new_titulo
+        data["idioma"] = target_lang
+        with open(roteiro_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+
+        return {"status": "ok", "titulo": new_titulo, "roteiro": roteiro, "idioma": target_lang}
+    except Exception as e:
+        logger.error(f"[TraduzirRoteiro] Erro na tradução IA: {e}")
+        raise HTTPException(status_code=500, detail=f"Falha na tradução com IA: {str(e)}")
+
 @app.post("/api/v1/tts/preview", dependencies=_auth_deps)
 async def tts_preview(payload: TTSPreviewPayload, request: Request):
     from video_eng.tts_generator import gerar_audio

@@ -1101,16 +1101,21 @@
 
 
     // --- Player Modal (Vimeo Record Aesthetic) ---
-    async function mountPlayerModal(videoUrl, roteiro, receivedBackendUrl, titulo = "") {
+    async function mountPlayerModal(videoUrl = "", roteiro = [], receivedBackendUrl = "", titulo = "") {
         if (window !== window.top) return; // Garante que o Player Modal abre apenas no frame principal
         chrome.storage.local.remove(['toastMinimized']);
         window.__capture_os_toast_minimized = false;
         const existingToast = document.getElementById("capture-os-toast");
         if (existingToast) existingToast.remove();
 
+        const safeUrl = videoUrl || "";
         // Extrai session_id da URL (ex: sess_1780090948221 ou sess_uuid)
-        const match = videoUrl.match(/(sess_[a-zA-Z0-9\-]+)/);
-        const session_id = match ? match[1] : '';
+        const match = safeUrl.match(/(sess_[a-zA-Z0-9\-]+)/);
+        let session_id = match ? match[1] : '';
+        if (!session_id) {
+            const { currentSessionId } = await new Promise(r => chrome.storage.local.get(['currentSessionId'], r));
+            session_id = currentSessionId || '';
+        }
 
         let rawTitle = (titulo || "").trim();
         if (!rawTitle || rawTitle.toLowerCase() === "anonymous" || rawTitle.toLowerCase() === "tutorial gerado" || rawTitle.toLowerCase().includes("sess_")) {
@@ -1182,14 +1187,19 @@
                 if (passo.passo === 0) { badge = svgBulb; badgeStyle = 'background: #E6F5F4; color: #00998F;'; }
                 else if (passo.passo === 999) { badge = svgCheck; badgeStyle = 'background: #ECFDF5; color: #059669;'; }
                 
+                const simlink = passo._simlink || {};
+                const hasCoords = simlink.coordinates && (simlink.coordinates.x !== undefined || simlink.coordinates.left !== undefined);
                 const stepText = passo.ancora || passo.intencao_original || '';
                 // Pular passos sem texto
                 if (!stepText.trim()) return;
 
                 stepsHtml += `
-                    <div class="step-item">
+                    <div class="step-item" style="display: flex; gap: 12px; margin-bottom: 16px; align-items: flex-start;">
                         <div class="step-num" style="${badgeStyle}">${badge}</div>
-                        <div class="step-text">${stepText}</div>
+                        <div class="step-text" style="flex: 1; min-width: 0;">
+                            <div style="font-weight: 600; font-size: 13.5px; color: var(--text-main); line-height: 1.4;">${stepText}</div>
+                            ${passo.micro_narracao ? `<div style="font-size: 12px; color: var(--text-muted); margin-top: 3px; line-height: 1.35;">${passo.micro_narracao}</div>` : ''}
+                        </div>
                     </div>
                 `;
             });
@@ -1666,6 +1676,68 @@
             });
         }
 
+        // Inspetor de Alvo do Clique (Target Highlight)
+        shadow.querySelectorAll('.btn-inspect-target').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const idx = parseInt(e.currentTarget.dataset.idx, 10);
+                const passo = (roteiro && roteiro[idx]) ? roteiro[idx] : null;
+                if (!passo) return;
+                const simlink = passo._simlink || {};
+                const coords = simlink.coordinates || {};
+                
+                let overlay = shadow.getElementById('target-inspector-overlay');
+                if (!overlay) {
+                    overlay = document.createElement('div');
+                    overlay.id = 'target-inspector-overlay';
+                    overlay.style.cssText = `
+                        position: absolute; top:0; left:0; right:0; bottom:0;
+                        background: rgba(15, 23, 42, 0.88); z-index: 99;
+                        display: flex; flex-direction: column; align-items: center; justify-content: center;
+                        backdrop-filter: blur(8px); padding: 20px; animation: _capture_modal_in 0.3s ease;
+                    `;
+                    shadow.querySelector('.modal-container').appendChild(overlay);
+                }
+                
+                const imgUrl = `${backendUrl}/screenshots/${session_id}/passo_${passo.passo || (idx + 1)}.png${tokenSuffix}`;
+                const targetText = simlink.target_text || passo.ancora || 'Elemento Clicado';
+                
+                const cx = coords.x !== undefined ? coords.x : (coords.left !== undefined ? coords.left : 50);
+                const cy = coords.y !== undefined ? coords.y : (coords.top !== undefined ? coords.top : 50);
+                const cw = coords.w || coords.width || 60;
+                const ch = coords.h || coords.height || 40;
+                
+                overlay.innerHTML = `
+                    <div style="position: absolute; top: 16px; right: 16px; z-index: 10;">
+                        <button id="close-inspector-btn" style="background: rgba(255,255,255,0.2); border: none; color: white; padding: 6px 12px; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 13px;">✕ Fechar Inspetor</button>
+                    </div>
+                    <div style="margin-bottom: 12px; color: white; text-align: center;">
+                        <div style="font-size: 14px; font-weight: 700; color: #38BDF8;">Passo ${passo.passo || (idx + 1)}: ${targetText}</div>
+                        <div style="font-size: 11px; color: #94A3B8; margin-top: 2px;">Destaque do radar no momento exato do clique</div>
+                    </div>
+                    <div style="position: relative; max-width: 90%; max-height: 80%; border-radius: 12px; overflow: hidden; box-shadow: 0 12px 36px rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.2);">
+                        <img src="${imgUrl}" style="max-width: 100%; max-height: 70vh; display: block;" onerror="this.src='https://via.placeholder.com/800x600/0F172A/FFFFFF?text=Screenshot+indisponivel';"/>
+                        <div style="
+                            position: absolute;
+                            left: ${cx}px;
+                            top: ${cy}px;
+                            width: ${cw}px;
+                            height: ${ch}px;
+                            border: 3px solid #EF4444;
+                            background: rgba(239, 68, 68, 0.35);
+                            box-shadow: 0 0 16px #EF4444, inset 0 0 8px #EF4444;
+                            border-radius: 6px;
+                            pointer-events: none;
+                            transform: translate(-50%, -50%);
+                        ">
+                            <span style="position: absolute; top: -22px; left: 0; background: #EF4444; color: white; font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 4px; white-space: nowrap;">ALVO CLICADO</span>
+                        </div>
+                    </div>
+                `;
+                
+                shadow.getElementById('close-inspector-btn').onclick = () => overlay.remove();
+            });
+        });
+
         // Lógica de compartilhamento
         const shareVideoBtn = shadow.getElementById('share-video-btn');
 
@@ -1933,10 +2005,12 @@
                     window.removeEventListener("message", messageHandler);
                 }, 400);
 
-                chrome.storage.local.set({ isProcessing: false });
-
                 if (e.data.action === "close_editor_modal_and_resume") {
-                    showToast("processing", "Renderizando vídeo final...");
+                    chrome.storage.local.set({ isProcessing: true });
+                    chrome.storage.local.get(['toastMinimized'], (res) => {
+                        const isMin = (res && res.toastMinimized) || window.__capture_os_toast_minimized || false;
+                        showToast("processing", "Renderizando vídeo final...", isMin);
+                    });
                     
                     // Delega polling ao background (resiliente à navegação da página)
                     if (chrome.runtime && chrome.runtime.sendMessage) {
@@ -1945,10 +2019,12 @@
                             session_id: e.data.session_id 
                         }).catch(() => {});
                     }
-                    
                 } else if (e.data.action === "cancel_editor_modal" || e.data.action === "close_editor_modal") {
+                    chrome.storage.local.set({ isProcessing: false });
+                    chrome.storage.local.remove(['toastMinimized']);
+                    window.__capture_os_toast_minimized = false;
                     const existingToast = document.getElementById("capture-os-toast");
-                    if (existingToast) existingToast.remove();
+                    if (existingToast) fecharToast(existingToast);
                     if (chrome.runtime && chrome.runtime.sendMessage) {
                         chrome.runtime.sendMessage({ action: "abort_processing" }).catch(() => {});
                     }

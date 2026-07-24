@@ -474,13 +474,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                         }
                     }
 
-                    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+                    chrome.tabs.query({ active: true, currentWindow: true }, async (tabs) => {
                         if (tabs[0] && tabs[0].id) {
                             const tabUrl = tabs[0].url || "";
                             if (!tabUrl.startsWith('chrome://') && !tabUrl.startsWith('chrome-extension://') && !tabUrl.startsWith('about:')) {
+                                await ensureContentScriptActive(tabs[0].id);
                                 chrome.tabs.sendMessage(tabs[0].id, {
                                     action: "show_player_modal",
-                                    url: status.url,
+                                    url: status.url || "",
                                     roteiro: status.roteiro || [],
                                     titulo: status.titulo || "",
                                     backendUrl: backendUrl
@@ -818,6 +819,7 @@ function finalizeUpload(videoBase64, recordingStartTime, eventsLog, micAudioBase
         formData.append('modo_input', modoInput);
         formData.append('roteiro_manual', '[]');
         formData.append('rag_namespace', res.ragNamespace || "auto");
+        formData.append('idioma', res.targetLanguage || "pt-BR");
         formData.append('video', videoBlob, 'recording.webm');
 
         if (modoInput === 'B' && micAudioBase64) {

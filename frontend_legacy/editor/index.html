@@ -8,40 +8,70 @@
 </head>
 <body>
     <div class="editor-container">
-        <header style="display: flex; justify-content: space-between; align-items: center;">
-            <div style="display: flex; flex-direction: column; gap: 4px;">
-                <h1 style="margin: 0; font-size: 20px;">Revisão de Roteiro</h1>
-                <input type="text" id="treinamento-titulo" value="Carregando título..." style="font-size: 14px; font-weight: 500; padding: 6px 8px; margin-left: -8px; border-radius: 6px; border: 1px solid transparent; background: transparent; transition: all 0.2s; outline: none; width: 350px; color: #64748b;" onfocus="this.style.background='white'; this.style.borderColor='#cbd5e1'; this.style.boxShadow='0 2px 4px rgba(0,0,0,0.05)'" onblur="this.style.background='transparent'; this.style.borderColor='transparent'; this.style.boxShadow='none'">
+        <header style="display: flex; justify-content: space-between; align-items: center; gap: 12px; border-bottom: 1px solid #e2e8f0; padding-bottom: 12px; margin-bottom: 12px;">
+            <div style="display: flex; flex-direction: column; gap: 2px; shrink: 0;">
+                <h1 style="margin: 0; font-size: 18px; font-weight: 700;">Revisão de Roteiro</h1>
+                <input type="text" id="treinamento-titulo" value="Carregando título..." style="font-size: 13px; font-weight: 500; padding: 4px 6px; margin-left: -6px; border-radius: 6px; border: 1px solid transparent; background: transparent; transition: all 0.2s; outline: none; width: 260px; color: #64748b;" onfocus="this.style.background='white'; this.style.borderColor='#cbd5e1'; this.style.boxShadow='0 2px 4px rgba(0,0,0,0.05)'" onblur="this.style.background='transparent'; this.style.borderColor='transparent'; this.style.boxShadow='none'">
             </div>
-            <div style="display: flex; gap: 16px; align-items: center;">
-                <select id="voice-selector" style="padding: 8px 12px; border-radius: 8px; border: 1px solid #cbd5e1; background: white; font-size: 13px; font-weight: 500; color: #475569; outline: none; cursor: pointer;">
-                    <option value="Portuguese_Casual_Speaker_v1">Gabriel — Natural & Dinâmico (Masculino)</option>
-                    <option value="Portuguese_SereneWoman">Sofia — Clara & Equilibrada (Feminino)</option>
-                    <option value="Portuguese_Conscientiousinstructor">Helena — Didática & Corporativa (Feminino)</option>
-                    <option value="Portuguese_Kind-heartedGirl">Mariana — Cordial & Amigável (Feminino)</option>
-                    <option value="Portuguese_LovelyLady">Beatriz — Elegante & Acolhedora (Feminino)</option>
-                    <option value="Portuguese_AssertiveQueen">Camila — Confiante & Expressiva (Feminino)</option>
-                    <option value="Portuguese_WhimsicalGirl">Julia — Jovem & Animada (Feminino)</option>
-                    <option value="Portuguese_Fussyhostess">Isabela — Detalhista & Formal (Feminino)</option>
-                    <option value="Portuguese_StressedLady">Renata — Enfática & Direta (Feminino)</option>
-                    <option value="Portuguese_PowerfulSoldier">Felipe — Firme & Institucional (Masculino)</option>
-                    <option value="Portuguese_RomanticHusband">Lucas — Suave & Caloroso (Masculino)</option>
+            
+            <div style="display: flex; gap: 6px; align-items: center; flex-wrap: nowrap;">
+                <select id="idioma-selector" style="padding: 7px 8px; border-radius: 8px; border: 1px solid #cbd5e1; background: white; font-size: 12px; font-weight: 600; color: #475569; outline: none; cursor: pointer;" title="Idioma do Roteiro e Narração">
+                    <option value="pt-BR" selected>🇧🇷 PT</option>
+                    <option value="en-US">🇺🇸 EN</option>
+                    <option value="es-ES">🇪🇸 ES</option>
                 </select>
-                <label id="overlay-toggle-label" title="Aplica uma moldura decorativa ao redor do vídeo" style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 14px; font-weight: 600; color: #475569; user-select: none;">
+                <button id="btn-traduzir" title="Traduzir roteiro automaticamente com IA" style="background: #F1F5F9; border: 1px solid #cbd5e1; color: #0F172A; padding: 7px 10px; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 11.5px; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; transition: all 0.2s;">
+                    🌐 Traduzir IA
+                </button>
+                <select id="voice-selector" style="padding: 7px 8px; border-radius: 8px; border: 1px solid #cbd5e1; background: white; font-size: 12px; font-weight: 500; color: #475569; outline: none; cursor: pointer; max-width: 175px;">
+                    <option value="Portuguese_Casual_Speaker_v1">Gabriel — Natural (M)</option>
+                    <option value="Portuguese_SereneWoman">Sofia — Clara (F)</option>
+                    <option value="Portuguese_Conscientiousinstructor">Helena — Didática (F)</option>
+                    <option value="Portuguese_Kind-heartedGirl">Mariana — Cordial (F)</option>
+                    <option value="Portuguese_LovelyLady">Beatriz — Elegante (F)</option>
+                    <option value="Portuguese_AssertiveQueen">Camila — Confiante (F)</option>
+                    <option value="Portuguese_WhimsicalGirl">Julia — Jovem (F)</option>
+                    <option value="Portuguese_Fussyhostess">Isabela — Detalhista (F)</option>
+                    <option value="Portuguese_StressedLady">Renata — Enfática (F)</option>
+                    <option value="Portuguese_PowerfulSoldier">Felipe — Firme (M)</option>
+                    <option value="Portuguese_RomanticHusband">Lucas — Suave (M)</option>
+                </select>
+                <label id="overlay-toggle-label" title="Aplica uma moldura decorativa ao redor do vídeo" style="display: flex; align-items: center; gap: 5px; cursor: pointer; font-size: 12px; font-weight: 600; color: #475569; user-select: none;">
                     <span class="overlay-switch">
                         <input type="checkbox" id="toggle-overlay" checked>
                         <span class="overlay-slider"></span>
                     </span>
                     Moldura
                 </label>
-                <button id="btn-cancel" class="btn-secondary" style="background: white; border: 1px solid #cbd5e1; padding: 10px 16px; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 14px; color: #64748b; white-space: nowrap;">Cancelar</button>
-                <button id="btn-render" class="btn-primary" style="white-space: nowrap; padding: 10px 16px;">Gerar Vídeo</button>
+                <button id="btn-cancel" class="btn-secondary" style="background: white; border: 1px solid #cbd5e1; padding: 7px 10px; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 12px; color: #64748b; white-space: nowrap;">Cancelar</button>
+                <button id="btn-render" class="btn-primary" style="white-space: nowrap; padding: 7px 14px; font-size: 12px;">Gerar Vídeo</button>
             </div>
         </header>
         <main id="passos-container">
             <!-- Passos serão injetados aqui -->
             <div class="loading">Carregando roteiro...</div>
         </main>
+    </div>
+
+    <!-- Modal Target Inspector no Editor -->
+    <div id="target-inspector-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(15, 23, 42, 0.75); backdrop-filter: blur(4px); z-index: 9999; justify-content: center; align-items: center; animation: fadeIn 0.2s ease;">
+        <div style="background: #0F172A; border: 1px solid #334155; border-radius: 12px; max-width: 90vw; max-height: 90vh; width: 900px; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);">
+            <div style="padding: 12px 16px; border-bottom: 1px solid #1E293B; display: flex; justify-content: space-between; align-items: center; background: #0F172A;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <div style="width: 8px; height: 8px; border-radius: 50%; background: #00998F;"></div>
+                    <span id="target-inspector-title" style="color: #F8FAFC; font-weight: 600; font-size: 14px;">Inspetor de Clique no Alvo</span>
+                </div>
+                <button id="btn-close-target-inspector" style="background: transparent; border: none; color: #94A3B8; font-size: 18px; cursor: pointer; padding: 4px 8px; border-radius: 4px;">✕</button>
+            </div>
+            <div style="position: relative; flex: 1; min-height: 400px; max-height: calc(90vh - 60px); overflow: auto; background: #020617; display: flex; justify-content: center; align-items: center; padding: 16px;">
+                <div id="target-inspector-wrapper" style="position: relative; display: inline-block;">
+                    <img id="target-inspector-img" src="" alt="Screenshot" style="max-width: 100%; max-height: 70vh; display: block; border-radius: 6px; border: 1px solid #1E293B;">
+                    <div id="target-inspector-box" style="position: absolute; border: 2.5px solid #EF4444; background: rgba(239, 68, 68, 0.2); border-radius: 4px; box-shadow: 0 0 15px rgba(239, 68, 68, 0.6); pointer-events: none;">
+                        <span style="position: absolute; top: -22px; left: -2px; background: #EF4444; color: #FFFFFF; font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 3px; white-space: nowrap; text-transform: uppercase;">ALVO CLICADO</span>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
     
     <!-- O modal de rating foi movido para o radar_v3.js (após exibir os artefatos) -->

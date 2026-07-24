@@ -13,12 +13,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     async function syncOrgSettings(token) {
         if (!token) return;
         chrome.storage.local.get(['backendUrl'], async (res) => {
-            const backendUrl = res.backendUrl || "https://api.nomadelabs.com.br";
+            const backendUrl = res.backendUrl || "http://127.0.0.1:8000";
             try {
-                const response = await fetch(`${backendUrl}/api/v1/organization/settings`, {
+                let response = await fetch(`${backendUrl}/api/v1/organization/settings`, {
                     headers: { 'Authorization': `Bearer ${token}` }
-                });
-                if (response.ok) {
+                }).catch(() => null);
+
+                if ((!response || !response.ok) && backendUrl !== "http://127.0.0.1:8000") {
+                    response = await fetch(`http://127.0.0.1:8000/api/v1/organization/settings`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    }).catch(() => null);
+                }
+
+                if (response && response.ok) {
                     const settings = await response.json();
                     await chrome.storage.local.set({
                         disable_whitelist: settings.disable_whitelist,
@@ -27,7 +34,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     console.log("[CaptureOS] Whitelist settings synced from backend:", settings);
                 }
             } catch (err) {
-                console.warn("[CaptureOS] Failed to sync org settings from backend:", err);
+                console.log("[CaptureOS] Whitelist sync offline:", err.message);
             }
         });
     }
@@ -51,7 +58,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
                 await chrome.storage.local.remove('awaitingOtpEmail');
                 if (loginOverlay) loginOverlay.style.display = 'none';
-                sincronizarConfiguracoesWhitelist().catch(err => console.warn(err));
+                sincronizarConfiguracoesWhitelist().catch(() => {});
             } else {
                 if (loginOverlay) loginOverlay.style.display = 'flex';
                 if (awaitingOtpEmail && loginEmail) {
@@ -71,14 +78,19 @@ document.addEventListener('DOMContentLoaded', async () => {
         try {
             const { backendUrl: storedBackendUrl, authToken } = await chrome.storage.local.get(['backendUrl', 'authToken']);
             if (!authToken) return;
-            const backendUrl = storedBackendUrl || "https://api.nomadelabs.com.br";
+            const backendUrl = storedBackendUrl || "http://127.0.0.1:8000";
             
-            const res = await fetch(`${backendUrl}/api/v1/admin/settings`, {
-                headers: {
-                    'Authorization': `Bearer ${authToken}`
-                }
-            });
-            if (res.ok) {
+            let res = await fetch(`${backendUrl}/api/v1/admin/settings`, {
+                headers: { 'Authorization': `Bearer ${authToken}` }
+            }).catch(() => null);
+
+            if ((!res || !res.ok) && backendUrl !== "http://127.0.0.1:8000") {
+                res = await fetch(`http://127.0.0.1:8000/api/v1/admin/settings`, {
+                    headers: { 'Authorization': `Bearer ${authToken}` }
+                }).catch(() => null);
+            }
+
+            if (res && res.ok) {
                 const settings = await res.json();
                 await chrome.storage.local.set({
                     disable_whitelist: settings.disable_whitelist,
@@ -89,7 +101,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
             }
         } catch (e) {
-            console.warn("Erro ao sincronizar configurações da whitelist:", e);
+            console.log("[CaptureOS] Configurações de whitelist offline:", e.message);
         }
     }
 
@@ -722,14 +734,23 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     });
 
-    // Check if processing via storage fallback
-    chrome.storage.local.get(['isProcessing', 'isRecording', 'ragNamespace', 'backendUrl', 'authToken', 'ragContext'], (res) => {
+    // Check if processing via storage fallback and restore settings
+    chrome.storage.local.get(['isProcessing', 'isRecording', 'ragNamespace', 'backendUrl', 'authToken', 'ragContext', 'targetLanguage'], (res) => {
         if (res.isRecording) {
             enterRecordingState();
         } else if (res.isProcessing) {
             enterProcessingState();
         } else {
             btnForceStop.style.display = 'none';
+        }
+
+        const idiomaSelect = document.getElementById('idioma-select');
+        if (idiomaSelect) {
+            if (res.targetLanguage) idiomaSelect.value = res.targetLanguage;
+            idiomaSelect.addEventListener('change', (e) => {
+                chrome.storage.local.set({ targetLanguage: e.target.value });
+                console.log("[CaptureOS] Target language set to:", e.target.value);
+            });
         }
         
         if (res.ragNamespace && selectRagNamespace) {
