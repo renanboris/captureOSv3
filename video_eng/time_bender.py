@@ -110,23 +110,21 @@ def _calculate_segments(timeline_events: list, video_duration: float) -> tuple:
         audio_path = event['audio_path']
         dur = event['audio_duration']
 
-        if event.get('is_loading', False):
-            # Property 1: keep the recording running; no freeze for loading events.
+        if event.get('is_outro', False) or event.get('is_loading', False):
+            # Para a Conclusão (Outro): o vídeo corre solto aproveitando o restante da gravação
             run_end = min(current_time + dur, video_duration)
             if run_end > current_time + 0.001:
                 segments.append(("video", current_time, run_end))
-            # If the recording ends before the narration, hold the last frame
-            # so the narration is fully covered and the timeline stays consistent.
+            # Se a gravação acabar antes do término da narração, segura o último frame
             remainder = dur - (run_end - current_time)
             if remainder > 0.001:
                 hold_t = max(0, video_duration - 0.1)
                 segments.append(("freeze", hold_t, remainder))
-            # Audio positioned over the running segment
             audio_delays.append((audio_path, shifted_time, dur))
             shifted_time += dur
             current_time = run_end
         else:
-            # Property 2: freeze on the click frame (cursor on correct target).
+            # Passos normais (cliques): vídeo anda até o clique e CONGELA no alvo enquanto narra
             freeze_ts = max(current_time, min(ts, video_duration - 0.1))
 
             # 1. Segmento de vídeo normal até o momento do congelamento
@@ -135,7 +133,7 @@ def _calculate_segments(timeline_events: list, video_duration: float) -> tuple:
                 segments.append(("video", current_time, end_ts))
                 shifted_time += (end_ts - current_time)
 
-            # 2. Frame congelado com duração do áudio TTS
+            # 2. Frame congelado no alvo com a duração da narração do passo
             segments.append(("freeze", freeze_ts, dur))
 
             # 3. Posição do áudio na timeline expandida

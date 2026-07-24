@@ -85,6 +85,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             }).catch(() => null);
 
             if ((!res || !res.ok) && backendUrl !== "http://127.0.0.1:8000") {
+                console.warn("[CaptureOS] Backend em " + backendUrl + " inacessível. Tentando fallback local (127.0.0.1:8000)...");
                 res = await fetch(`http://127.0.0.1:8000/api/v1/admin/settings`, {
                     headers: { 'Authorization': `Bearer ${authToken}` }
                 }).catch(() => null);

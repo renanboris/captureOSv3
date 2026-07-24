@@ -498,20 +498,24 @@ async def ingest_capture(
         "roteiro_manual": roteiro_manual_list,
     }
 
-    task = asyncio.create_task(processar_sessao_background(
-        session_id, modo_input, events_list, recording_start_time, 
-        rag_namespace, video_bytes, audio_bytes, roteiro_manual_list,
-        user_id=user_id, org_id=org_id
-    ))
-    active_tasks[session_id] = task
-    task.add_done_callback(_task_exception_handler)
-    task.add_done_callback(lambda t: active_tasks.pop(session_id, None))
+    from api.queue_manager import job_queue
 
+    async def _run_pipeline_job():
+        await processar_sessao_background(
+            session_id, modo_input, events_list, recording_start_time, 
+            rag_namespace, video_bytes, audio_bytes, roteiro_manual_list,
+            user_id=user_id, org_id=org_id
+        )
+
+    await job_queue.enqueue(session_id, _run_pipeline_job)
     return {"status": "ok", "session_id": session_id}
 
 @app.post("/api/v1/capture/abort/{session_id}", dependencies=_auth_deps)
 async def abort_capture(session_id: str):
     logger.info(f"Recebido pedido de abort para sessão: {session_id}")
+    from api.queue_manager import job_queue
+    await job_queue.remove_session(session_id)
+
     # Não sobrescrever se o pipeline já está renderizando ou concluído
     current = get_status(session_id)
     if current.get("status") in ("roteiro_pronto", "rendering_final", "completed"):
@@ -536,12 +540,19 @@ async def abort_capture(session_id: str):
 
 @app.get("/api/v1/capture/status/{session_id}", dependencies=_auth_deps)
 async def check_status(session_id: str):
+    from api.queue_manager import job_queue
+    q_info = job_queue.get_queue_info(session_id)
+    if q_info.get("in_queue"):
+        return {
+            "status": "queued",
+            "message": f"Na fila de processamento (Posição {q_info['position']} de {q_info['total_queue']})...",
+            "queue_position": q_info["position"],
+            "queue_total": q_info["total_queue"]
+        }
+
     def _get_video_url() -> str:
         local_path = f"data/videos_gerados/{session_id}_final.mp4"
         local_url = f"{settings.backend_url}/videos_gerados/{session_id}_final.mp4"
-        # Só usa URL do Supabase se o arquivo local NÃO existir (significa que o upload foi bem-sucedido
-        # e o arquivo local foi removido, ou que estamos em modo cloud-only).
-        # Se o arquivo local existe, serve direto do backend para evitar links quebrados.
         if settings.supabase_url and settings.supabase_key and not os.path.exists(local_path):
             return f"{settings.supabase_url}/storage/v1/object/public/videos/{session_id}_final.mp4"
         return local_url
@@ -1232,13 +1243,12 @@ async def save_roteiro(session_id: str, payload: RoteiroEditadoPayload, user_dic
             active_tasks[session_id].cancel()
             await asyncio.sleep(0)
         
-        update_status(session_id, "rendering_final", "Renderizando vídeo final com roteiro aprovado...")
-        task = asyncio.create_task(
-            rerenderizar_com_roteiro_aprovado(session_id, payload.roteiro, payload.usar_overlay, payload.voice_id)
-        )
-        active_tasks[session_id] = task
-        task.add_done_callback(_task_exception_handler)
-        task.add_done_callback(lambda t: active_tasks.pop(session_id, None))
+        from api.queue_manager import job_queue
+
+        async def _run_rerender_job():
+            await rerenderizar_com_roteiro_aprovado(session_id, payload.roteiro, payload.usar_overlay, payload.voice_id)
+
+        await job_queue.enqueue(session_id, _run_rerender_job)
         
     return {"status": "ok"}
 
@@ -1353,6 +1363,15 @@ Do NOT include any extra markdown formatting or reasoning outside JSON.
             if match:
                 if match.get("ancora"): orig["ancora"] = match["ancora"]
                 if match.get("micro_narracao"): orig["micro_narracao"] = match["micro_narracao"]
+
+        # Backup original script if backup does not exist yet
+        backup_path = f"data/roteiros/{session_id}_original.json"
+        if not os.path.exists(backup_path):
+            try:
+                with open(backup_path, "w", encoding="utf-8") as bf:
+                    json.dump(data, bf, ensure_ascii=False, indent=2)
+            except Exception as b_err:
+                logger.warning(f"[TraduzirRoteiro] Falha ao criar backup do roteiro original: {b_err}")
 
         # Persist updated language in session json
         data["roteiro"] = roteiro

@@ -12,14 +12,16 @@ logger = logging.getLogger("uvicorn.error")
 def is_loading_step(passo: dict) -> bool:
     """
     Pure, side-effect-free classifier.
-    Returns True when the roteiro step represents a loading/navigation transition,
+    Returns True ONLY when the step represents a loading spinner/spinner animation transition,
     meaning time_bender should keep the recording playing instead of freezing.
     """
-    return passo.get("_simlink", {}).get("action") == "navigation"
+    simlink = passo.get("_simlink", {})
+    return simlink.get("is_loading") is True or simlink.get("action") == "loading_spinner"
 
 
 async def rerenderizar_com_roteiro_aprovado(session_id: str, roteiro_aprovado: list,
-                                            usar_overlay: bool = True, voice_id: str = "Portuguese_Casual_Speaker_v1"):
+                                            usar_overlay: bool = True, voice_id: str = "Portuguese_Casual_Speaker_v1",
+                                            idioma: str = "pt-BR"):
     """
     Pipeline parcial para re-renderização pós-editor.
     Pula a parte visual/Aura.
@@ -29,6 +31,8 @@ async def rerenderizar_com_roteiro_aprovado(session_id: str, roteiro_aprovado: l
         session_id: ID da sessão
         roteiro_aprovado: roteiro editado/aprovado
         usar_overlay: se True, aplica a moldura (overlay) no vídeo final
+        voice_id: ID da voz para TTS
+        idioma: código de idioma (ex: pt-BR, en-US, es-ES)
     """
     raw_webm_path = f"data/raw_videos/{session_id}_raw.webm"
     final_mp4_path = f"data/videos_gerados/{session_id}_final.mp4"
@@ -42,7 +46,9 @@ async def rerenderizar_com_roteiro_aprovado(session_id: str, roteiro_aprovado: l
         update_status(session_id, "error", "Vídeo original não encontrado para re-renderização")
         return
 
-    # NOVO: ler start_time_ms do roteiro salvo originalmente
+    raw_video_dur = _get_media_duration(raw_webm_path)
+
+    # NOVO: ler start_time_ms e idioma do roteiro salvo originalmente
     import json
     start_time_ms = 0
     roteiro_path = f"data/roteiros/{session_id}.json"
@@ -51,8 +57,10 @@ async def rerenderizar_com_roteiro_aprovado(session_id: str, roteiro_aprovado: l
             with open(roteiro_path) as f:
                 saved = json.load(f)
                 start_time_ms = saved.get("recording_start_time", 0)
+                if not idioma or idioma == "pt-BR":
+                    idioma = saved.get("idioma", idioma)
         except Exception as e:
-            logger.warning(f"Não foi possível ler start_time_ms: {e}")
+            logger.warning(f"Não foi possível ler start_time_ms/idioma: {e}")
 
     # --- 3. CONSTRUIR ÁUDIOS ---
     update_status(session_id, "rendering_final", "Gravando a locução final...")
@@ -61,13 +69,21 @@ async def rerenderizar_com_roteiro_aprovado(session_id: str, roteiro_aprovado: l
     
     # Pré-computar todas as tarefas de TTS (texto, caminho, timestamp) sequencialmente
     tts_tasks = []
-    last_computed_ts = 5.0  # fallback para passo final se não houver eventos anteriores
-
+    
     # Palavras/frases que indicam passo sem conteúdo útil para narração
     _SKIP_TEXTS = {"", "vazio", "(vazio)", "loading", "carregando", "-"}
 
+    regular_steps = [p for p in roteiro_aprovado if str(p.get("passo", "")) not in ("0", "999")]
+    n_reg = max(1, len(regular_steps))
+    reg_idx = 0
+
     for idx, passo in enumerate(roteiro_aprovado):
-        timestamp_ms = passo.get("timestamp", 0)
+        timestamp_ms = passo.get("timestamp")
+        if timestamp_ms is None:
+            timestamp_ms = passo.get("_timestamp")
+        if timestamp_ms is None:
+            timestamp_ms = passo.get("_simlink", {}).get("timestamp", None)
+
         ancora = passo.get("ancora", "").strip()
         micro = passo.get("micro_narracao", "").strip()
         
@@ -79,32 +95,43 @@ async def rerenderizar_com_roteiro_aprovado(session_id: str, roteiro_aprovado: l
         
         passo_num = str(passo.get("passo", ""))
         
-        if timestamp_ms == 0 and passo_num == "0":
-            rel_sec = 0.0
-        elif timestamp_ms == 99999999 or passo_num == "999":
-            # 999999 será capado pelo video_duration no time_bender, garantindo que o vídeo corra solto até o fim
-            rel_sec = 999999.0
-        else:
-            if start_time_ms > 0:
-                rel_sec = max(0.0, ((timestamp_ms - start_time_ms) / 1000.0) - 0.6)
+        if timestamp_ms is None or timestamp_ms == 0:
+            if passo_num == "0":
+                rel_sec = 0.0
+            elif passo_num == "999":
+                rel_sec = 999999.0
             else:
-                rel_sec = max(0.0, (timestamp_ms / 1000.0) - 0.6)
+                reg_idx += 1
+                rel_sec = round((reg_idx / (n_reg + 1)) * max(1.0, raw_video_dur), 2)
+                logger.warning(f"[{session_id}] Passo {passo_num} sem timestamp válido. Usando fallback proporcional: {rel_sec}s")
+        else:
+            if passo_num == "0":
+                rel_sec = 0.0
+            elif passo_num == "999" or timestamp_ms == 99999999:
+                rel_sec = 999999.0
+            else:
+                if start_time_ms > 0 and timestamp_ms > start_time_ms:
+                    rel_sec = max(0.0, ((timestamp_ms - start_time_ms) / 1000.0) - 0.4)
+                else:
+                    rel_sec = max(0.0, (timestamp_ms / 1000.0) - 0.4)
+                reg_idx += 1
 
         audio_path = f"data/audios/{session_id}/passo_{idx+1}_final.mp3"
+        is_outro = (passo_num == "999" or passo.get("tipo") == "outro" or passo.get("is_outro") is True)
         tts_tasks.append({
             "texto": intencao_combinada,
             "audio_path": audio_path,
             "rel_sec": rel_sec,
-            "is_loading": is_loading_step(passo)
+            "is_loading": False,
+            "is_outro": is_outro
         })
-        last_computed_ts = rel_sec
 
     # Gerar TTS em paralelo com semáforo para limitar concorrência
     sem = asyncio.Semaphore(5)
 
     async def _gerar_com_semaforo(texto, audio_path):
         async with sem:
-            return await gerar_audio(texto, audio_path, voice_id)
+            return await gerar_audio(texto, audio_path, voz=voice_id, idioma=idioma)
 
     resultados = await asyncio.gather(
         *[_gerar_com_semaforo(t["texto"], t["audio_path"]) for t in tts_tasks]
@@ -119,6 +146,8 @@ async def rerenderizar_com_roteiro_aprovado(session_id: str, roteiro_aprovado: l
             }
             if task_info["is_loading"]:
                 event["is_loading"] = True
+            if task_info.get("is_outro"):
+                event["is_outro"] = True
             timeline_events.append(event)
             
     # --- 4. RENDERIZAÇÃO DE VÍDEO ---
