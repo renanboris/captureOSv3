@@ -14,6 +14,31 @@ TTS_CACHE_DIR = "data/cache/tts"
 from dotenv import load_dotenv
 load_dotenv()
 
+MESES_EXTENSO = {
+    1: "janeiro", 2: "fevereiro", 3: "março", 4: "abril",
+    5: "maio", 6: "junho", 7: "julho", 8: "agosto",
+    9: "setembro", 10: "outubro", 11: "novembro", 12: "dezembro"
+}
+
+def converter_datas_por_extenso(texto: str) -> str:
+    def _sub_data(match):
+        dia_str, mes_str, ano_str = match.group(1), match.group(2), match.group(3)
+        dia = int(dia_str)
+        mes = int(mes_str)
+        if 1 <= mes <= 12 and 1 <= dia <= 31:
+            nome_mes = MESES_EXTENSO[mes]
+            if ano_str:
+                ano = int(ano_str)
+                if ano < 100:
+                    ano += 2000
+                return f"{dia} de {nome_mes} de {ano}"
+            return f"{dia} de {nome_mes}"
+        return match.group(0)
+
+    # Match DD/MM/YYYY or DD/MM/YY or DD/MM
+    pattern = r"\b(0?[1-9]|[12][0-9]|3[01])/(0?[1-9]|1[02])(?:/(\d{2,4}))?\b"
+    return re.sub(pattern, _sub_data, texto)
+
 async def gerar_audio(texto: str, output_path: str, voz: str = "pt-BR-FranciscaNeural") -> bool:
     """
     Converte texto em áudio MP3 usando o motor neural (Google/Edge).
@@ -23,8 +48,11 @@ async def gerar_audio(texto: str, output_path: str, voz: str = "pt-BR-FranciscaN
     if not texto or not texto.strip():
         return False
 
+    # Converter datas numéricas por extenso antes das substituições
+    texto_falado = converter_datas_por_extenso(texto)
+
     # Correções fonéticas corporativas (legado)
-    texto_falado = re.sub(r"(?i)\becm_ged\b", "E C M gédi", texto)
+    texto_falado = re.sub(r"(?i)\becm_ged\b", "E C M gédi", texto_falado)
     texto_falado = re.sub(r"\bGED\b", "gédi", texto_falado)
     texto_falado = re.sub(r"\bged\b", "gédi", texto_falado)
     texto_falado = re.sub(r"(?i)\bsenior\b", "Sênior", texto_falado)

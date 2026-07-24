@@ -697,10 +697,15 @@ def generate_pdf_report(session_id: str) -> str:
         except Exception:
             pass
 
-    titulo = html.escape(str(roteiro_data.get("titulo", f"Treinamento {session_id[:8]}")))
+    raw_titulo = str(roteiro_data.get("titulo", "")).strip()
+    if not raw_titulo or "sess_" in raw_titulo.lower() or raw_titulo.lower().startswith("sess "):
+        raw_titulo = f"Tutorial de Treinamento — {session_id[:8]}"
+    titulo = html.escape(raw_titulo)
     roteiro = roteiro_data.get("roteiro", [])
 
-    doc = SimpleDocTemplate(pdf_path, pagesize=A4, rightMargin=36, leftMargin=36, topMargin=36, bottomMargin=36)
+    doc = SimpleDocTemplate(pdf_path, pagesize=A4, rightMargin=36, leftMargin=36, topMargin=36, bottomMargin=36, title=raw_titulo, author="Capture OS")
+    doc.title = raw_titulo
+    doc.author = "Capture OS"
     styles = getSampleStyleSheet()
     
     title_style = ParagraphStyle(
@@ -823,17 +828,46 @@ def generate_transcript_txt(session_id: str) -> str:
         
     return txt_path
 
+import unicodedata
+
+def _get_sanitized_title(session_id: str, default_prefix: str = "Tutorial") -> str:
+    title = ""
+    try:
+        roteiro_path = f"data/roteiros/{session_id}.json"
+        if os.path.exists(roteiro_path):
+            with open(roteiro_path, "r", encoding="utf-8") as f:
+                roteiro_json = json.load(f)
+                title = roteiro_json.get("titulo", "")
+                if not title or title.lower() in ("tutorial", "tutorial gerado", "anonymous", "sem titulo", "sem título"):
+                    roteiro_list = roteiro_json.get("roteiro", [])
+                    for step in roteiro_list:
+                        anc = (step.get("ancora") or step.get("intencao_original") or "").strip()
+                        if anc and len(anc) > 3 and not anc.lower().startswith("passo"):
+                            title = anc[:40]
+                            break
+    except Exception:
+        pass
+    if not title or "sess_" in title.lower() or title.lower().startswith("sess ") or title.lower() in ("anonymous", "tutorial gerado", "sem titulo", "sem título"):
+        title = f"{default_prefix}_{session_id[:8]}"
+    
+    import re
+    clean_title = unicodedata.normalize('NFKD', title).encode('ascii', 'ignore').decode('utf-8')
+    clean_title = re.sub(r'[^a-zA-Z0-9_-]', '_', clean_title)
+    clean_title = re.sub(r'_+', '_', clean_title).strip('_')
+    return clean_title or f"{default_prefix}_{session_id[:8]}"
+
 @app.get("/api/v1/admin/download-artifact/{session_id}/{artifact_type}", dependencies=_auth_deps)
 async def admin_download_artifact(session_id: str, artifact_type: str, user_dict: dict = Depends(require_auth)):
     from fastapi.responses import FileResponse
+    clean_title = _get_sanitized_title(session_id)
     
     if artifact_type in ("scorm", "scorm_zip"):
         zip_path = generate_scorm_zip(session_id)
-        return FileResponse(zip_path, media_type="application/zip", filename=f"SCORM_{session_id[:8]}.zip")
+        return FileResponse(zip_path, media_type="application/zip", filename=f"{clean_title}_SCORM.zip")
 
     elif artifact_type == "pdf":
         pdf_path = generate_pdf_report(session_id)
-        return FileResponse(pdf_path, media_type="application/pdf", filename=f"Roteiro_{session_id[:8]}.pdf")
+        return FileResponse(pdf_path, media_type="application/pdf", filename=f"{clean_title}_Roteiro.pdf")
 
     elif artifact_type in ("final_video", "video"):
         v_final_mp4 = f"data/roteiros/{session_id}_final.mp4"
@@ -845,8 +879,9 @@ async def admin_download_artifact(session_id: str, artifact_type: str, user_dict
                  (v_final_webm if os.path.exists(v_final_webm) else 
                  (v_path if os.path.exists(v_path) else 
                  (v_path_mp4 if os.path.exists(v_path_mp4) else None))))
+        ext = os.path.splitext(target)[1] if target else ".mp4"
         if target:
-            return FileResponse(target, media_type="video/webm" if target.endswith(".webm") else "video/mp4", filename=f"Video_Final_{session_id[:8]}" + os.path.splitext(target)[1])
+            return FileResponse(target, media_type="video/webm" if target.endswith(".webm") else "video/mp4", filename=f"{clean_title}_Video{ext}")
         
         # Fallback de vídeo de demonstração caso ainda esteja sintetizando
         os.makedirs("data", exist_ok=True)
@@ -854,19 +889,20 @@ async def admin_download_artifact(session_id: str, artifact_type: str, user_dict
         if not os.path.exists(demo_video_path):
             with open(demo_video_path, "wb") as f:
                 f.write(b"FTYPmp42" + b"\x00" * 200) # Dummy valid MP4 header placeholder
-        return FileResponse(demo_video_path, media_type="video/mp4", filename=f"Video_Final_{session_id[:8]}.mp4")
+        return FileResponse(demo_video_path, media_type="video/mp4", filename=f"{clean_title}_Video.mp4")
 
     elif artifact_type in ("transcript", "txt"):
         txt_path = generate_transcript_txt(session_id)
-        return FileResponse(txt_path, media_type="text/plain", filename=f"Transcricao_{session_id[:8]}.txt")
+        return FileResponse(txt_path, media_type="text/plain", filename=f"{clean_title}_Transcricao.txt")
 
     raise HTTPException(status_code=400, detail=f"Tipo de artefato '{artifact_type}' inválido.")
 
 @app.get("/api/v1/admin/download-scorm/{session_id}", dependencies=_auth_deps)
 async def admin_download_scorm_direct(session_id: str, user_dict: dict = Depends(require_auth)):
     from fastapi.responses import FileResponse
+    clean_title = _get_sanitized_title(session_id)
     zip_path = generate_scorm_zip(session_id)
-    return FileResponse(zip_path, media_type="application/zip", filename=f"SCORM_{session_id[:8]}.zip")
+    return FileResponse(zip_path, media_type="application/zip", filename=f"{clean_title}_SCORM.zip")
 
 @app.post("/api/v1/admin/reprocess/{session_id}", dependencies=_auth_deps)
 async def admin_reprocess_session(session_id: str, user_dict: dict = Depends(require_auth)):

@@ -55,7 +55,7 @@ async def rerenderizar_com_roteiro_aprovado(session_id: str, roteiro_aprovado: l
             logger.warning(f"Não foi possível ler start_time_ms: {e}")
 
     # --- 3. CONSTRUIR ÁUDIOS ---
-    update_status(session_id, "rendering_final", "🎙️ Gravando a locução final...")
+    update_status(session_id, "rendering_final", "Gravando a locução final...")
     os.makedirs(f"data/audios/{session_id}", exist_ok=True)
     timeline_events = []
     
@@ -152,14 +152,14 @@ async def rerenderizar_com_roteiro_aprovado(session_id: str, roteiro_aprovado: l
         logger.error(f"Erro ao obter duração do vídeo para FinOps: {e}")
     
     # Faz o upload para a nuvem (Supabase)
-    update_status(session_id, "rendering_final", "☁️ Fazendo upload do vídeo para a nuvem...")
+    update_status(session_id, "rendering_final", "Fazendo upload do vídeo para a nuvem...")
     from api.storage import upload_video
     public_url = await asyncio.to_thread(upload_video, final_mp4_path, session_id)
     if public_url:
         logger.info(f"[{session_id}] Vídeo disponível na nuvem: {public_url}")
     
     # --- 5. GERAÇÃO DE ARTEFATOS PARALELOS ---
-    update_status(session_id, "rendering_final", "📄 Gerando materiais de apoio...")
+    update_status(session_id, "rendering_final", "Gerando materiais de apoio...")
     logger.info(f"[{session_id}] Iniciando geração de materiais de apoio...")
 
     os.makedirs(f"data/artifacts/{session_id}", exist_ok=True)
@@ -222,7 +222,7 @@ async def rerenderizar_com_roteiro_aprovado(session_id: str, roteiro_aprovado: l
             json.dump(simlink_modulo.model_dump(), f, ensure_ascii=False, indent=2)
 
         # Gerar pacote SCORM
-        update_status(session_id, "rendering_final", "📦 Empacotando SCORM para LMS...")
+        update_status(session_id, "rendering_final", "Empacotando SCORM para LMS...")
         try:
             from scorm_eng.scorm_builder import gerar_scorm
             scorm_path = await gerar_scorm(simlink_modulo, session_id, titulo_amigavel)

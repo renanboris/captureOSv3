@@ -647,31 +647,30 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function enterProcessingState() {
-        // Reset header
+        // Keep standard header and layout intact
         headerDefault.style.display = 'flex';
         headerRecording.style.display = 'none';
         if (tagline) tagline.style.display = '';
         if (tabsWrapper) tabsWrapper.style.display = '';
         settingsContent.style.display = '';
 
-        // Show processing UI
-        processingBanner.classList.add('active');
+        // Disable start button cleanly without full banner takeover
+        if (processingBanner) processingBanner.classList.remove('active');
         btnStart.disabled = true;
         btnStart.classList.remove('pulse-anim');
         btnStart.innerHTML = `
-            <div class="processing-spinner" style="width:14px;height:14px;border-width:2px;border-color:rgba(255,255,255,0.3);border-top-color:#ffffff;"></div>
+            <div class="processing-spinner" style="width:14px;height:14px;border-width:2px;border-color:rgba(255,255,255,0.3);border-top-color:#ffffff;border-radius:50%;animation:spin 0.8s linear infinite;margin-right:6px;"></div>
             Processando...
         `;
-        btnStart.style.opacity = '0.7';
+        btnStart.style.opacity = '0.65';
         btnStart.style.cursor = 'not-allowed';
 
-        // Disable all toggles
+        // Disable toggles during processing
         toggleMic.disabled = true;
         toggleAi.disabled = true;
         toggleCam.disabled = true;
 
-        // Show force stop, hide recording actions
-        btnForceStop.style.display = 'flex';
+        btnForceStop.style.display = 'none';
         recordingActions.classList.remove('active');
 
         stopTimer();
@@ -718,12 +717,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     chrome.runtime.sendMessage({ action: 'get_status' }, (response) => {
         if (response && response.isRecording) {
             enterRecordingState();
+        } else if (response && response.isProcessing) {
+            enterProcessingState();
         }
     });
 
-    // Check if processing
-    chrome.storage.local.get(['isProcessing', 'ragNamespace', 'backendUrl', 'authToken', 'ragContext'], (res) => {
-        if (res.isProcessing) {
+    // Check if processing via storage fallback
+    chrome.storage.local.get(['isProcessing', 'isRecording', 'ragNamespace', 'backendUrl', 'authToken', 'ragContext'], (res) => {
+        if (res.isRecording) {
+            enterRecordingState();
+        } else if (res.isProcessing) {
             enterProcessingState();
         } else {
             btnForceStop.style.display = 'none';
@@ -991,8 +994,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     // BUTTON ACTIONS
     // ═══════════════════════════════════════════
     btnStart.addEventListener('click', () => {
-        chrome.runtime.sendMessage({ action: 'start_recording' });
-        window.close(); // Close popup immediately for frictionless UX
+        chrome.storage.local.get(['isProcessing', 'isRecording'], (res) => {
+            if (res.isProcessing || res.isRecording) {
+                alert("Existe uma gravação ou processamento ativo. Aguarde a conclusão para iniciar um novo vídeo.");
+                return;
+            }
+            chrome.runtime.sendMessage({ action: 'start_recording' });
+            window.close(); // Close popup immediately for frictionless UX
+        });
     });
 
     btnStop.addEventListener('click', () => {

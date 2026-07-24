@@ -144,6 +144,8 @@ class ScormBuilder:
         package resource listing (Requirements: 4.2, 4.3).
         """
         quiz_file_entry = '            <file href="data/quiz.js"/>\n' if include_quiz else ""
+        import html
+        esc_title = html.escape(self.titulo or "Tutorial de Treinamento")
         return f"""<?xml version="1.0" encoding="utf-8"?>
 <manifest identifier="CaptureOS_TRY_{self.session_id}" version="1.0"
           xmlns="http://www.imsproject.org/xsd/imscp_rootv1p1p2"
@@ -158,9 +160,9 @@ class ScormBuilder:
     </metadata>
     <organizations default="default_org">
         <organization identifier="default_org">
-            <title>&#8203;</title>
+            <title>{esc_title}</title>
             <item identifier="item_1" identifierref="resource_1">
-                <title>&#8203;</title>
+                <title>{esc_title}</title>
             </item>
         </organization>
     </organizations>

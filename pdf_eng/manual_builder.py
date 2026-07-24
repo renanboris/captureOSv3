@@ -544,7 +544,11 @@ def gerar_pdf(
             rightMargin=MARGIN,
             topMargin=MARGIN,
             bottomMargin=MARGIN,
+            title=titulo,
+            author="Capture OS",
         )
+        doc.title = titulo
+        doc.author = "Capture OS"
 
         # 4. Construir o dicionário de estilos
         styles = getSampleStyleSheet()

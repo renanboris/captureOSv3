@@ -9,6 +9,7 @@ PROIBIDO:
   tabelas, links ou qualquer markdown.
 - Abreviações que soam estranho faladas. Escreva por extenso: "por exemplo" (não
   "ex."), "número" (não "nº"), "você" (não "vc").
+- Datas numéricas: Escreva datas sempre por extenso em português (ex: "24 de julho de 2026", nunca "24/07" ou "24/07/2026").
 
 CUIDADOS:
 - Frases curtas e ritmadas. Use vírgulas para dar respiração natural à fala.

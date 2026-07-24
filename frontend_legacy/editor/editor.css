@@ -193,13 +193,13 @@ textarea {
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
 }
 .overlay-switch input:checked + .overlay-slider {
-    background-color: #6366f1;
+    background-color: #0F172A;
 }
 .overlay-switch input:checked + .overlay-slider::before {
     transform: translateX(18px);
 }
 .overlay-switch input:focus-visible + .overlay-slider {
-    outline: 2px solid #6366f1;
+    outline: 2px solid #0F172A;
     outline-offset: 2px;
 }
 

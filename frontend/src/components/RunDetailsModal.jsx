@@ -43,7 +43,14 @@ export default function RunDetailsModal({ run, isOpen, onClose, onToast }) {
       const downloadUrl = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = downloadUrl;
-      a.download = `${label.replace(/\s+/g, '_')}_${run.session_id.substring(0, 8)}`;
+      
+      const disposition = res.headers.get('content-disposition');
+      let filename = disposition ? disposition.match(/filename="?([^";]+)"?/)?.[1] : null;
+      if (!filename) {
+        const cleanTitle = (run.titulo || 'Tutorial').normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9\s_-]/g, '').trim().replace(/\s+/g, '_');
+        filename = `${cleanTitle}_${label.replace(/\s+/g, '_')}`;
+      }
+      a.download = filename;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);

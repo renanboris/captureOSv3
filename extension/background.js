@@ -323,8 +323,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
     
     if (message.action === 'get_status') {
-        chrome.storage.local.get(['isRecording', 'recordingStartTime'], (res) => {
-            sendResponse({ isRecording: !!res.isRecording, start_time: res.recordingStartTime || 0 });
+        chrome.storage.local.get(['isRecording', 'recordingStartTime', 'isProcessing'], (res) => {
+            sendResponse({ isRecording: !!res.isRecording, isProcessing: !!res.isProcessing, start_time: res.recordingStartTime || 0 });
         });
         return true;
     }
@@ -457,15 +457,37 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                     clearInterval(activePollInterval);
                     activePollInterval = null;
                     chrome.storage.local.set({ isProcessing: false });
+                    chrome.storage.local.remove(['toastMinimized']);
+                    
+                    // Dispara notificação nativa do SO
+                    if (chrome.notifications && chrome.notifications.create) {
+                        try {
+                            chrome.notifications.create(`capture_completed_${sessionId}`, {
+                                type: 'basic',
+                                iconUrl: 'icons/icon-128.png',
+                                title: 'Capture OS — Tutorial Pronto!',
+                                message: status.titulo ? `O tutorial "${status.titulo}" foi gerado com sucesso.` : 'Seu vídeo e roteiro estão prontos para visualização.',
+                                priority: 2
+                            });
+                        } catch (e) {
+                            console.warn("Falha ao criar notificação Chrome:", e);
+                        }
+                    }
+
                     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-                        if (tabs[0]) {
-                            chrome.tabs.sendMessage(tabs[0].id, {
-                                action: "show_player_modal",
-                                url: status.url,
-                                roteiro: status.roteiro || [],
-                                titulo: status.titulo || "",
-                                backendUrl: backendUrl
-                            }).catch(() => {});
+                        if (tabs[0] && tabs[0].id) {
+                            const tabUrl = tabs[0].url || "";
+                            if (!tabUrl.startsWith('chrome://') && !tabUrl.startsWith('chrome-extension://') && !tabUrl.startsWith('about:')) {
+                                chrome.tabs.sendMessage(tabs[0].id, {
+                                    action: "show_player_modal",
+                                    url: status.url,
+                                    roteiro: status.roteiro || [],
+                                    titulo: status.titulo || "",
+                                    backendUrl: backendUrl
+                                }).catch((err) => {
+                                    console.log("[CaptureOS] Não foi possível exibir o modal na aba atual:", err);
+                                });
+                            }
                         }
                     });
                 } else if (status.status === "error" || status.status === "failed" || status.status === "unknown") {

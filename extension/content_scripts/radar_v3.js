@@ -48,7 +48,7 @@
     let sandboxStats = { errors: 0, hints: 0, skips: 0 };
     let sandboxShowSkipPrompt = false;
 
-    chrome.storage.local.get(['sandboxMode', 'sandboxSessionId', 'sandboxTotalPassos', 'sandboxPassoAtual', 'sandboxXP', 'sandboxHotspots', 'sandboxStats', 'isProcessing', 'currentSessionId'], (res) => {
+    chrome.storage.local.get(['sandboxMode', 'sandboxSessionId', 'sandboxTotalPassos', 'sandboxPassoAtual', 'sandboxXP', 'sandboxHotspots', 'sandboxStats', 'isProcessing', 'currentSessionId', 'toastMinimized'], (res) => {
         if (window.__capture_os_active_script_id !== currentScriptId) {
             return;
         }
@@ -60,17 +60,17 @@
         sandboxHotspots = res.sandboxHotspots || [];
         sandboxStats = res.sandboxStats || { errors: 0, hints: 0, skips: 0 };
 
-        if (isSandboxMode) {
+        if (isSandboxMode && window === window.top) {
             setTimeout(() => {
                 if (typeof renderSandboxWidget === 'function') renderSandboxWidget();
             }, 500);
         }
 
-        // Se a gravação estiver sendo processada no background, restaura o toast de feedback e retoma o polling
-        if (res.isProcessing && res.currentSessionId) {
+        // Se a gravação estiver sendo processada no background, restaura o toast de feedback (apenas no top-frame)
+        if (res.isProcessing && res.currentSessionId && window === window.top) {
             setTimeout(() => {
                 if (!document.getElementById("capture-os-toast") && !document.getElementById("capture-os-editor-host")) {
-                    showToast("processing", "Restaurando status do tutorial...");
+                    showToast("processing", "Restaurando status do tutorial...", res.toastMinimized || false);
                 }
                 chrome.runtime.sendMessage({
                     action: 'resume_polling',
@@ -85,6 +85,8 @@
             return;
         }
         if (changes.isProcessing && !changes.isProcessing.newValue) {
+            chrome.storage.local.remove(['toastMinimized']);
+            window.__capture_os_toast_minimized = false;
             const existingToast = document.getElementById("capture-os-toast");
             if (existingToast) fecharToast(existingToast);
         }
@@ -366,7 +368,7 @@
         let textXpath = '';
         if (textoAncora && textoAncora.length > 2 && textoAncora.length < 50 && !textoAncora.includes('"') && !textoAncora.includes("'")) {
             const tagLower = el.tagName.toLowerCase();
-            textXpath = `//${tagLower}[contains(text(), "${textoAncora}")]`;
+            textXpath = `//${tagLower}[contains(normalize-space(.), "${textoAncora}")]`;
             candidates.push(textXpath);
         }
 
@@ -411,7 +413,11 @@
 
     function getElementContext(rawTarget) {
         const target = findInteractiveAncestor(rawTarget);
-        let text = (target.innerText || target.value || target.getAttribute('aria-label') || target.getAttribute('title') || '').substring(0, 100).trim();
+        // Prioritiza o texto direto do elemento clicado para evitar capturar textos gigantes do container ancestral
+        const directText = (rawTarget.innerText || rawTarget.value || rawTarget.getAttribute('aria-label') || rawTarget.getAttribute('title') || '').trim();
+        let text = (directText && directText.length <= 80) 
+            ? directText 
+            : (target.innerText || target.value || target.getAttribute('aria-label') || target.getAttribute('title') || '').substring(0, 100).trim();
         
         if (isSensitive(target)) {
             text = '*** [DADO SENSÍVEL OCULTO] ***';
@@ -695,8 +701,10 @@
             if (span) {
                 span.textContent = msg.msg;
             } else {
-                // Se o usuário navegou, o toast sumiu. Recria com o design moderno.
-                showToast("processing", msg.msg);
+                chrome.storage.local.get(['toastMinimized'], (res) => {
+                    const isMin = (res && res.toastMinimized) || window.__capture_os_toast_minimized || false;
+                    showToast("processing", msg.msg, isMin);
+                });
             }
         } else if (msg.action === "show_player_modal") {
             const toastEl = document.getElementById("capture-os-toast");
@@ -791,7 +799,22 @@
         }
     }, 15000);
 
-    function showToast(type, rawMsg) {
+    function showToast(type, rawMsg, forceMinimized = false) {
+        if (window !== window.top) return; // Garante exibição apenas no frame principal (evita duplicidade em iframes)
+        
+        // Injeta CSS de animação primeiro para garantir que a rotação e a barra funcionem mesmo no modo minimizado
+        if (!document.getElementById("capture-os-toast-style")) {
+            const style = document.createElement("style");
+            style.id = "capture-os-toast-style";
+            style.innerHTML = `
+                @keyframes capture-spin { 100% { transform: rotate(360deg); } } 
+                .capture-spin { animation: capture-spin 0.8s linear infinite; }
+                @keyframes capture-progress { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
+                .capture-progress-fill { width: 100%; height: 100%; background: #0F172A; animation: capture-progress 1.5s ease-in-out infinite; }
+            `;
+            document.head.appendChild(style);
+        }
+
         const msg = rawMsg ? rawMsg.replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{1F600}-\u{1F64F}\u{1F680}-\u{1F6FF}]/gu, '').trim() : rawMsg;
         if (document.getElementById('capture-os-editor-host')) {
             const existingToast = document.getElementById("capture-os-toast");
@@ -827,13 +850,54 @@
             document.body.appendChild(toast);
         }
 
-        // Anima a entrada
-        setTimeout(() => {
-            toast.style.opacity = "1";
-            toast.style.transform = "translateX(-50%) translateY(0) scale(1)";
-        }, 10);
+        // Anima a entrada se não for minimizado
+        if (!forceMinimized && !window.__capture_os_toast_minimized) {
+            setTimeout(() => {
+                toast.style.opacity = "1";
+                toast.style.transform = "translateX(-50%) translateY(0) scale(1)";
+            }, 10);
+        }
 
         if (type === "processing") {
+            if (forceMinimized || window.__capture_os_toast_minimized) {
+                window.__capture_os_toast_minimized = true;
+                toast.style.top = "auto";
+                toast.style.bottom = "24px";
+                toast.style.left = "auto";
+                toast.style.right = "24px";
+                toast.style.transform = "none";
+                toast.style.padding = "8px 14px";
+                toast.style.borderRadius = "20px";
+                toast.style.background = 'rgba(255, 255, 255, 0.96)';
+                toast.style.border = '1px solid rgba(15, 23, 42, 0.08)';
+                toast.style.boxShadow = '0 12px 24px -6px rgba(0, 0, 0, 0.12)';
+                toast.style.opacity = "1";
+                toast.innerHTML = `
+                    <div id="capture-os-unminimize-btn" style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" class="capture-spin" style="flex-shrink:0;">
+                            <circle cx="12" cy="12" r="10" stroke="#E2E8F0" stroke-width="2.5" fill="none"></circle>
+                            <path d="M12 2a10 10 0 0 1 10 10" stroke="#0F172A" stroke-width="2.5" stroke-linecap="round" fill="none"></path>
+                        </svg>
+                        <span id="capture-os-toast-msg" style="font-size: 12px; font-weight: 600; color: #0F172A;">${msg || 'Processando em 2º plano...'}</span>
+                    </div>
+                `;
+                setTimeout(() => {
+                    const unmin = document.getElementById("capture-os-unminimize-btn");
+                    if (unmin) {
+                        unmin.onclick = () => {
+                            window.__capture_os_toast_minimized = false;
+                            chrome.storage.local.set({ toastMinimized: false });
+                            showToast("processing", msg || "Processando tutorial...", false);
+                        };
+                    }
+                }, 50);
+                return;
+            }
+            toast.style.bottom = "auto";
+            toast.style.right = "auto";
+            toast.style.top = "24px";
+            toast.style.left = "50%";
+            toast.style.transform = "translateX(-50%) translateY(0) scale(1)";
             toast.style.background = 'rgba(255, 255, 255, 0.96)';
             toast.style.backdropFilter = 'blur(16px)';
             toast.style.webkitBackdropFilter = 'blur(16px)';
@@ -864,13 +928,52 @@
                     <div style="width: 100%; height: 3px; background: #F1F5F9; border-radius: 3px; overflow: hidden;">
                         <div class="capture-progress-fill"></div>
                     </div>
+                    <div style="display: flex; align-items: center; justify-content: space-between; font-size: 11px; color: #64748B; padding-top: 2px;">
+                        <span>Em segundo plano. Pode usar a página normalmente.</span>
+                        <button id="capture-os-minimize-btn" style="background: none; border: none; cursor: pointer; color: #0F172A; font-size: 11px; font-weight: 600; padding: 2px 6px; border-radius: 4px; text-decoration: underline;">Ocultar</button>
+                    </div>
                 </div>
             `;
             
             setTimeout(() => {
                 const cancelBtn = document.getElementById("capture-os-cancel-btn");
+                const minimizeBtn = document.getElementById("capture-os-minimize-btn");
                 const fill = document.getElementById("capture-os-cancel-fill");
                 const label = document.getElementById("capture-os-cancel-label");
+
+                if (minimizeBtn) {
+                    minimizeBtn.addEventListener("click", () => {
+                        window.__capture_os_toast_minimized = true;
+                        chrome.storage.local.set({ toastMinimized: true });
+                        toast.style.top = "auto";
+                        toast.style.bottom = "24px";
+                        toast.style.left = "auto";
+                        toast.style.right = "24px";
+                        toast.style.transform = "none";
+                        toast.style.padding = "8px 14px";
+                        toast.style.borderRadius = "20px";
+                        toast.innerHTML = `
+                            <div id="capture-os-unminimize-btn" style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" class="capture-spin" style="flex-shrink:0;">
+                                    <circle cx="12" cy="12" r="10" stroke="#E2E8F0" stroke-width="2.5" fill="none"></circle>
+                                    <path d="M12 2a10 10 0 0 1 10 10" stroke="#0F172A" stroke-width="2.5" stroke-linecap="round" fill="none"></path>
+                                </svg>
+                                <span style="font-size: 12px; font-weight: 600; color: #0F172A;">Processando em 2º plano...</span>
+                            </div>
+                        `;
+                        setTimeout(() => {
+                            const unmin = document.getElementById("capture-os-unminimize-btn");
+                            if (unmin) {
+                                unmin.addEventListener("click", () => {
+                                    window.__capture_os_toast_minimized = false;
+                                    chrome.storage.local.set({ toastMinimized: false });
+                                    showToast("processing", "Processando tutorial...", false);
+                                });
+                            }
+                        }, 50);
+                    });
+                }
+
                 if (cancelBtn) {
                     let holdStartTime = 0;
                     let animationFrame = null;
@@ -999,13 +1102,34 @@
 
     // --- Player Modal (Vimeo Record Aesthetic) ---
     async function mountPlayerModal(videoUrl, roteiro, receivedBackendUrl, titulo = "") {
+        if (window !== window.top) return; // Garante que o Player Modal abre apenas no frame principal
+        chrome.storage.local.remove(['toastMinimized']);
+        window.__capture_os_toast_minimized = false;
+        const existingToast = document.getElementById("capture-os-toast");
+        if (existingToast) existingToast.remove();
+
         // Extrai session_id da URL (ex: sess_1780090948221 ou sess_uuid)
         const match = videoUrl.match(/(sess_[a-zA-Z0-9\-]+)/);
         const session_id = match ? match[1] : '';
 
-        const cleanTitle = titulo ? titulo.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9\s-]/g, '').trim().replace(/\s+/g, '_') : '';
-        const pdfFilename = cleanTitle ? `${cleanTitle}_apostila.pdf` : `apostila_capture_os_${Date.now()}.pdf`;
-        const scormFilename = cleanTitle ? `${cleanTitle}_scorm.zip` : `pacote_scorm_${session_id}.zip`;
+        let rawTitle = (titulo || "").trim();
+        if (!rawTitle || rawTitle.toLowerCase() === "anonymous" || rawTitle.toLowerCase() === "tutorial gerado" || rawTitle.toLowerCase().includes("sess_")) {
+            if (roteiro && Array.isArray(roteiro) && roteiro.length > 0) {
+                for (let st of roteiro) {
+                    let anc = (st.ancora || st.intencao_original || "").trim();
+                    if (anc && anc.length > 3 && !anc.toLowerCase().startsWith("passo")) {
+                        rawTitle = anc;
+                        break;
+                    }
+                }
+            }
+        }
+        if (!rawTitle || rawTitle.toLowerCase() === "anonymous") rawTitle = `Tutorial_${session_id ? session_id.substring(0, 8) : Date.now()}`;
+
+        const cleanTitle = rawTitle.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9\s-]/g, '').trim().replace(/\s+/g, '_');
+        const videoFilename = cleanTitle ? `${cleanTitle}_video.mp4` : `tutorial_capture_os_${session_id || Date.now()}.mp4`;
+        const pdfFilename = cleanTitle ? `${cleanTitle}_apostila.pdf` : `apostila_capture_os_${session_id || Date.now()}.pdf`;
+        const scormFilename = cleanTitle ? `${cleanTitle}_scorm.zip` : `pacote_scorm_${session_id || Date.now()}.zip`;
 
         // Usa o backendUrl enviado pelo background.js
         const backendUrl = receivedBackendUrl || 'https://api.nomadelabs.com.br';
@@ -1288,7 +1412,9 @@
                     
                     <div class="script-content">
                         ${stepsHtml}
-                               <div class="script-footer">
+                    </div>
+                    
+                    <div class="script-footer">
                         <div class="btn-grid-top">
                             <button id="download-video-btn" class="btn btn-primary">
                                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2-2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
@@ -1296,14 +1422,14 @@
                             </button>
                         </div>
                         <div class="btn-grid">
-                            <a href="${backendUrl}/artifacts/${session_id}/apostila.pdf${tokenSuffix}" target="_blank" download="${pdfFilename}" class="btn btn-secondary">
+                            <button id="download-pdf-btn" class="btn btn-secondary">
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
                                 PDF
-                            </a>
-                            <a href="${backendUrl}/scorm/${session_id}.zip${tokenSuffix}" target="_blank" download="${scormFilename}" class="btn btn-accent">
+                            </button>
+                            <button id="download-scorm-btn" class="btn btn-accent">
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2-2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
                                 SCORM
-                            </a>
+                            </button>
                         </div>
                         <div class="share-section" style="margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border); display: flex; flex-direction: column; gap: 8px;">
                             <div style="font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">Compartilhar com terceiros</div>
@@ -1475,7 +1601,7 @@
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
-                a.download = `tutorial_capture_os_${Date.now()}.mp4`;
+                a.download = videoFilename;
                 a.click();
                 URL.revokeObjectURL(url);
             } catch(err) {
@@ -1485,6 +1611,60 @@
             btn.innerHTML = originalHtml;
             btn.disabled = false;
         });
+
+        // Download PDF
+        const downloadPdfBtn = shadow.getElementById('download-pdf-btn');
+        if (downloadPdfBtn) {
+            downloadPdfBtn.addEventListener('click', async (e) => {
+                const btn = e.currentTarget;
+                const originalHtml = btn.innerHTML;
+                btn.innerHTML = 'Baixando...';
+                btn.disabled = true;
+                try {
+                    const pdfUrl = `${backendUrl}/api/v1/admin/download-artifact/${session_id}/pdf${tokenSuffix}`;
+                    const resp = await fetch(pdfUrl);
+                    const blob = await resp.blob();
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = pdfFilename;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                } catch(err) {
+                    console.error("Erro no download PDF:", err);
+                    window.open(`${backendUrl}/artifacts/${session_id}/apostila.pdf${tokenSuffix}`, '_blank');
+                }
+                btn.innerHTML = originalHtml;
+                btn.disabled = false;
+            });
+        }
+
+        // Download SCORM
+        const downloadScormBtn = shadow.getElementById('download-scorm-btn');
+        if (downloadScormBtn) {
+            downloadScormBtn.addEventListener('click', async (e) => {
+                const btn = e.currentTarget;
+                const originalHtml = btn.innerHTML;
+                btn.innerHTML = 'Baixando...';
+                btn.disabled = true;
+                try {
+                    const scormUrl = `${backendUrl}/api/v1/admin/download-scorm/${session_id}${tokenSuffix}`;
+                    const resp = await fetch(scormUrl);
+                    const blob = await resp.blob();
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = scormFilename;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                } catch(err) {
+                    console.error("Erro no download SCORM:", err);
+                    window.open(`${backendUrl}/scorm/${session_id}.zip${tokenSuffix}`, '_blank');
+                }
+                btn.innerHTML = originalHtml;
+                btn.disabled = false;
+            });
+        }
 
         // Lógica de compartilhamento
         const shareVideoBtn = shadow.getElementById('share-video-btn');

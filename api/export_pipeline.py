@@ -165,7 +165,7 @@ async def _renderizar_exportacao_impl(payload: dict, session_id: str):
             if b64_audio:
                 audio_raw = base64.b64decode(b64_audio.split(',')[-1])
         if audio_raw:
-            update_status(session_id, "processing", "🎙️ Transcrevendo sua explicação...")
+            update_status(session_id, "processing", "Transcrevendo sua explicação...")
             from audio_eng.whisper_transcriber import transcrever_audio_instrutor
             transcricao_instrutor = await transcrever_audio_instrutor(
                 audio_raw, session_id
